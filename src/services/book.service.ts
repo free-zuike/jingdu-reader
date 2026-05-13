@@ -27,20 +27,17 @@ export class BookService {
 
       // 找出新文件
       const newFiles: WebDAVFile[] = [];
-      // 找出已有但缺少KV缓存的文件
+      // 找出已有但缺少原始EPUB缓存的文件
       const staleFiles: { book: Book; file: WebDAVFile }[] = [];
-
-      // 构建 webdav_path -> WebDAVFile 映射
-      const webdavFileMap = new Map(webdavFiles.map(f => [f.path, f]));
 
       for (const file of webdavFiles) {
         if (!existingPaths.has(file.path)) {
           newFiles.push(file);
         } else {
           const existingBook = existingByPath.get(file.path)!;
-          const cacheKey = `book:${existingBook.id}`;
-          const cached = await this.cache.get(cacheKey);
-          if (!cached) {
+          const rawKey = `raw:${existingBook.id}`;
+          const rawCached = await this.cache.get(rawKey);
+          if (!rawCached) {
             staleFiles.push({ book: existingBook, file });
           }
         }
