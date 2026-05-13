@@ -174,6 +174,12 @@ export class Database {
     ).bind(...values).run();
   }
 
+  async markBookSynced(id: string): Promise<void> {
+    await this.db.prepare(
+      'UPDATE books SET synced = 1 WHERE id = ?'
+    ).bind(id).run();
+  }
+
   async deleteBook(id: string): Promise<void> {
     await this.db.prepare(
       'DELETE FROM books WHERE id = ?'

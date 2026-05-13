@@ -52,6 +52,7 @@ export interface Book {
   format: 'epub' | 'txt' | 'pdf' | 'mobi' | 'azw3' | 'docx' | 'doc' | 'rtf' | 'fb2' | 'html' | 'cbr' | 'cbz' | 'djvu';
   file_size?: number;
   last_modified?: string;
+  synced?: number;
   cached_at: string;
 }
 

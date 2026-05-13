@@ -1,9 +1,11 @@
+// 书籍服务
+
 import type { KVNamespace } from '@cloudflare/workers-types';
 import { Database } from '../utils/db';
 import { WebDAVService } from './webdav.service';
 import { generateUUID } from '../utils/crypto';
 import type { Book, BookListItem, BookContent, ReadingProgress, ApiResponse, WebDAVFile } from '../types';
-import { extractEpubContent, extractEpubMetadata, parseFilenameMetadata } from '../utils/epub';
+import { extractEpubContent, extractEpubMetadata } from '../utils/epub';
 
 export class BookService {
   private db: Database;
@@ -14,7 +16,7 @@ export class BookService {
     this.cache = cache;
   }
 
-  // 同步WebDAV书籍（下载元数据+封面，原始EPUB存KV，阅读时惰性解析）
+  // 同步WebDAV书籍（只做列表对比，不下载，按需下载）
   async syncBooks(
     userId: string,
     webdavFiles: WebDAVFile[],
@@ -23,150 +25,81 @@ export class BookService {
     try {
       const existingBooks = await this.db.getBooksByUserId(userId);
       const existingByPath = new Map(existingBooks.map(b => [b.webdav_path, b]));
-      const existingPaths = new Set(existingByPath.keys());
 
-      // 找出新文件
-      const newFiles: WebDAVFile[] = [];
-      // 找出已有但缺少原始EPUB缓存的文件
-      const staleFiles: { book: Book; file: WebDAVFile }[] = [];
-
-      for (const file of webdavFiles) {
-        if (!existingPaths.has(file.path)) {
-          newFiles.push(file);
-        } else {
-          const existingBook = existingByPath.get(file.path)!;
-          const rawKey = `raw:${existingBook.id}`;
-          const rawCached = await this.cache.get(rawKey);
-          if (!rawCached) {
-            staleFiles.push({ book: existingBook, file });
-          }
-        }
-      }
-
-      const totalToProcess = newFiles.length + staleFiles.length;
-
-      let imported = 0;
-      let recached = 0;
+      let added = 0;
       const errors: string[] = [];
 
-      // 初始化进度
-      const progressKey = `sync:${userId}`;
-      await this.cache.put(progressKey, JSON.stringify({
-        total: totalToProcess,
-        processed: 0,
-        current: '',
-        errors: [],
-        done: false
-      }), { expirationTtl: 600 });
+      for (const file of webdavFiles) {
+        if (!existingByPath.has(file.path)) {
+          try {
+            const bookId = generateUUID();
+            const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+            const dashIdx = nameWithoutExt.indexOf(' - ');
+            let title = file.name;
+            let author = '';
+            if (dashIdx > 0) {
+              title = nameWithoutExt.substring(0, dashIdx).trim();
+              author = nameWithoutExt.substring(dashIdx + 3).trim();
+            }
 
-      // 处理新文件
-      for (let i = 0; i < newFiles.length; i++) {
-        const file = newFiles[i];
-        try {
-          // 更新当前处理文件
-          await this.cache.put(progressKey, JSON.stringify({
-            total: totalToProcess,
-            processed: i,
-            current: file.name,
-            errors,
-            done: false
-          }), { expirationTtl: 600 });
-
-          const bookId = generateUUID();
-          const ext = file.name.toLowerCase().split('.').pop() || '';
-
-          const { title: filenameTitle, author: filenameAuthor } = parseFilenameMetadata(file.name);
-
-          let finalTitle = filenameTitle || file.name;
-          let finalAuthor = filenameAuthor || '';
-
-          // 下载文件
-          const fileResult = await webdavService.getFile(userId, file.path);
-          if (!fileResult.success) {
-            errors.push(`${file.name}: 下载失败`);
-            continue;
+            await this.db.createBook({
+              id: bookId,
+              user_id: userId,
+              webdav_path: file.path,
+              title,
+              author,
+              format: file.name.toLowerCase().split('.').pop() as Book['format'],
+              file_size: file.size,
+              last_modified: file.lastModified,
+              cached_at: new Date().toISOString()
+            });
+            added++;
+          } catch (e: any) {
+            errors.push(`${file.name}: ${e?.message || '导入失败'}`);
           }
-
-          const fileData = fileResult.data.content as ArrayBuffer;
-          const rawBytes = new Uint8Array(fileData);
-          await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
-
-          await this.db.createBook({
-            id: bookId,
-            user_id: userId,
-            webdav_path: file.path,
-            title: finalTitle,
-            author: finalAuthor,
-            format: ext as Book['format'],
-            file_size: file.size,
-            last_modified: file.lastModified,
-            cached_at: new Date().toISOString()
-          });
-
-          imported++;
-        } catch (e) {
-          console.error(`导入书籍失败 ${file.name}:`, e);
-          errors.push(`${file.name}: 导入失败`);
         }
-      }
-
-      // 处理已有但缺少缓存的文件（重新下载并缓存）
-      for (let i = 0; i < staleFiles.length; i++) {
-        const { book, file } = staleFiles[i];
-        const processIndex = newFiles.length + i;
-        try {
-          await this.cache.put(progressKey, JSON.stringify({
-            total: totalToProcess,
-            processed: processIndex,
-            current: file.name,
-            errors,
-            done: false
-          }), { expirationTtl: 600 });
-
-          const ext = file.name.toLowerCase().split('.').pop() || '';
-
-          const fileResult = await webdavService.getFile(userId, file.path);
-          if (!fileResult.success) {
-            errors.push(`${file.name}: 下载失败`);
-            continue;
-          }
-
-          const fileData = fileResult.data.content as ArrayBuffer;
-          const rawBytes = new Uint8Array(fileData);
-          await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
-
-          await this.db.updateBookMeta(book.id, {});
-          recached++;
-        } catch (e) {
-          console.error(`重新缓存书籍失败 ${file.name}:`, e);
-          errors.push(`${file.name}: 重新缓存失败`);
-        }
-      }
-
-      // 标记完成
-      await this.cache.put(progressKey, JSON.stringify({
-        total: totalToProcess,
-        processed: totalToProcess,
-        current: '',
-        errors,
-        done: true,
-        imported,
-        recached
-      }), { expirationTtl: 600 });
-
-      let message = `同步完成，新增 ${imported} 本，重新缓存 ${recached} 本`;
-      if (errors.length > 0) {
-        message += `（${errors.length} 本失败）`;
       }
 
       return {
         success: true,
-        message,
-        data: { added: imported, recached, errors }
+        message: `同步完成，新增 ${added} 本书籍`,
+        data: { added, errors }
       };
-    } catch (error) {
-      console.error('同步书籍失败:', error);
-      return { success: false, error: '同步书籍失败' };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '同步失败' };
+    }
+  }
+
+  // 按需下载并缓存单本书籍
+  async downloadAndCacheBook(
+    userId: string,
+    bookId: string,
+    webdavService: WebDAVService
+  ): Promise<ApiResponse> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) {
+        return { success: false, error: '书籍不存在' };
+      }
+
+      const fileResult = await webdavService.getFile(userId, book.webdav_path);
+      if (!fileResult.success) {
+        return { success: false, error: fileResult.error || '下载失败' };
+      }
+
+      const fileData = fileResult.data.content as ArrayBuffer;
+      const rawBytes = new Uint8Array(fileData);
+      await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
+
+      if (book.format === 'txt') {
+        const text = new TextDecoder().decode(fileData);
+        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters: [{ title: '正文', startIndex: 0 }] }), { expirationTtl: 30 * 24 * 60 * 60 });
+      }
+
+      await this.db.markBookSynced(bookId);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '缓存失败' };
     }
   }
 
@@ -174,37 +107,24 @@ export class BookService {
   async getBooks(userId: string): Promise<ApiResponse> {
     try {
       const books = await this.db.getBooksByUserId(userId);
+      const bookList: BookListItem[] = [];
 
-      const booksWithProgress: BookListItem[] = await Promise.all(
-        books.map(async (book) => {
-          const progressKey = `progress:${userId}:${book.id}`;
-          const progressData = await this.cache.get(progressKey);
-          let progress: ReadingProgress | undefined;
+      for (const book of books) {
+        const coverKey = `cover:${book.id}`;
+        const cachedCover = await this.cache.get(coverKey);
+        bookList.push({
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          cover: cachedCover ? `/api/books/${book.id}/cover` : undefined,
+          format: book.format,
+          progress: undefined
+        });
+      }
 
-          if (progressData) {
-            progress = JSON.parse(progressData);
-          }
-
-          return {
-            id: book.id,
-            title: book.title,
-            author: book.author || '',
-            cover: '',
-            format: book.format,
-            size: book.file_size,
-            lastReadAt: progress ? new Date(progress.lastReadAt).toISOString() : undefined,
-            progress: progress ? Math.round((progress.currentPosition / progress.totalLength) * 100) : undefined
-          };
-        })
-      );
-
-      return {
-        success: true,
-        data: { books: booksWithProgress }
-      };
-    } catch (error) {
-      console.error('获取书籍列表失败:', error);
-      return { success: false, error: '获取书籍列表失败' };
+      return { success: true, data: bookList };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '获取书籍列表失败' };
     }
   }
 
@@ -223,17 +143,21 @@ export class BookService {
           title: book.title,
           author: book.author,
           format: book.format,
-          size: book.file_size
+          fileSize: book.file_size,
+          lastModified: book.last_modified
         }
       };
-    } catch (error) {
-      console.error('获取书籍详情失败:', error);
-      return { success: false, error: '获取书籍详情失败' };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '获取书籍失败' };
     }
   }
 
-  // 获取书籍内容（惰性解析：优先从缓存读，没有则从原始EPUB提取并缓存）
-  async getBookContent(userId: string, bookId: string): Promise<ApiResponse> {
+  // 获取书籍内容（惰性解析：没有则按需从WebDAV下载提取）
+  async getBookContent(
+    userId: string,
+    bookId: string,
+    webdavService?: WebDAVService
+  ): Promise<ApiResponse> {
     try {
       const book = await this.db.getBookById(bookId);
       if (!book || book.user_id !== userId) {
@@ -242,85 +166,82 @@ export class BookService {
 
       const cacheKey = `book:${bookId}`;
       const cached = await this.cache.get(cacheKey);
-
       if (cached) {
         const content = JSON.parse(cached);
-        return {
-          success: true,
-          data: {
-            text: content.text,
-            chapters: content.chapters,
-            title: book.title,
-            author: book.author
-          }
-        };
+        return { success: true, data: { text: content.text, chapters: content.chapters, title: book.title, author: book.author } };
       }
 
       const rawKey = `raw:${bookId}`;
-      const rawData = await this.cache.get(rawKey, 'arrayBuffer');
-      if (rawData) {
-        const fileData = rawData as ArrayBuffer;
-        const content = await extractEpubContent(fileData);
+      let rawData = await this.cache.get(rawKey, 'arrayBuffer');
 
-        const contentJson = JSON.stringify(content);
-        if (contentJson.length < 25 * 1024 * 1024) {
-          await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-        } else {
-          const truncated = {
-            text: content.text.substring(0, 5 * 1024 * 1024),
-            chapters: content.chapters,
-            truncated: true
-          };
-          await this.cache.put(cacheKey, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
-        }
-
-        return {
-          success: true,
-          data: {
-            text: content.text,
-            chapters: content.chapters,
-            title: book.title,
-            author: book.author
-          }
-        };
+      if (!rawData && webdavService) {
+        const dl = await this.downloadAndCacheBook(userId, bookId, webdavService);
+        if (!dl.success) return { success: false, error: dl.error };
+        rawData = await this.cache.get(rawKey, 'arrayBuffer');
       }
 
-      return { success: false, error: '书籍内容尚未缓存，请重新同步' };
-    } catch (error) {
-      console.error('获取书籍内容失败:', error);
-      return { success: false, error: '获取书籍内容失败' };
+      if (!rawData) {
+        return { success: false, error: '书籍内容尚未缓存，请重新同步' };
+      }
+
+      if (book.format === 'txt') {
+        const text = new TextDecoder().decode(rawData as ArrayBuffer);
+        const chapters = [{ title: '正文', startIndex: 0 }];
+        const contentJson = JSON.stringify({ text, chapters });
+        await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
+        return { success: true, data: { text, chapters, title: book.title, author: book.author } };
+      }
+
+      const fileData = rawData as ArrayBuffer;
+
+      let title = book.title;
+      let author = book.author || '';
+
+      try {
+        const meta = await extractEpubMetadata(fileData);
+        if (meta.title) title = meta.title;
+        if (meta.author) author = meta.author;
+
+        if (meta.coverBase64) {
+          const mimeMatch = meta.coverBase64.match(/^data:([^;]+);/);
+          const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          const base64Data = meta.coverBase64.split(',')[1];
+          await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+        }
+      } catch {}
+
+      const content = await extractEpubContent(fileData);
+      const contentJson = JSON.stringify(content);
+      const targetSize = contentJson.length < 25 * 1024 * 1024 ? contentJson.length : 5 * 1024 * 1024;
+      const finalContent = contentJson.length < 25 * 1024 * 1024 ? content : { text: content.text.substring(0, 5 * 1024 * 1024), chapters: content.chapters, truncated: true };
+      await this.cache.put(cacheKey, JSON.stringify(finalContent), { expirationTtl: 30 * 24 * 60 * 60 });
+
+      await this.db.markBookSynced(bookId);
+      return { success: true, data: { text: content.text, chapters: content.chapters, title, author } };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '获取书籍内容失败' };
     }
   }
 
-  // 获取阅读进度（优先本地，fallback到Moon+）
+  // 获取阅读进度
   async getProgress(userId: string, bookId: string, webdavService?: WebDAVService): Promise<ApiResponse> {
     try {
       const progressKey = `progress:${userId}:${bookId}`;
       const progressData = await this.cache.get(progressKey);
-
       if (progressData) {
-        const progress = JSON.parse(progressData);
-        return { success: true, data: progress };
+        return { success: true, data: JSON.parse(progressData) };
       }
 
-      // 从Moon+读取
       if (webdavService) {
         const book = await this.db.getBookById(bookId);
         if (book) {
           try {
-            const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author, book.format);
+            const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author || '', book.format);
             const poResult = await webdavService.getMoonPlusProgressFile(userId, poPath);
             if (poResult.success && poResult.data?.content) {
-              const moonProgress = webdavService.parseMoonPlusProgress(poResult.data.content);
-              if (moonProgress) {
-                const progress: ReadingProgress = {
-                  bookId,
-                  currentPosition: 0,
-                  totalLength: 0,
-                  percentage: moonProgress.percentage,
-                  lastReadAt: new Date().toISOString(),
-                  fromMoon: true
-                };
+              const moon = webdavService.parseMoonPlusProgress(poResult.data.content);
+              if (moon) {
+                const progress: ReadingProgress = { bookId, currentPosition: 0, totalLength: 0, percentage: moon.percentage, lastReadAt: new Date().toISOString() };
                 await this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 });
                 return { success: true, data: progress };
               }
@@ -329,49 +250,25 @@ export class BookService {
         }
       }
 
-      return {
-        success: true,
-        data: {
-          bookId,
-          currentPosition: 0,
-          totalLength: 0,
-          lastReadAt: new Date().toISOString()
-        }
-      };
-    } catch (error) {
-      console.error('获取阅读进度失败:', error);
-      return { success: false, error: '获取阅读进度失败' };
+      return { success: true, data: { bookId, currentPosition: 0, totalLength: 0, lastReadAt: new Date().toISOString() } };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '获取阅读进度失败' };
     }
   }
 
   // 更新阅读进度
-  async updateProgress(
-    userId: string,
-    bookId: string,
-    position: number,
-    totalLength: number
-  ): Promise<ApiResponse> {
+  async updateProgress(userId: string, bookId: string, position: number, totalLength: number): Promise<ApiResponse> {
     try {
       const progressKey = `progress:${userId}:${bookId}`;
-      const progress: ReadingProgress = {
-        bookId,
-        currentPosition: position,
-        totalLength,
-        lastReadAt: new Date().toISOString()
-      };
-
-      await this.cache.put(progressKey, JSON.stringify(progress), {
-        expirationTtl: 365 * 24 * 60 * 60
-      });
-
+      const progress: ReadingProgress = { bookId, currentPosition: position, totalLength, lastReadAt: new Date().toISOString() };
+      await this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 });
       return { success: true, data: progress };
-    } catch (error) {
-      console.error('更新阅读进度失败:', error);
-      return { success: false, error: '更新阅读进度失败' };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '更新阅读进度失败' };
     }
   }
 
-  // 同步阅读进度到Moon+ WebDAV文件
+  // 同步阅读进度到Moon+
   async syncMoonProgressToWebDAV(
     userId: string,
     bookId: string,
@@ -382,33 +279,12 @@ export class BookService {
     try {
       const book = await this.db.getBookById(bookId);
       if (!book) return;
-
       const percentage = totalLength > 0 ? Math.round((currentPosition / totalLength) * 1000) / 10 : 0;
-
-      const content = webdavService.buildMoonPlusPoContent(
-        'jingdu-web',
-        0,
-        `0#${currentPosition}`,
-        percentage
-      );
-
-      const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author, book.format);
+      const content = webdavService.buildMoonPlusPoContent('jingdu-web', 0, `0#${currentPosition}`, percentage);
+      const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author || '', book.format);
       await webdavService.writeMoonPlusProgressFile(userId, poPath, content);
-      console.log(`[Moon+] 进度已写入: ${poPath} (${percentage}%)`);
     } catch (e) {
       console.log('[Moon+] 写入进度失败:', e);
     }
   }
-}
-
-function parseBookName(name: string): { title: string; author: string } {
-  const withoutExt = name.replace(/\.[^/.]+$/, '');
-  const dashIdx = withoutExt.lastIndexOf(' - ');
-  if (dashIdx > 0) {
-    return {
-      title: withoutExt.substring(0, dashIdx).trim(),
-      author: withoutExt.substring(dashIdx + 3).trim()
-    };
-  }
-  return { title: withoutExt.trim(), author: '' };
 }

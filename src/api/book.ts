@@ -79,18 +79,18 @@ book.get('/:id', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 获取书籍内容（从KV缓存读取）
+// 获取书籍内容（惰性解析：没有则按需从WebDAV下载提取）
 book.get('/:id/content', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getBookContent(userId, bookId);
+  const result = await bookService.getBookContent(userId, bookId, webdavService);
 
   if (!result.success) {
-    console.log(`[content] bookId=${bookId}, error=${result.error}`);
     return c.json(result, 404);
   }
 
@@ -149,9 +149,10 @@ book.get('/:id/progress', authMiddleware, async (c) => {
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getProgress(userId, bookId);
+  const result = await bookService.getProgress(userId, bookId, webdavService);
 
   return c.json(result);
 });

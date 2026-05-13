@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS books (
   format TEXT NOT NULL,
   file_size INTEGER,
   last_modified TEXT,
+  synced INTEGER DEFAULT 0,
   cached_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
