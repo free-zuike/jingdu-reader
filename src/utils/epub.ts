@@ -1,4 +1,4 @@
-// EPUB解析工具 - 元数据提取 + 全文内容解析
+// EPUB解析工具 - 轻量级实现，无正则
 
 export interface EpubMetadata {
   title: string;
@@ -25,17 +25,14 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   const entries: ZipEntry[] = [];
 
   let eocdOffset = -1;
-  const maxSearch = Math.min(65557, data.byteLength);
-  for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - maxSearch); i--) {
+  for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - 65557); i--) {
     if (view.getUint32(i, true) === 0x06054b50) {
       eocdOffset = i;
       break;
     }
   }
 
-  if (eocdOffset === -1) {
-    throw new Error('无效的ZIP/EPUB文件');
-  }
+  if (eocdOffset === -1) return [];
 
   const centralDirOffset = view.getUint32(eocdOffset + 16, true);
   const totalEntries = view.getUint16(eocdOffset + 10, true);
@@ -59,13 +56,7 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
     const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
     const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
 
-    entries.push({
-      name: fileName,
-      offset: dataOffset,
-      compressedSize,
-      uncompressedSize,
-      compressionMethod
-    });
+    entries.push({ name: fileName, offset: dataOffset, compressedSize, uncompressedSize, compressionMethod });
 
     offset += 46 + fileNameLength + extraFieldLength + commentLength;
   }
@@ -75,133 +66,219 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
 
 async function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Promise<Uint8Array> {
   const bytes = new Uint8Array(data, entry.offset, entry.compressedSize);
+  if (entry.compressionMethod === 0) return bytes;
+  if (entry.compressionMethod !== 8) return bytes;
 
-  if (entry.compressionMethod === 0) {
+  try {
+    const ds = new DecompressionStream('deflate-raw');
+    const writer = ds.writable.getWriter();
+    const reader = ds.readable.getReader();
+    writer.write(bytes);
+    writer.close();
+
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    const total = chunks.reduce((s, c) => s + c.length, 0);
+    const result = new Uint8Array(total);
+    let pos = 0;
+    for (const c of chunks) { result.set(c, pos); pos += c.length; }
+    return result;
+  } catch {
     return bytes;
   }
+}
 
-  if (entry.compressionMethod === 8) {
-    try {
-      const ds = new DecompressionStream('deflate-raw');
-      const writer = ds.writable.getWriter();
-      const reader = ds.readable.getReader();
-
-      writer.write(bytes);
-      writer.close();
-
-      const chunks: Uint8Array[] = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-      }
-
-      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-      const result = new Uint8Array(totalLength);
-      let pos = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, pos);
-        pos += chunk.length;
-      }
-      return result;
-    } catch {
-      return bytes;
+// 简单字符串查找
+function findTagAttr(text: string, tagName: string, attrName: string): string | null {
+  let pos = 0;
+  while (pos < text.length) {
+    const tagStart = text.indexOf('<' + tagName, pos);
+    if (tagStart === -1) break;
+    const tagEnd = text.indexOf('>', tagStart);
+    if (tagEnd === -1) break;
+    const tagContent = text.substring(tagStart, tagEnd + 1);
+    const attrStart = tagContent.indexOf(attrName + '="');
+    if (attrStart !== -1) {
+      const valStart = attrStart + attrName.length + 2;
+      const valEnd = tagContent.indexOf('"', valStart);
+      if (valEnd !== -1) return tagContent.substring(valStart, valEnd);
     }
-  }
-
-  return bytes;
-}
-
-function safeMatchAll(text: string, pattern: string): string[][] {
-  try {
-    const regex = new RegExp(pattern, 'gi');
-    const results: string[][] = [];
-    let match;
-    let safe = 0;
-    while ((match = regex.exec(text)) !== null && safe < 1000) {
-      results.push([...match]);
-      if (!regex.global) break;
-      if (match.index === regex.lastIndex) regex.lastIndex++;
-      safe++;
+    const attrStart2 = tagContent.indexOf(attrName + "='");
+    if (attrStart2 !== -1) {
+      const valStart = attrStart2 + attrName.length + 2;
+      const valEnd = tagContent.indexOf("'", valStart);
+      if (valEnd !== -1) return tagContent.substring(valStart, valEnd);
     }
-    return results;
-  } catch {
-    return [];
+    pos = tagEnd + 1;
   }
+  return null;
 }
 
-function getXmlTagContent(xml: string, tagName: string): string | null {
-  try {
-    const pattern = `<${tagName}[^>]*>([^<]*)</${tagName}>`;
-    const regex = new RegExp(pattern, 'i');
-    const match = regex.exec(xml);
-    return match ? match[1].trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-function getXmlAttribute(xml: string, tagName: string, attrName: string): string | null {
-  try {
-    const regex = new RegExp(`${tagName}[^>]*${attrName}=["']([^"']*)["']`, 'i');
-    const match = regex.exec(xml);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
-}
-
-function findXmlAttribute(xml: string, tagName: string, attrName: string, valueContains: string): string | null {
-  try {
-    const allMatches = safeMatchAll(xml, `<${tagName}[^>]*>`, 100);
-    for (const fullMatch of allMatches) {
-      const full = fullMatch[0];
-      if (valueContains && !full.includes(valueContains)) continue;
-      const attrMatch = new RegExp(`${attrName}=["']([^"']*)["']`, 'i').exec(full);
-      if (attrMatch) return attrMatch[1];
+function findTagContent(text: string, tagName: string): string | null {
+  const open = '<' + tagName;
+  let pos = 0;
+  while (pos < text.length) {
+    const tagStart = text.indexOf(open, pos);
+    if (tagStart === -1) break;
+    const gtPos = text.indexOf('>', tagStart);
+    if (gtPos === -1) break;
+    const closeTag = '</' + tagName + '>';
+    const contentStart = gtPos + 1;
+    const closePos = text.indexOf(closeTag, contentStart);
+    if (closePos !== -1) {
+      return text.substring(contentStart, closePos).trim();
     }
-    return null;
-  } catch {
-    return null;
+    pos = gtPos + 1;
   }
+  return null;
+}
+
+function findFirstItemHref(text: string): string | null {
+  return findTagAttr(text, 'item', 'href');
+}
+
+function findFirstItemRef(text: string, attr: string, val: string): { href: string; mime: string } | null {
+  let pos = 0;
+  while (pos < text.length) {
+    const tagStart = text.indexOf('<item', pos);
+    if (tagStart === -1) break;
+    const gtPos = text.indexOf('>', tagStart);
+    if (gtPos === -1) break;
+    const tagStr = text.substring(tagStart, gtPos + 1);
+    const idVal = findTagAttr(tagStr, 'item', attr);
+    if (idVal && idVal.toLowerCase().includes(val.toLowerCase())) {
+      const href = findTagAttr(tagStr, 'item', 'href');
+      const mime = findTagAttr(tagStr, 'item', 'media-type');
+      if (href && mime) return { href, mime };
+    }
+    pos = gtPos + 1;
+  }
+  return null;
+}
+
+function findMetaCoverItemId(text: string): string | null {
+  let pos = 0;
+  while (pos < text.length) {
+    const tagStart = text.indexOf('<meta', pos);
+    if (tagStart === -1) break;
+    const gtPos = text.indexOf('>', tagStart);
+    if (gtPos === -1) break;
+    const tagStr = text.substring(tagStart, gtPos + 1);
+    if (tagStr.includes('name="cover"') || tagStr.includes("name='cover'")) {
+      return findTagAttr(tagStr, 'meta', 'content');
+    }
+    pos = gtPos + 1;
+  }
+  return null;
 }
 
 function stripHtml(html: string): string {
-  return html
-    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/?p[^>]*>/gi, '\n')
-    .replace(/<\/?div[^>]*>/gi, '\n')
-    .replace(/<\/?h\d[^>]*>/gi, '\n')
-    .replace(/<\/?li[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
+  let result = html;
+  const removals: [string, string][] = [
+    [/<\/?head[^>]*>[\s\S]*?<\/head>/gi, ''],
+    [/<\/?style[^>]*>[\s\S]*?<\/style>/gi, ''],
+    [/<\/?script[^>]*>[\s\S]*?<\/script>/gi, ''],
+    [/<\/?svg[^>]*>[\s\S]*?<\/svg>/gi, ''],
+    [/<!--[\s\S]*?-->/g, ''],
+  ];
+  for (const [pat, rep] of removals) {
+    result = result.replace(pat, rep);
+  }
+
+  const parts: string[] = [];
+  let i = 0;
+  let inTag = false;
+  let current = '';
+  while (i < result.length) {
+    if (result[i] === '<') {
+      inTag = true;
+      if (current.trim()) parts.push(current.trim());
+      current = '<';
+    } else if (result[i] === '>') {
+      inTag = false;
+      const tag = current.toLowerCase();
+      if (tag === '<br' || tag === '<br/' || tag === '<br />' ||
+          tag.startsWith('<p') || tag.startsWith('</p') ||
+          tag.startsWith('<div') || tag.startsWith('</div') ||
+          tag.startsWith('<h1') || tag.startsWith('</h1') ||
+          tag.startsWith('<h2') || tag.startsWith('</h2') ||
+          tag.startsWith('<h3') || tag.startsWith('</h3') ||
+          tag.startsWith('<li') || tag.startsWith('</li') ||
+          tag.startsWith('<tr') || tag.startsWith('</tr')) {
+        parts.push('\n');
+      }
+      current = '';
+    } else {
+      current += result[i];
+    }
+    i++;
+  }
+  if (current.trim()) parts.push(current.trim());
+
+  result = parts.join(' ');
+  result = result
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d)))
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]+/g, ' ')
     .trim();
+
+  return result;
 }
 
-function safeSubstring(str: string, start: number, len: number): string {
-  return str.substring(start, start + len);
+function getManifestFromOpf(opfXml: string): Map<string, string> {
+  const map = new Map<string, string>();
+  let pos = 0;
+  while (pos < opfXml.length) {
+    const tagStart = opfXml.indexOf('<item', pos);
+    if (tagStart === -1) break;
+    const gtPos = opfXml.indexOf('>', tagStart);
+    if (gtPos === -1) break;
+    const tagStr = opfXml.substring(tagStart, gtPos + 1);
+    const id = findTagAttr(tagStr, 'item', 'id') || findTagAttr(tagStr, 'item', 'ID');
+    const href = findTagAttr(tagStr, 'item', 'href');
+    if (id && href) map.set(id, href);
+    pos = gtPos + 1;
+  }
+  return map;
+}
+
+function getSpineFromOpf(opfXml: string): string[] {
+  const items: string[] = [];
+  let pos = 0;
+  while (pos < opfXml.length) {
+    const tagStart = opfXml.indexOf('<itemref', pos);
+    if (tagStart === -1) break;
+    const gtPos = opfXml.indexOf('>', tagStart);
+    if (gtPos === -1) break;
+    const tagStr = opfXml.substring(tagStart, gtPos + 1);
+    const idref = findTagAttr(tagStr, 'itemref', 'idref');
+    if (idref) items.push(idref);
+    pos = gtPos + 1;
+  }
+  return items;
 }
 
 export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubContent> {
   try {
     const entries = parseZipEntries(fileData);
+    if (entries.length === 0) return { text: '', chapters: [] };
 
-    const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
-    if (!containerEntry) return { text: '', chapters: [] };
+    const container = entries.find(e => e.name === 'META-INF/container.xml');
+    if (!container) return { text: '', chapters: [] };
 
-    const containerBytes = await readZipEntry(fileData, containerEntry);
+    const containerBytes = await readZipEntry(fileData, container);
     const containerXml = new TextDecoder().decode(containerBytes);
-    const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
+    const opfPath = findTagAttr(containerXml, 'rootfile', 'full-path');
     if (!opfPath) return { text: '', chapters: [] };
 
     const opfEntry = entries.find(e => e.name === opfPath);
@@ -209,42 +286,30 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 
     const opfBytes = await readZipEntry(fileData, opfEntry);
     const opfXml = new TextDecoder().decode(opfBytes);
-    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+    const opfDir = opfPath.lastIndexOf('/') > 0 ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
 
-    const manifest = new Map<string, string>();
-    const allItems = safeMatchAll(opfXml, `<item[^>]*>`, 500);
-    for (const itemMatch of allItems) {
-      const itemXml = itemMatch[0];
-      const idMatch = /id=["']([^"']*)["']/.exec(itemXml);
-      const hrefMatch = /href=["']([^"']*)["']/.exec(itemXml);
-      if (idMatch && hrefMatch) {
-        manifest.set(idMatch[1], hrefMatch[1]);
-      }
-    }
-
-    const spineItems: string[] = [];
-    const allSpine = safeMatchAll(opfXml, `<itemref[^>]*>`, 500);
-    for (const spineMatch of allSpine) {
-      const spineXml = spineMatch[0];
-      const idrefMatch = /idref=["']([^"']*)["']/.exec(spineXml);
-      if (idrefMatch) spineItems.push(idrefMatch[1]);
-    }
+    const manifest = getManifestFromOpf(opfXml);
+    const spine = getSpineFromOpf(opfXml);
 
     const fullTexts: string[] = [];
     const chapters: Array<{ title: string; startIndex: number }> = [];
     let currentOffset = 0;
 
-    for (const idref of spineItems) {
+    for (const idref of spine) {
       const href = manifest.get(idref);
       if (!href) continue;
 
-      const contentPath = href.startsWith('/') ? href : opfDir + href;
+      const contentPath = href.startsWith('/') ? href.substring(1) : opfDir + href;
+      const contentEntry = entries.find(e => {
+        if (e.name === contentPath) return true;
+        if (e.name === decodeURIComponent(contentPath)) return true;
+        if (href.startsWith('/')) {
+          const fileName = contentPath.split('/').pop()!;
+          if (e.name.endsWith('/' + fileName) || e.name === fileName) return true;
+        }
+        return false;
+      });
 
-      const contentEntry = entries.find(e =>
-        e.name === contentPath ||
-        e.name.endsWith('/' + href) ||
-        e.name === decodeURIComponent(contentPath)
-      );
       if (!contentEntry) continue;
 
       try {
@@ -252,12 +317,19 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
         const html = new TextDecoder().decode(contentBytes);
         const text = stripHtml(html);
 
-        if (text.length > 0) {
-          const hMatch = /<h\d[^>]*>([^<]+)<\/h\d>/i.exec(html);
-          const titleMatch = /<title>([^<]+)<\/title>/i.exec(html);
-          const chapterTitle = hMatch ? hMatch[1].trim() : (titleMatch ? titleMatch[1].trim() : `章节 ${chapters.length + 1}`);
+        if (text.length > 5) {
+          let title = `章节 ${chapters.length + 1}`;
+          const h1Start = html.indexOf('<h1');
+          if (h1Start !== -1) {
+            const h1End = html.indexOf('>', h1Start);
+            const h1Close = html.indexOf('</h1>', h1End);
+            if (h1Close !== -1) {
+              const titleRaw = html.substring(h1End + 1, h1Close).replace(/<[^>]+>/g, '').trim();
+              if (titleRaw.length > 0 && titleRaw.length < 100) title = titleRaw;
+            }
+          }
 
-          chapters.push({ title: chapterTitle, startIndex: currentOffset });
+          chapters.push({ title, startIndex: currentOffset });
           fullTexts.push(text);
           currentOffset += text.length + 2;
         }
@@ -266,20 +338,27 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 
     const text = fullTexts.join('\n\n');
 
-    if (chapters.length <= 1 && text.length > 0) {
+    if (chapters.length <= 1 && text.length > 50) {
       chapters.length = 0;
-      const chapterRegex = /(?:第[一二三四五六七八九十百千万\d]+[章节卷部篇回]|Chapter\s+\d+|序言|前言|楔子|尾声|后记|番外)[^\n]{0,50}/g;
-      let match;
-      let safe = 0;
-      while ((match = chapterRegex.exec(text)) !== null && safe < 200) {
-        if (match.index < text.length * 0.9) {
-          chapters.push({ title: match[0].trim(), startIndex: match.index });
+      const markers = ['第', 'Chapter', 'chapter', '序言', '前言', '楔子', '尾声', '后记', '番外', '目录'];
+      let lastPos = 0;
+      let count = 0;
+      for (let i = 0; i < text.length && count < 200; i++) {
+        for (const m of markers) {
+          if (text.substring(i, i + m.length) === m) {
+            const end = Math.min(i + 80, text.length);
+            const chunk = text.substring(i, end).split(/[\n\r]/)[0].trim();
+            if (chunk.length > 2 && chunk.length < 80) {
+              chapters.push({ title: chunk, startIndex: i });
+              count++;
+            }
+            break;
+          }
         }
-        safe++;
       }
     }
 
-    if (chapters.length === 0) {
+    if (chapters.length === 0 && text.length > 0) {
       const pageSize = 4000;
       const totalPages = Math.ceil(text.length / pageSize);
       for (let i = 0; i < totalPages; i++) {
@@ -288,7 +367,7 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
     }
 
     return { text, chapters };
-  } catch (e) {
+  } catch {
     return { text: '', chapters: [] };
   }
 }
@@ -296,99 +375,69 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMetadata> {
   try {
     const entries = parseZipEntries(fileData);
+    if (entries.length === 0) return { title: '', author: '', coverBase64: null, coverMimeType: null };
 
-    const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
-    if (!containerEntry) {
-      return { title: '', author: '', coverBase64: null, coverMimeType: null };
-    }
+    const container = entries.find(e => e.name === 'META-INF/container.xml');
+    if (!container) return { title: '', author: '', coverBase64: null, coverMimeType: null };
 
-    const containerBytes = await readZipEntry(fileData, containerEntry);
+    const containerBytes = await readZipEntry(fileData, container);
     const containerXml = new TextDecoder().decode(containerBytes);
-    const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
-    if (!opfPath) {
-      return { title: '', author: '', coverBase64: null, coverMimeType: null };
-    }
+    const opfPath = findTagAttr(containerXml, 'rootfile', 'full-path');
+    if (!opfPath) return { title: '', author: '', coverBase64: null, coverMimeType: null };
 
     const opfEntry = entries.find(e => e.name === opfPath);
-    if (!opfEntry) {
-      return { title: '', author: '', coverBase64: null, coverMimeType: null };
-    }
+    if (!opfEntry) return { title: '', author: '', coverBase64: null, coverMimeType: null };
 
     const opfBytes = await readZipEntry(fileData, opfEntry);
     const opfXml = new TextDecoder().decode(opfBytes);
-    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+    const opfDir = opfPath.lastIndexOf('/') > 0 ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
 
-    const title = getXmlTagContent(opfXml, 'dc:title') || '';
-    const author = getXmlTagContent(opfXml, 'dc:creator') || '';
+    const title = findTagContent(opfXml, 'dc:title') || findTagContent(opfXml, 'title') || '';
+    const author = findTagContent(opfXml, 'dc:creator') || findTagContent(opfXml, 'creator') || '';
 
     let coverHref: string | null = null;
     let coverMimeType: string | null = null;
 
-    const metaMatches = safeMatchAll(opfXml, `<meta[^>]*>`, 200);
-    for (const m of metaMatches) {
-      const metaStr = m[0];
-      if (/name=["']cover["']/i.test(metaStr)) {
-        const contentMatch = /content=["']([^"']*)["']/i.exec(metaStr);
-        if (contentMatch) {
-          const coverId = contentMatch[1];
-          const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
-          for (const itemM of itemMatches) {
-            const itemStr = itemM[0];
-            if (itemStr.includes(`id="${coverId}"`) || itemStr.includes(`id='${coverId}'`)) {
-              const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
-              const mimeMatch = /media-type=["']([^"']*)["']/i.exec(itemStr);
-              if (hrefMatch && mimeMatch) {
-                coverHref = hrefMatch[1];
-                coverMimeType = mimeMatch[1];
-                break;
-              }
-            }
-          }
-        }
-      }
-      if (coverHref) break;
-    }
-
-    if (!coverHref) {
-      const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
-      for (const itemM of itemMatches) {
-        const itemStr = itemM[0];
-        const idMatch = /id=["']([^"']*)["']/i.exec(itemStr);
-        if (idMatch && /cover/i.test(idMatch[1])) {
-          const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
-          const mimeMatch = /media-type=["'](image\/[^"']*)["']/i.exec(itemStr);
-          if (hrefMatch && mimeMatch) {
-            coverHref = hrefMatch[1];
-            coverMimeType = mimeMatch[1];
-            break;
-          }
-        }
+    const coverId = findMetaCoverItemId(opfXml);
+    if (coverId) {
+      const result = findFirstItemRef(opfXml, 'id', coverId);
+      if (result) {
+        coverHref = result.href;
+        coverMimeType = result.mime;
       }
     }
 
     if (!coverHref) {
-      const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
-      for (const itemM of itemMatches) {
-        const itemStr = itemM[0];
-        if (/properties=["'][^"']*cover[^"']*["']/i.test(itemStr)) {
-          const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
-          const mimeMatch = /media-type=["'](image\/[^"']*)["']/i.exec(itemStr);
-          if (hrefMatch && mimeMatch) {
-            coverHref = hrefMatch[1];
-            coverMimeType = mimeMatch[1];
-            break;
-          }
-        }
+      const result = findFirstItemRef(opfXml, 'id', 'cover');
+      if (result) {
+        coverHref = result.href;
+        coverMimeType = result.mime;
       }
     }
 
     if (!coverHref) {
-      const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'title.jpeg', 'titlepage.jpg'];
+      const result = findFirstItemRef(opfXml, 'id', 'cover-image');
+      if (result) {
+        coverHref = result.href;
+        coverMimeType = result.mime;
+      }
+    }
+
+    if (!coverHref) {
+      const result = findFirstItemRef(opfXml, 'properties', 'cover-image');
+      if (result) {
+        coverHref = result.href;
+        coverMimeType = result.mime;
+      }
+    }
+
+    if (!coverHref) {
+      const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'titlepage.jpg'];
       for (const name of coverNames) {
-        const found = entries.find(e =>
-          e.name.endsWith(name) ||
-          e.name.endsWith('/' + name)
-        );
+        const found = entries.find(e => {
+          const n = e.name.toLowerCase();
+          return n.endsWith('/' + name) || n === name;
+        });
         if (found) {
           coverHref = found.name;
           coverMimeType = found.name.toLowerCase().endsWith('.png') ? 'image/png' :
@@ -400,16 +449,19 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
 
     let coverBase64: string | null = null;
     if (coverHref) {
-      const coverPath = coverHref.startsWith('/') ? coverHref : opfDir + coverHref;
-      const coverEntry = entries.find(e =>
-        e.name === coverPath ||
-        e.name.endsWith('/' + coverHref) ||
-        e.name === decodeURIComponent(coverPath)
-      );
+      const coverPath = coverHref.startsWith('/') ? coverHref.substring(1) : opfDir + coverHref;
+      const coverEntry = entries.find(e => {
+        if (e.name === coverPath) return true;
+        if (e.name === decodeURIComponent(coverPath)) return true;
+        if (coverHref!.endsWith('/' + coverHref)) return true;
+        return false;
+      });
       if (coverEntry) {
-        const coverBytes = await readZipEntry(fileData, coverEntry);
-        const base64 = btoa(String.fromCharCode(...coverBytes));
-        coverBase64 = `data:${coverMimeType || 'image/jpeg'};base64,${base64}`;
+        try {
+          const coverBytes = await readZipEntry(fileData, coverEntry);
+          const base64 = btoa(String.fromCharCode(...coverBytes));
+          coverBase64 = `data:${coverMimeType || 'image/jpeg'};base64,${base64}`;
+        } catch {}
       }
     }
 
@@ -420,27 +472,23 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
 }
 
 export function parseFilenameMetadata(filename: string): { title: string; author: string } {
-  const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
+  const name = filename.replace(/\.[^/.]+$/, '');
 
-  const dashMatch = nameWithoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/);
-  if (dashMatch) {
-    return { author: dashMatch[1].trim(), title: dashMatch[2].trim() };
+  const dashIdx = name.indexOf(' - ');
+  if (dashIdx > 0) {
+    return { author: name.substring(0, dashIdx).trim(), title: name.substring(dashIdx + 3).trim() };
+  }
+  const emDashIdx = name.indexOf(' — ');
+  if (emDashIdx > 0) {
+    return { author: name.substring(0, emDashIdx).trim(), title: name.substring(emDashIdx + 3).trim() };
+  }
+  const parenOpen = Math.max(name.lastIndexOf('（'), name.lastIndexOf('('));
+  if (parenOpen > 0) {
+    const parenClose = name.indexOf(')', parenOpen);
+    if (parenClose > parenOpen) {
+      return { title: name.substring(0, parenOpen).trim(), author: name.substring(parenOpen + 1, parenClose).trim() };
+    }
   }
 
-  const parenMatch = nameWithoutExt.match(/^(.+?)\s*[（(]([^）)]+)[）)]$/);
-  if (parenMatch) {
-    return { title: parenMatch[1].trim(), author: parenMatch[2].trim() };
-  }
-
-  const bracketMatch = nameWithoutExt.match(/^\[([^\]]+)\]\s*(.+)$/);
-  if (bracketMatch) {
-    return { author: bracketMatch[1].trim(), title: bracketMatch[2].trim() };
-  }
-
-  const cleaned = nameWithoutExt
-    .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  return { title: cleaned, author: '' };
+  return { title: name.replace(/_/g, ' ').replace(/\s+/g, ' ').trim(), author: '' };
 }
