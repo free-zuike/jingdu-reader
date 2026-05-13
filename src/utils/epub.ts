@@ -292,14 +292,15 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
   const title = getXmlTagContent(opfXml, 'dc:title') || '';
   const author = getXmlTagContent(opfXml, 'dc:creator') || '';
 
-  // 提取封面
-  const coverIdMatch = opfXml.match(/<meta[^>]*name=["']cover["'][^>]*content=["']([^"']*)["'][^>]*\/?>/i);
+  // 提取封面 - 多种策略
   let coverHref: string | null = null;
   let coverMimeType: string | null = null;
 
+  // 策略1: meta name="cover"
+  const coverIdMatch = opfXml.match(/<meta[^>]*name=["']cover["'][^>]*content=["']([^"']*)["'][^>]*\/?>/i);
   if (coverIdMatch) {
     const coverId = coverIdMatch[1];
-    const itemRegex = new RegExp(`<item[^>]*id=["']${coverId}["'][^>]*href=["']([^"']*)["'][^>]*media-type=["']([^"']*)["'][^>]*\/?>`, 'i');
+    const itemRegex = new RegExp(`<item[^>]*id=["']${coverId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*href=["']([^"']*)["'][^>]*media-type=["']([^"']*)["'][^>]*\/?>`, 'i');
     const itemMatch = opfXml.match(itemRegex);
     if (itemMatch) {
       coverHref = itemMatch[1];
@@ -307,11 +308,47 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
     }
   }
 
+  // 策略2: 查找 manifest 中 id 包含 cover 的图片项
   if (!coverHref) {
-    const imageMatch = opfXml.match(/<item[^>]*media-type=["']image\/([^"']*)["'][^>]*href=["']([^"']*)["'][^>]*\/?>/i);
-    if (imageMatch) {
-      coverHref = imageMatch[2];
-      coverMimeType = `image/${imageMatch[1]}`;
+    const coverItemRegex = /<item[^>]*id=["']([^"']*cover[^"']*)["'][^>]*href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["'][^>]*\/?>/gi;
+    const match = opfXml.match(coverItemRegex);
+    if (match) {
+      const itemMatch2 = match.match(/id=["']([^"']*cover[^"']*)["'][^>]*href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["']/i);
+      if (itemMatch2) {
+        coverHref = itemMatch2[2];
+        coverMimeType = itemMatch2[3];
+      }
+    }
+  }
+
+  // 策略3: properties 包含 cover
+  if (!coverHref) {
+    const propCoverRegex = /<item[^>]*href=["']([^"']*)["'][^>]*properties=["'][^"']*cover[^"']*["'][^>]*media-type=["'](image\/[^"']*)["'][^>]*\/?>/gi;
+    const propMatch = opfXml.match(propCoverRegex);
+    if (propMatch) {
+      const itemMatch3 = propMatch[0].match(/href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["']/i);
+      if (itemMatch3) {
+        coverHref = itemMatch3[1];
+        coverMimeType = itemMatch3[2];
+      }
+    }
+  }
+
+  // 策略4: 直接从ZIP中查找常见封面文件名
+  if (!coverHref) {
+    const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'title.jpeg', 'titlepage.jpg'];
+    for (const name of coverNames) {
+      const found = entries.find(e =>
+        e.name.endsWith(name) ||
+        e.name.endsWith('/' + name) ||
+        e.name.toLowerCase().endsWith(name)
+      );
+      if (found) {
+        coverHref = found.name;
+        coverMimeType = found.name.toLowerCase().endsWith('.png') ? 'image/png' :
+                        found.name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+        break;
+      }
     }
   }
 
@@ -321,7 +358,11 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
       ? coverHref
       : opfDir + coverHref;
 
-    const coverEntry = entries.find(e => e.name === coverPath || e.name.endsWith('/' + coverHref));
+    const coverEntry = entries.find(e =>
+      e.name === coverPath ||
+      e.name.endsWith('/' + coverHref) ||
+      e.name === decodeURIComponent(coverPath)
+    );
     if (coverEntry) {
       const coverBytes = await readZipEntry(fileData, coverEntry);
       const base64 = btoa(String.fromCharCode(...coverBytes));

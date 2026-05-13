@@ -109,22 +109,23 @@ export class BookService {
               }
 
               const content = await extractEpubContent(fileData);
-              if (content.text) {
-                const contentJson = JSON.stringify(content);
-                if (contentJson.length < 25 * 1024 * 1024) {
-                  await this.cache.put(`book:${bookId}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-                } else {
-                  const truncated = {
-                    text: content.text.substring(0, 5 * 1024 * 1024),
-                    chapters: content.chapters,
-                    truncated: true
-                  };
-                  await this.cache.put(`book:${bookId}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
-                }
+              if (!content.text || content.text.length < 50) {
+                errors.push(`${file.name}: 内容为空或过短`);
               }
-            } catch (e) {
-              console.error(`解析EPUB失败 ${file.name}:`, e);
-              errors.push(`${file.name}: 解析失败`);
+              const contentJson = JSON.stringify(content);
+              if (contentJson.length < 25 * 1024 * 1024) {
+                await this.cache.put(`book:${bookId}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
+              } else {
+                const truncated = {
+                  text: content.text.substring(0, 5 * 1024 * 1024),
+                  chapters: content.chapters,
+                  truncated: true
+                };
+                await this.cache.put(`book:${bookId}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
+              }
+            } catch (e: any) {
+              console.error(`解析EPUB失败 ${file.name}:`, e?.message || e);
+              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '解析失败'}`);
             }
           } else if (ext === 'txt') {
             try {
@@ -194,22 +195,20 @@ export class BookService {
               }
 
               const content = await extractEpubContent(fileData);
-              if (content.text) {
-                const contentJson = JSON.stringify(content);
-                if (contentJson.length < 25 * 1024 * 1024) {
-                  await this.cache.put(`book:${book.id}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-                } else {
-                  const truncated = {
-                    text: content.text.substring(0, 5 * 1024 * 1024),
-                    chapters: content.chapters,
-                    truncated: true
-                  };
-                  await this.cache.put(`book:${book.id}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
-                }
+              const contentJson = JSON.stringify(content);
+              if (contentJson.length < 25 * 1024 * 1024) {
+                await this.cache.put(`book:${book.id}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
+              } else {
+                const truncated = {
+                  text: content.text.substring(0, 5 * 1024 * 1024),
+                  chapters: content.chapters,
+                  truncated: true
+                };
+                await this.cache.put(`book:${book.id}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
               }
-            } catch (e) {
-              console.error(`重新解析EPUB失败 ${file.name}:`, e);
-              errors.push(`${file.name}: 解析失败`);
+            } catch (e: any) {
+              console.error(`重新解析EPUB失败 ${file.name}:`, e?.message || e);
+              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '解析失败'}`);
             }
           } else if (ext === 'txt') {
             try {
