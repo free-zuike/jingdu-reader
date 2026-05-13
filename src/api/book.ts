@@ -90,7 +90,8 @@ book.get('/:id/content', authMiddleware, async (c) => {
   const result = await bookService.getBookContent(userId, bookId);
 
   if (!result.success) {
-    return c.json(result, 400);
+    console.log(`[content] bookId=${bookId}, error=${result.error}`);
+    return c.json(result, 404);
   }
 
   return c.json(result);

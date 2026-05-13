@@ -1,6 +1,7 @@
 // 首页逻辑
 
 let allBooks = [];
+let isSyncing = false;
 
 // 加载书籍列表
 async function loadBooks() {
@@ -146,6 +147,9 @@ function filterBooks(query) {
 
 // 同步书籍
 async function handleSync() {
+  if (isSyncing) return;
+  isSyncing = true;
+  
   // 检查是否配置了WebDAV
   const configResult = await getWebDAVConfig();
   
@@ -216,6 +220,7 @@ async function handleSync() {
     console.error('同步失败:', error);
     showToast('同步失败，请稍后重试', 'error');
   } finally {
+    isSyncing = false;
     overlay.classList.remove('show');
     progressBar.style.display = 'none';
     progressFill.style.width = '0%';

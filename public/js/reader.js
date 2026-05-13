@@ -45,10 +45,16 @@ async function initReader(bookId) {
     // 渲染目录
     renderToc();
   } else {
+    const errorMsg = contentResult.error || '未知错误';
+    let hint = '';
+    if (errorMsg.includes('尚未缓存')) {
+      hint = '<p style="margin-top:12px;">请返回书架重新点击"同步"按钮缓存书籍内容</p>';
+    }
     document.getElementById('bookText').innerHTML = `
       <div class="loading-text">
-        <p>加载失败：${contentResult.error || '未知错误'}</p>
-        <button class="btn-primary" onclick="window.location.reload()">重试</button>
+        <p>加载失败：${errorMsg}</p>
+        ${hint}
+        <button class="btn-primary" style="margin-top:12px;" onclick="window.location.href='/home'">返回书架</button>
       </div>
     `;
   }
