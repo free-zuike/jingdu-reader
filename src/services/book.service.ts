@@ -1,6 +1,6 @@
 // 书籍服务
 
-import type { KVNamespace, R2Bucket } from '@cloudflare/workers-types';
+import type { KVNamespace } from '@cloudflare/workers-types';
 import { Database } from '../utils/db';
 import { generateUUID } from '../utils/crypto';
 import type { Book, BookListItem, BookContent, ReadingProgress, ApiResponse, WebDAVFile } from '../types';
@@ -8,12 +8,10 @@ import type { Book, BookListItem, BookContent, ReadingProgress, ApiResponse, Web
 export class BookService {
   private db: Database;
   private cache: KVNamespace;
-  private booksBucket: R2Bucket;
 
-  constructor(db: Database, cache: KVNamespace, booksBucket: R2Bucket) {
+  constructor(db: Database, cache: KVNamespace) {
     this.db = db;
     this.cache = cache;
-    this.booksBucket = booksBucket;
   }
 
   // 同步WebDAV书籍

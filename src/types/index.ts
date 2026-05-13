@@ -3,7 +3,6 @@
 export interface Env {
   CACHE: KVNamespace;
   DB: D1Database;
-  BOOKS: R2Bucket;
   JWT_SECRET: string;
   ENCRYPTION_KEY: string;
 }
