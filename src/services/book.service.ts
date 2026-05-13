@@ -47,7 +47,7 @@ export class BookService {
           webdav_path: file.path,
           title,
           author,
-          format: ext as 'epub' | 'txt' | 'pdf',
+          format: ext as Book['format'],
           file_size: file.size,
           last_modified: file.lastModified,
           cached_at: new Date().toISOString()

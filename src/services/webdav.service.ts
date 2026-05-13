@@ -18,15 +18,13 @@ export class WebDAVService {
     try {
       const config = await this.db.getWebDAVConfigByUserId(userId);
       if (!config) {
-        return { success: false, error: 'WebDAV配置不存在' };
+        return { success: false, data: { hasConfig: false } };
       }
-
-      // 解密密码
-      const password = await decrypt(config.password_encrypted, this.encryptionKey);
 
       return {
         success: true,
         data: {
+          hasConfig: true,
           serverUrl: config.server_url,
           username: config.username,
           basePath: config.base_path
@@ -36,6 +34,23 @@ export class WebDAVService {
       console.error('获取WebDAV配置失败:', error);
       return { success: false, error: '获取WebDAV配置失败' };
     }
+  }
+
+  // 使用已保存的配置测试连接
+  async testSavedConnection(userId: string): Promise<{ success: boolean; status?: number; error?: string }> {
+    const config = await this.db.getWebDAVConfigByUserId(userId);
+    if (!config) {
+      return { success: false, error: 'WebDAV配置不存在，请先保存配置' };
+    }
+
+    let password: string;
+    try {
+      password = await decrypt(config.password_encrypted, this.encryptionKey);
+    } catch {
+      return { success: false, error: '密码解密失败，请重新保存配置' };
+    }
+
+    return this.testConnection(config.server_url, config.username, password);
   }
 
   // 保存或更新WebDAV配置
@@ -190,9 +205,12 @@ export class WebDAVService {
 
       const files = this.parseWebDAVResponse(xmlText, targetPath);
 
+      // 支持的电子书格式
+      const supportedFormats = ['epub', 'txt', 'pdf', 'mobi', 'azw3', 'azw', 'docx', 'doc', 'rtf', 'fb2', 'html', 'htm', 'cbr', 'cbz', 'djvu'];
+
       const bookFiles = files.filter(file => {
         const ext = file.name.toLowerCase().split('.').pop();
-        return ['epub', 'txt', 'pdf'].includes(ext || '');
+        return supportedFormats.includes(ext || '');
       });
 
       return {
@@ -250,8 +268,7 @@ export class WebDAVService {
   // 解析WebDAV PROPFIND响应
   private parseWebDAVResponse(xmlText: string, basePath: string): WebDAVFile[] {
     const files: WebDAVFile[] = [];
-    
-    // 简单的XML解析
+
     const responseRegex = /<D:response[^>]*>([\s\S]*?)<\/D:response>/g;
     const hrefRegex = /<D:href>([^<]*)<\/D:href>/;
     const displayNameRegex = /<D:displayname>([^<]*)<\/D:displayname>/;
@@ -262,32 +279,37 @@ export class WebDAVService {
     let match;
     while ((match = responseRegex.exec(xmlText)) !== null) {
       const responseXml = match[1];
-      
+
       const hrefMatch = responseXml.match(hrefRegex);
+      if (!hrefMatch) continue;
+
+      const href = decodeURIComponent(hrefMatch[1]);
       const displayNameMatch = responseXml.match(displayNameRegex);
       const contentLengthMatch = responseXml.match(contentLengthRegex);
       const lastModifiedMatch = responseXml.match(lastModifiedRegex);
       const isCollection = collectionRegex.test(responseXml);
-      
-      if (hrefMatch && displayNameMatch) {
-        const href = decodeURIComponent(hrefMatch[1]);
-        const name = displayNameMatch[1];
-        
-        // 跳过当前目录本身
-        if (name === '' || href === basePath || href === basePath + '/') {
-          continue;
-        }
-        
-        files.push({
-          path: href,
-          name: name,
-          size: contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0,
-          lastModified: lastModifiedMatch ? lastModifiedMatch[1] : '',
-          isDirectory: isCollection
-        });
+
+      // 从 href 提取文件名作为 fallback
+      const nameFromHref = href.split('/').filter(s => s.length > 0).pop() || '';
+      const name = (displayNameMatch && displayNameMatch[1]) ? displayNameMatch[1] : nameFromHref;
+
+      // 跳过当前目录本身和空名称
+      if (!name || name === '' || href === basePath || href === basePath + '/') {
+        continue;
       }
+
+      // 跳过目录
+      if (isCollection) continue;
+
+      files.push({
+        path: href,
+        name: name,
+        size: contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0,
+        lastModified: lastModifiedMatch ? lastModifiedMatch[1] : '',
+        isDirectory: isCollection
+      });
     }
-    
+
     return files;
   }
 }

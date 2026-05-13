@@ -49,7 +49,7 @@ export interface Book {
   title: string;
   author?: string;
   cover_url?: string;
-  format: 'epub' | 'txt' | 'pdf';
+  format: 'epub' | 'txt' | 'pdf' | 'mobi' | 'azw3' | 'docx' | 'doc' | 'rtf' | 'fb2' | 'html' | 'cbr' | 'cbz' | 'djvu';
   file_size?: number;
   last_modified?: string;
   cached_at: string;
@@ -60,7 +60,7 @@ export interface BookListItem {
   title: string;
   author?: string;
   cover?: string;
-  format: 'epub' | 'txt' | 'pdf';
+  format: 'epub' | 'txt' | 'pdf' | 'mobi' | 'azw3' | 'docx' | 'doc' | 'rtf' | 'fb2' | 'html' | 'cbr' | 'cbz' | 'djvu';
   lastReadAt?: string;
   progress?: number;
 }

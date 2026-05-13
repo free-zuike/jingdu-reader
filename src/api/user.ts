@@ -32,20 +32,16 @@ user.get('/profile', authMiddleware, async (c) => {
 // 获取WebDAV配置
 user.get('/webdav', authMiddleware, async (c) => {
   const userId = c.get('userId');
-  
+
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  
+
   const result = await webdavService.getConfig(userId);
-  
-  if (!result.success) {
-    return c.json(result, 404);
-  }
-  
+
   return c.json(result);
 });
 
-// 测试WebDAV连接
+// 测试WebDAV连接（使用表单数据）
 user.post('/webdav/test', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const { serverUrl, username, password } = await c.req.json();
@@ -58,6 +54,18 @@ user.post('/webdav/test', authMiddleware, async (c) => {
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
 
   const result = await webdavService.testConnection(serverUrl, username, password);
+
+  return c.json(result);
+});
+
+// 使用已保存的配置测试连接
+user.post('/webdav/test-saved', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+
+  const result = await webdavService.testSavedConnection(userId);
 
   return c.json(result);
 });

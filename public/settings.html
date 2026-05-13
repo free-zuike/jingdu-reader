@@ -33,6 +33,7 @@
         <h2 class="section-title">
           <span class="section-icon">☁️</span>
           WebDAV配置
+          <span class="config-status" id="configStatus" style="display:none;"></span>
         </h2>
         <div class="section-content">
           <form id="webdavForm" class="settings-form">
@@ -58,12 +59,11 @@
             </div>
             
             <div class="form-group">
-              <label for="password">密码</label>
+              <label for="password">密码 <span class="saved-hint" id="savedHint" style="display:none;">（已保存，留空则使用已保存密码）</span></label>
               <input 
                 type="password" 
                 id="password" 
                 placeholder="请输入密码"
-                required
               >
             </div>
             
@@ -88,6 +88,9 @@
               </button>
               <button type="button" class="btn-secondary" id="testConnectionBtn">
                 测试连接
+              </button>
+              <button type="button" class="btn-secondary" id="testSavedBtn" style="display:none;">
+                使用已保存密码测试
               </button>
             </div>
           </form>
@@ -137,6 +140,8 @@
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script>
+    let hasSavedConfig = false;
+
     // 初始化页面
     document.addEventListener('DOMContentLoaded', async () => {
       // 检查登录状态
@@ -151,6 +156,7 @@
       // 绑定事件
       document.getElementById('webdavForm').addEventListener('submit', handleSaveWebDAV);
       document.getElementById('testConnectionBtn').addEventListener('click', handleTestConnection);
+      document.getElementById('testSavedBtn').addEventListener('click', handleTestSaved);
       document.getElementById('logoutBtn').addEventListener('click', handleLogout);
     });
     
@@ -171,11 +177,29 @@
     async function loadWebDAVConfig() {
       try {
         const result = await getWebDAVConfig();
-        if (result.success) {
+        if (result.success && result.data && result.data.hasConfig) {
+          hasSavedConfig = true;
           document.getElementById('serverUrl').value = result.data.serverUrl || '';
           document.getElementById('username').value = result.data.username || '';
           document.getElementById('basePath').value = result.data.basePath || '';
-          // 密码不显示，留空
+          document.getElementById('password').value = '';
+          document.getElementById('password').removeAttribute('required');
+          
+          // 显示已保存状态
+          const statusEl = document.getElementById('configStatus');
+          statusEl.textContent = '✅ 已配置';
+          statusEl.style.display = 'inline';
+          statusEl.style.color = '#4ade80';
+          statusEl.style.fontSize = '0.8rem';
+          statusEl.style.fontWeight = 'normal';
+          
+          document.getElementById('savedHint').style.display = 'inline';
+          document.getElementById('testSavedBtn').style.display = 'inline-block';
+        } else {
+          hasSavedConfig = false;
+          document.getElementById('configStatus').style.display = 'none';
+          document.getElementById('savedHint').style.display = 'none';
+          document.getElementById('testSavedBtn').style.display = 'none';
         }
       } catch (error) {
         console.error('加载WebDAV配置失败:', error);
@@ -188,8 +212,13 @@
       
       const serverUrl = document.getElementById('serverUrl').value;
       const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
+      let password = document.getElementById('password').value;
       const basePath = document.getElementById('basePath').value;
+      
+      if (!password && !hasSavedConfig) {
+        showToast('请输入密码', 'warning');
+        return;
+      }
       
       const btn = document.getElementById('saveWebdavBtn');
       btn.disabled = true;
@@ -200,12 +229,19 @@
         const result = await saveWebDAVConfig({
           serverUrl,
           username,
-          password,
+          password: password || '',
           basePath: basePath || '/',
           skipTest: true
         });
         
         if (result.success) {
+          hasSavedConfig = true;
+          document.getElementById('configStatus').textContent = '✅ 已配置';
+          document.getElementById('configStatus').style.display = 'inline';
+          document.getElementById('savedHint').style.display = 'inline';
+          document.getElementById('testSavedBtn').style.display = 'inline-block';
+          document.getElementById('password').value = '';
+          document.getElementById('password').removeAttribute('required');
           showToast('WebDAV配置保存成功', 'success');
         } else {
           showToast(result.error || '保存失败', 'error');
@@ -219,15 +255,24 @@
       }
     }
     
-    // 测试连接
+    // 测试连接（使用表单输入的密码）
     async function handleTestConnection() {
       const serverUrl = document.getElementById('serverUrl').value;
       const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      const basePath = document.getElementById('basePath').value;
+      let password = document.getElementById('password').value;
       
-      if (!serverUrl || !username || !password) {
-        showToast('请填写完整的WebDAV配置', 'warning');
+      if (!serverUrl || !username) {
+        showToast('请填写服务器地址和用户名', 'warning');
+        return;
+      }
+      
+      if (!password) {
+        if (hasSavedConfig) {
+          // 密码为空但有已保存配置，使用已保存密码测试
+          await handleTestSaved();
+          return;
+        }
+        showToast('请输入密码', 'warning');
         return;
       }
       
@@ -245,16 +290,22 @@
         if (result.success) {
           showToast('连接测试成功！正在保存配置...', 'success');
           
-          // 测试成功后自动保存配置
           const saveResult = await saveWebDAVConfig({
             serverUrl,
             username,
             password,
-            basePath: basePath || '/',
+            basePath: document.getElementById('basePath').value || '/',
             skipTest: true
           });
           
           if (saveResult.success) {
+            hasSavedConfig = true;
+            document.getElementById('configStatus').textContent = '✅ 已配置';
+            document.getElementById('configStatus').style.display = 'inline';
+            document.getElementById('savedHint').style.display = 'inline';
+            document.getElementById('testSavedBtn').style.display = 'inline-block';
+            document.getElementById('password').value = '';
+            document.getElementById('password').removeAttribute('required');
             showToast('WebDAV配置已保存', 'success');
           } else {
             showToast(saveResult.error || '配置保存失败', 'error');
@@ -267,6 +318,28 @@
       } finally {
         btn.disabled = false;
         btn.textContent = '测试连接';
+      }
+    }
+    
+    // 使用已保存密码测试
+    async function handleTestSaved() {
+      const btn = document.getElementById('testSavedBtn');
+      btn.disabled = true;
+      btn.textContent = '测试中...';
+      
+      try {
+        const result = await testSavedWebDAVConnection();
+        
+        if (result.success) {
+          showToast('使用已保存密码测试成功！连接正常', 'success');
+        } else {
+          showToast(result.error || '测试失败，请重新输入密码保存', 'error');
+        }
+      } catch (error) {
+        showToast('网络错误，请稍后重试', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '使用已保存密码测试';
       }
     }
     
