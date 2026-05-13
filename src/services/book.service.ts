@@ -45,31 +45,6 @@ export class BookService {
 
       const totalToProcess = newFiles.length + staleFiles.length;
 
-      // 读取Moon+进度文件
-      const moonProgressMap = new Map<string, { chapter: number; location: string; percentage: number }>();
-      try {
-        const cacheResult = await webdavService.listMoonPlusCache(userId);
-        if (cacheResult.success && cacheResult.data?.files) {
-          for (const poFile of cacheResult.data.files) {
-            const poResult = await webdavService.getMoonPlusProgressFile(userId, poFile.path);
-            if (poResult.success && poResult.data?.content) {
-              const progress = webdavService.parseMoonPlusProgress(poResult.data.content);
-              if (progress) {
-                const parsed = parseBookName(poFile.name.replace('.po', ''));
-                const key = `${parsed.title}|${parsed.author}`.toLowerCase();
-                moonProgressMap.set(key, {
-                  chapter: progress.chapter,
-                  location: progress.location,
-                  percentage: progress.percentage
-                });
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.log('[sync] 读取Moon+进度文件失败:', e);
-      }
-
       let imported = 0;
       let recached = 0;
       const errors: string[] = [];
