@@ -193,10 +193,11 @@ async function handleSync() {
       const total = result.data?.totalFiles || 0;
       const matched = result.data?.matchedFiles || 0;
       const added = result.data?.added || 0;
+      const recached = result.data?.recached || 0;
       const errors = result.data?.errors || [];
       
-      if (added > 0) {
-        let msg = `同步完成！新增 ${added} 本书籍`;
+      if (added > 0 || recached > 0) {
+        let msg = `同步完成！新增 ${added} 本，重新缓存 ${recached} 本`;
         if (errors.length > 0) msg += `（${errors.length} 本失败）`;
         showToast(msg, 'success');
       } else if (matched > 0) {
