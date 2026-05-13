@@ -88,35 +88,8 @@ export class BookService {
           }
 
           const fileData = fileResult.data.content as ArrayBuffer;
-
-          if (ext === 'epub') {
-            try {
-              const metadata = await extractEpubMetadata(fileData);
-              if (metadata.title) finalTitle = metadata.title;
-              if (metadata.author) finalAuthor = metadata.author;
-
-              if (metadata.coverBase64) {
-                const mimeType = metadata.coverBase64.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
-                const base64Data = metadata.coverBase64.split(',')[1];
-                await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
-              }
-            } catch (e: any) {
-              console.error(`提取EPUB元数据失败 ${file.name}:`, e?.message || e);
-            }
-
-            const rawBytes = new Uint8Array(fileData);
-            await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
-
-          } else if (ext === 'txt') {
-            try {
-              const text = new TextDecoder().decode(fileData);
-              const chapters = [{ title: '正文', startIndex: 0 }];
-              await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
-            } catch (e) {
-              console.error(`解析TXT失败 ${file.name}:`, e);
-              errors.push(`${file.name}: 解析失败`);
-            }
-          }
+          const rawBytes = new Uint8Array(fileData);
+          await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
 
           await this.db.createBook({
             id: bookId,
@@ -159,33 +132,8 @@ export class BookService {
           }
 
           const fileData = fileResult.data.content as ArrayBuffer;
-
-          if (ext === 'epub') {
-            try {
-              const metadata = await extractEpubMetadata(fileData);
-
-              if (metadata.coverBase64) {
-                const base64Data = metadata.coverBase64.split(',')[1];
-                const mimeType = metadata.coverBase64.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
-                await this.cache.put(`cover:${book.id}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
-              }
-            } catch (e: any) {
-              console.error(`重新提取封面失败 ${file.name}:`, e?.message || e);
-            }
-
-            const rawBytes = new Uint8Array(fileData);
-            await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
-
-          } else if (ext === 'txt') {
-            try {
-              const text = new TextDecoder().decode(fileData);
-              const chapters = [{ title: '正文', startIndex: 0 }];
-              await this.cache.put(`book:${book.id}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
-            } catch (e) {
-              console.error(`重新解析TXT失败 ${file.name}:`, e);
-              errors.push(`${file.name}: 解析失败`);
-            }
-          }
+          const rawBytes = new Uint8Array(fileData);
+          await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
 
           await this.db.updateBookMeta(book.id, {});
           recached++;
