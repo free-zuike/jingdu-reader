@@ -201,7 +201,8 @@
           serverUrl,
           username,
           password,
-          basePath: basePath || '/'
+          basePath: basePath || '/',
+          skipTest: true
         });
         
         if (result.success) {
@@ -234,17 +235,19 @@
       btn.textContent = '测试中...';
       
       try {
-        // 先保存配置
-        await saveWebDAVConfig({
+        const result = await testWebDAVConnection({
           serverUrl,
           username,
-          password,
-          basePath: document.getElementById('basePath').value || '/'
+          password
         });
         
-        showToast('连接测试成功', 'success');
+        if (result.success) {
+          showToast('连接测试成功！WebDAV服务正常', 'success');
+        } else {
+          showToast(result.error || '连接测试失败', 'error');
+        }
       } catch (error) {
-        showToast('连接测试失败', 'error');
+        showToast('网络错误，请稍后重试', 'error');
       } finally {
         btn.disabled = false;
         btn.textContent = '测试连接';

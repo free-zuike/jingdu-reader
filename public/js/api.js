@@ -91,6 +91,13 @@ async function saveWebDAVConfig(config) {
   });
 }
 
+async function testWebDAVConnection(config) {
+  return request('/api/user/webdav/test', {
+    method: 'POST',
+    body: JSON.stringify(config)
+  });
+}
+
 // 书籍相关API
 async function getBooks() {
   return request('/api/books');

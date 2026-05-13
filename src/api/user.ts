@@ -45,29 +45,46 @@ user.get('/webdav', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 保存WebDAV配置
-user.put('/webdav', authMiddleware, async (c) => {
+// 测试WebDAV连接
+user.post('/webdav/test', authMiddleware, async (c) => {
   const userId = c.get('userId');
-  const { serverUrl, username, password, basePath } = await c.req.json();
-  
+  const { serverUrl, username, password } = await c.req.json();
+
   if (!serverUrl || !username || !password) {
     return c.json({ success: false, error: '请填写完整的WebDAV配置' }, 400);
   }
-  
+
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  
+
+  const result = await webdavService.testConnection(serverUrl, username, password);
+
+  return c.json(result);
+});
+
+// 保存WebDAV配置
+user.put('/webdav', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const { serverUrl, username, password, basePath, skipTest } = await c.req.json();
+
+  if (!serverUrl || !username || !password) {
+    return c.json({ success: false, error: '请填写完整的WebDAV配置' }, 400);
+  }
+
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+
   const result = await webdavService.saveConfig(userId, {
     serverUrl,
     username,
     password,
     basePath: basePath || '/'
-  });
-  
+  }, skipTest === true);
+
   if (!result.success) {
     return c.json(result, 400);
   }
-  
+
   return c.json(result);
 });
 

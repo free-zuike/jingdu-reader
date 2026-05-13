@@ -44,12 +44,13 @@ export class WebDAVService {
     username: string;
     password: string;
     basePath?: string;
-  }): Promise<ApiResponse> {
+  }, skipTest = false): Promise<ApiResponse> {
     try {
-      // 验证配置
-      const isValid = await this.testConnection(config.serverUrl, config.username, config.password);
-      if (!isValid) {
-        return { success: false, error: 'WebDAV连接测试失败，请检查配置' };
+      if (!skipTest) {
+        const testResult = await this.testConnection(config.serverUrl, config.username, config.password);
+        if (!testResult.success) {
+          return { success: false, error: testResult.error || 'WebDAV连接测试失败，请检查配置' };
+        }
       }
 
       // 加密密码
@@ -88,7 +89,7 @@ export class WebDAVService {
   }
 
   // 测试WebDAV连接
-  private async testConnection(serverUrl: string, username: string, password: string): Promise<boolean> {
+  async testConnection(serverUrl: string, username: string, password: string): Promise<{ success: boolean; status?: number; error?: string }> {
     try {
       const response = await fetch(serverUrl, {
         method: 'PROPFIND',
@@ -105,10 +106,29 @@ export class WebDAVService {
 </D:propfind>`
       });
 
-      return response.status === 207;
-    } catch (error) {
+      if (response.status === 207) {
+        return { success: true, status: 207 };
+      }
+
+      let errorMsg = `服务器返回状态码 ${response.status}`;
+      if (response.status === 401) {
+        errorMsg = '认证失败，请检查用户名和密码';
+      } else if (response.status === 404) {
+        errorMsg = '服务器地址不存在，请检查URL';
+      } else if (response.status === 405) {
+        errorMsg = '服务器不支持PROPFIND方法，可能不是WebDAV服务';
+      } else if (response.status === 403) {
+        errorMsg = '访问被拒绝，请检查权限设置';
+      }
+
+      return { success: false, status: response.status, error: errorMsg };
+    } catch (error: any) {
       console.error('WebDAV连接测试失败:', error);
-      return false;
+      const errMsg = error?.message || String(error);
+      if (errMsg.includes('fetch') || errMsg.includes('Failed') || errMsg.includes('ENOTFOUND') || errMsg.includes('DNS')) {
+        return { success: false, error: '无法连接到服务器，请检查URL是否正确以及服务器是否可公网访问' };
+      }
+      return { success: false, error: `连接失败: ${errMsg}` };
     }
   }
 
