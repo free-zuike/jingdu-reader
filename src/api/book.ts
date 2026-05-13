@@ -149,10 +149,9 @@ book.get('/:id/progress', authMiddleware, async (c) => {
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getProgress(userId, bookId, webdavService);
+  const result = await bookService.getProgress(userId, bookId);
 
   return c.json(result);
 });

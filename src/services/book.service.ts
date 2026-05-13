@@ -238,18 +238,28 @@ export class BookService {
         const poName = poFile.name.replace('.po', '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         let score = 0;
 
-        const titleParts = bookTitle.split(/\s+/);
-        for (const part of titleParts) {
-          if (part.length >= 2 && poName.includes(part)) score += part.length;
+        // 完整书名匹配（最高优先级）
+        if (poName === bookTitle) {
+          score = 100;
         }
-
-        if (bookAuthor && poName.includes(bookAuthor)) {
-          score += bookAuthor.length;
+        // 书名作为前缀匹配
+        else if (poName.startsWith(bookTitle) || bookTitle.startsWith(poName)) {
+          score = 50;
         }
-
-        const titleWithDash = book.title.toLowerCase().replace(/[^\w\u4e00-\u9fff\s]/g, ' ').trim();
-        if (titleWithDash.length >= 3 && poName.includes(titleWithDash.replace(/\s+/g, ''))) {
-          score += titleWithDash.length * 2;
+        // 检查书名中的每个关键词
+        else {
+          const titleParts = bookTitle.split(/\s+/).filter(p => p.length >= 2);
+          let matchedParts = 0;
+          for (const part of titleParts) {
+            if (poName.includes(part)) matchedParts++;
+          }
+          if (titleParts.length > 0) {
+            score = (matchedParts / titleParts.length) * 40;
+          }
+          // 作者匹配加成
+          if (bookAuthor && bookAuthor.length >= 2 && poName.includes(bookAuthor)) {
+            score += 20;
+          }
         }
 
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
@@ -257,8 +267,9 @@ export class BookService {
         }
       }
 
-      if (!bestMatch || bestMatch.score < 4) return null;
+      if (!bestMatch || bestMatch.score < 30) return null;
 
+      console.log(`[Moon+] 从进度文件读取: ${bestMatch.file.name} (score: ${bestMatch.score})`);
       const poResult = await webdavService.getMoonPlusProgressFile(userId, bestMatch.file.path);
       if (!poResult.success || !poResult.data?.content) return null;
 
@@ -268,27 +279,14 @@ export class BookService {
     }
   }
 
-  // 获取阅读进度
-  async getProgress(userId: string, bookId: string, webdavService?: WebDAVService): Promise<ApiResponse> {
+  // 获取阅读进度（仅从KV读取，不主动从Moon+读取）
+  async getProgress(userId: string, bookId: string): Promise<ApiResponse> {
     try {
       const progressKey = `progress:${userId}:${bookId}`;
       const progressData = await this.cache.get(progressKey);
       if (progressData) {
         return { success: true, data: JSON.parse(progressData) };
       }
-
-      if (webdavService) {
-        const book = await this.db.getBookById(bookId);
-        if (book) {
-          const moon = await this.readMoonProgress(userId, book, webdavService);
-          if (moon) {
-            const progress: ReadingProgress = { bookId, currentPosition: 0, totalLength: 0, percentage: moon.percentage, lastReadAt: new Date().toISOString() };
-            await this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 });
-            return { success: true, data: progress };
-          }
-        }
-      }
-
       return { success: true, data: { bookId, currentPosition: 0, totalLength: 0, lastReadAt: new Date().toISOString() } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取阅读进度失败' };
@@ -327,27 +325,51 @@ export class BookService {
       const cacheResult = await webdavService.listMoonPlusCache(userId);
       if (cacheResult.success && cacheResult.data?.files?.length) {
         const bookTitle = book.title.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
+        const bookAuthor = (book.author || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         let bestMatch: { file: any; score: number } | null = null;
 
         for (const poFile of cacheResult.data.files) {
           const poName = poFile.name.replace('.po', '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
           let score = 0;
-          const titleParts = bookTitle.split(/\s+/);
-          for (const part of titleParts) {
-            if (part.length >= 2 && poName.includes(part)) score += part.length;
+
+          // 完整书名匹配（最高优先级）
+          if (poName === bookTitle) {
+            score = 100;
           }
+          // 书名作为前缀匹配
+          else if (poName.startsWith(bookTitle) || bookTitle.startsWith(poName)) {
+            score = 50;
+          }
+          // 检查书名中的每个关键词
+          else {
+            const titleParts = bookTitle.split(/\s+/).filter(p => p.length >= 2);
+            let matchedParts = 0;
+            for (const part of titleParts) {
+              if (poName.includes(part)) matchedParts++;
+            }
+            if (titleParts.length > 0) {
+              score = (matchedParts / titleParts.length) * 40;
+            }
+            // 作者匹配加成
+            if (bookAuthor && bookAuthor.length >= 2 && poName.includes(bookAuthor)) {
+              score += 20;
+            }
+          }
+
           if (score > 0 && (!bestMatch || score > bestMatch.score)) {
             bestMatch = { file: poFile, score };
           }
         }
 
-        if (bestMatch && bestMatch.score >= 4) {
+        if (bestMatch && bestMatch.score >= 30) {
           poPath = bestMatch.file.path;
+          console.log(`[Moon+] 匹配到进度文件: ${bestMatch.file.name} (score: ${bestMatch.score})`);
         }
       }
 
       if (!poPath) {
         poPath = webdavService.buildMoonPlusPoPath(book.title, book.author || '', book.format);
+        console.log(`[Moon+] 未匹配到进度文件，创建新文件: ${poPath}`);
       }
 
       await webdavService.writeMoonPlusProgressFile(userId, poPath, content);
