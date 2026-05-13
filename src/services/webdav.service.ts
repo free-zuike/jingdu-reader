@@ -550,6 +550,14 @@ export class WebDAVService {
   buildMoonPlusPoContent(deviceId: string, chapter: number, location: string, percentage: number): string {
     return `${deviceId}*${chapter}@${location}:${percentage.toFixed(1)}%`;
   }
+
+  // 构建Moon+ .po文件路径
+  buildMoonPlusPoPath(bookTitle: string, bookAuthor: string, fileExt: string): string {
+    const cacheDir = '/Moon+/Cache';
+    const title = bookTitle.replace(/[/\\:*?"<>|]/g, '_');
+    const author = bookAuthor ? ` - ${bookAuthor.replace(/[/\\:*?"<>|]/g, '_')}` : '';
+    return `${cacheDir}/${title}${author}.${fileExt}.po`;
+  }
 }
 
 // 辅助函数：从书名提取标题和作者
