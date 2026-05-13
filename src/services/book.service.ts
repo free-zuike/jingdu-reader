@@ -45,6 +45,31 @@ export class BookService {
 
       const totalToProcess = newFiles.length + staleFiles.length;
 
+      // 读取Moon+进度文件
+      const moonProgressMap = new Map<string, { chapter: number; location: string; percentage: number }>();
+      try {
+        const cacheResult = await webdavService.listMoonPlusCache(userId);
+        if (cacheResult.success && cacheResult.data?.files) {
+          for (const poFile of cacheResult.data.files) {
+            const poResult = await webdavService.getMoonPlusProgressFile(userId, poFile.path);
+            if (poResult.success && poResult.data?.content) {
+              const progress = webdavService.parseMoonPlusProgress(poResult.data.content);
+              if (progress) {
+                const parsed = parseBookName(poFile.name.replace('.po', ''));
+                const key = `${parsed.title}|${parsed.author}`.toLowerCase();
+                moonProgressMap.set(key, {
+                  chapter: progress.chapter,
+                  location: progress.location,
+                  percentage: progress.percentage
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log('[sync] 读取Moon+进度文件失败:', e);
+      }
+
       let imported = 0;
       let recached = 0;
       const errors: string[] = [];
@@ -344,8 +369,8 @@ export class BookService {
     }
   }
 
-  // 获取阅读进度
-  async getProgress(userId: string, bookId: string): Promise<ApiResponse> {
+  // 获取阅读进度（优先本地，fallback到Moon+）
+  async getProgress(userId: string, bookId: string, webdavService?: WebDAVService): Promise<ApiResponse> {
     try {
       const progressKey = `progress:${userId}:${bookId}`;
       const progressData = await this.cache.get(progressKey);
@@ -353,6 +378,32 @@ export class BookService {
       if (progressData) {
         const progress = JSON.parse(progressData);
         return { success: true, data: progress };
+      }
+
+      // 从Moon+读取
+      if (webdavService) {
+        const book = await this.db.getBookById(bookId);
+        if (book) {
+          try {
+            const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author, book.format);
+            const poResult = await webdavService.getMoonPlusProgressFile(userId, poPath);
+            if (poResult.success && poResult.data?.content) {
+              const moonProgress = webdavService.parseMoonPlusProgress(poResult.data.content);
+              if (moonProgress) {
+                const progress: ReadingProgress = {
+                  bookId,
+                  currentPosition: 0,
+                  totalLength: 0,
+                  percentage: moonProgress.percentage,
+                  lastReadAt: new Date().toISOString(),
+                  fromMoon: true
+                };
+                await this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 });
+                return { success: true, data: progress };
+              }
+            }
+          } catch {}
+        }
       }
 
       return {
@@ -396,4 +447,45 @@ export class BookService {
       return { success: false, error: '更新阅读进度失败' };
     }
   }
+
+  // 同步阅读进度到Moon+ WebDAV文件
+  async syncMoonProgressToWebDAV(
+    userId: string,
+    bookId: string,
+    webdavService: WebDAVService,
+    currentPosition: number,
+    totalLength: number
+  ): Promise<void> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book) return;
+
+      const percentage = totalLength > 0 ? Math.round((currentPosition / totalLength) * 1000) / 10 : 0;
+
+      const content = webdavService.buildMoonPlusPoContent(
+        'jingdu-web',
+        0,
+        `0#${currentPosition}`,
+        percentage
+      );
+
+      const poPath = webdavService.buildMoonPlusPoPath(book.title, book.author, book.format);
+      await webdavService.writeMoonPlusProgressFile(userId, poPath, content);
+      console.log(`[Moon+] 进度已写入: ${poPath} (${percentage}%)`);
+    } catch (e) {
+      console.log('[Moon+] 写入进度失败:', e);
+    }
+  }
+}
+
+function parseBookName(name: string): { title: string; author: string } {
+  const withoutExt = name.replace(/\.[^/.]+$/, '');
+  const dashIdx = withoutExt.lastIndexOf(' - ');
+  if (dashIdx > 0) {
+    return {
+      title: withoutExt.substring(0, dashIdx).trim(),
+      author: withoutExt.substring(dashIdx + 3).trim()
+    };
+  }
+  return { title: withoutExt.trim(), author: '' };
 }

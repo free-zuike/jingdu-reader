@@ -167,9 +167,18 @@ book.put('/:id/progress', authMiddleware, async (c) => {
   }
 
   const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
   const result = await bookService.updateProgress(userId, bookId, position, totalLength);
+
+  if (result.success) {
+    try {
+      await bookService.syncMoonProgressToWebDAV(userId, bookId, webdavService, position, totalLength);
+    } catch (e) {
+      console.log('[progress] 同步到Moon+失败:', e);
+    }
+  }
 
   return c.json(result);
 });

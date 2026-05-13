@@ -77,9 +77,12 @@ export interface Chapter {
 
 // 阅读进度类型
 export interface ReadingProgress {
+  bookId?: string;
   currentPosition: number;
   totalLength: number;
-  lastReadAt: number;
+  percentage?: number;
+  lastReadAt: string | number;
+  fromMoon?: boolean;
 }
 
 // 邮箱验证码类型

@@ -361,7 +361,6 @@ export class WebDAVService {
   private parseWebDAVResponse(xmlText: string, basePath: string): WebDAVFile[] {
     const files: WebDAVFile[] = [];
 
-    // 支持 D:、d:、ns0:、lp1: 等常见 WebDAV 命名空间前缀
     const ns = '[a-zA-Z0-9_]*:';
     const responseRegex = new RegExp(`<${ns}?response[^>]*>([\\s\\S]*?)<\\/${ns}?response>`, 'g');
     const hrefRegex = new RegExp(`<${ns}?href>([^<]*)<\\/${ns}?href>`);
@@ -403,4 +402,172 @@ export class WebDAVService {
 
     return files;
   }
+
+  // 列出Moon+进度文件（.po文件）
+  async listMoonPlusCache(userId: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) {
+        return { success: false, error: 'WebDAV配置不存在' };
+      }
+
+      let password: string;
+      try {
+        password = await decrypt(config.password_encrypted, this.encryptionKey);
+      } catch {
+        return { success: false, error: '密码解密失败' };
+      }
+
+      const cachePath = '/Moon+/Cache';
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${cachePath}`;
+
+      const response = await fetch(fullUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/xml; charset=utf-8',
+          'Depth': '1',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:displayname/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+  </D:prop>
+</D:propfind>`
+      });
+
+      if (response.status === 404) {
+        return { success: true, data: { files: [], path: cachePath } };
+      }
+      if (response.status !== 207) {
+        return { success: false, error: `无法访问Moon+缓存目录，状态码: ${response.status}` };
+      }
+
+      const xmlText = await response.text();
+      const files = this.parseWebDAVResponse(xmlText, cachePath);
+
+      const poFiles = files.filter(f => f.name.endsWith('.po'));
+      return { success: true, data: { files: poFiles, path: cachePath } };
+    } catch (error) {
+      return { success: false, error: '列出Moon+缓存失败' };
+    }
+  }
+
+  // 获取Moon+进度文件内容
+  async getMoonPlusProgressFile(userId: string, poFilePath: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) {
+        return { success: false, error: 'WebDAV配置不存在' };
+      }
+
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const fullUrl = this.buildFileUrl(config.server_url, poFilePath);
+
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'User-Agent': 'JingDu-Reader/1.0'
+        }
+      });
+
+      if (!response.ok) {
+        return { success: false, error: `获取进度文件失败: ${response.status}` };
+      }
+
+      const text = await response.text();
+      return { success: true, data: { content: text } };
+    } catch (error) {
+      return { success: false, error: '获取进度文件失败' };
+    }
+  }
+
+  // 写入Moon+进度文件
+  async writeMoonPlusProgressFile(userId: string, poFilePath: string, content: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) {
+        return { success: false, error: 'WebDAV配置不存在' };
+      }
+
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const fullUrl = this.buildFileUrl(config.server_url, poFilePath);
+
+      const response = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/plain; charset=utf-8',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: content
+      });
+
+      if (!response.ok && response.status !== 201 && response.status !== 204) {
+        return { success: false, error: `写入进度文件失败: ${response.status}` };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: '写入进度文件失败' };
+    }
+  }
+
+  // 解析Moon+ .po文件格式
+  // 格式: 1234567890123*章节索引@行号:百分比%
+  parseMoonPlusProgress(poContent: string): { deviceId: string; chapter: number; location: string; percentage: number } | null {
+    if (!poContent || !poContent.includes('*')) return null;
+    try {
+      const parts = poContent.trim().split('*');
+      if (parts.length < 2) return null;
+      const deviceId = parts[0];
+      const remainder = parts[1];
+      const colonIdx = remainder.lastIndexOf(':');
+      if (colonIdx === -1) return null;
+      const locationPart = remainder.substring(0, colonIdx);
+      const percentStr = remainder.substring(colonIdx + 1).replace('%', '');
+      const percentage = parseFloat(percentStr) || 0;
+      const atIdx = locationPart.indexOf('@');
+      let chapter = 0;
+      let location = '0#0';
+      if (atIdx !== -1) {
+        chapter = parseInt(locationPart.substring(0, atIdx), 10) || 0;
+        location = locationPart.substring(atIdx + 1);
+      } else {
+        location = locationPart;
+      }
+      return { deviceId, chapter, location, percentage };
+    } catch {
+      return null;
+    }
+  }
+
+  // 生成Moon+ .po文件内容
+  buildMoonPlusPoContent(deviceId: string, chapter: number, location: string, percentage: number): string {
+    return `${deviceId}*${chapter}@${location}:${percentage.toFixed(1)}%`;
+  }
+}
+
+// 辅助函数：从书名提取标题和作者
+function parseBookName(name: string): { title: string; author: string } {
+  const withoutExt = name.replace(/\.[^/.]+$/, '');
+  const dashIdx = withoutExt.lastIndexOf(' - ');
+  if (dashIdx > 0) {
+    return {
+      title: withoutExt.substring(0, dashIdx).trim(),
+      author: withoutExt.substring(dashIdx + 3).trim()
+    };
+  }
+  const emDashIdx = withoutExt.lastIndexOf(' — ');
+  if (emDashIdx > 0) {
+    return {
+      title: withoutExt.substring(0, emDashIdx).trim(),
+      author: withoutExt.substring(emDashIdx + 3).trim()
+    };
+  }
+  return { title: withoutExt.trim(), author: '' };
 }
