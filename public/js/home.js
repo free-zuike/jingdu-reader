@@ -149,7 +149,7 @@ async function handleSync() {
   // 检查是否配置了WebDAV
   const configResult = await getWebDAVConfig();
   
-  if (!configResult.success) {
+  if (!configResult.success || !configResult.data?.hasConfig) {
     showToast('请先在设置中配置WebDAV', 'warning');
     setTimeout(() => {
       window.location.href = '/settings';
@@ -157,39 +157,67 @@ async function handleSync() {
     return;
   }
   
-  // 显示加载遮罩
+  // 显示加载遮罩和进度条
   const overlay = document.getElementById('loadingOverlay');
+  const progressBar = document.getElementById('syncProgressBar');
+  const progressText = document.getElementById('syncProgressText');
+  const progressFill = document.getElementById('syncProgressFill');
   overlay.classList.add('show');
+  progressBar.style.display = 'block';
+  progressFill.style.width = '0%';
+  progressText.textContent = '准备同步...';
+  
+  // 启动同步
+  const syncPromise = syncBooks();
+  
+  // 轮询进度
+  const pollInterval = setInterval(async () => {
+    try {
+      const status = await getSyncStatus();
+      if (status.total > 0) {
+        const pct = Math.round((status.processed / status.total) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = `${status.processed}/${status.total} - ${status.current || '准备中...'}`;
+      }
+      if (status.done) {
+        clearInterval(pollInterval);
+      }
+    } catch (e) {}
+  }, 800);
   
   try {
-    const result = await syncBooks();
+    const result = await syncPromise;
+    clearInterval(pollInterval);
     
     if (result.success) {
       const total = result.data?.totalFiles || 0;
       const matched = result.data?.matchedFiles || 0;
       const added = result.data?.added || 0;
-      const path = result.data?.path || '';
+      const errors = result.data?.errors || [];
       
       if (added > 0) {
-        showToast(`同步完成！路径 ${path} 发现 ${total} 个文件，匹配 ${matched} 本电子书，新增 ${added} 本`, 'success');
+        let msg = `同步完成！新增 ${added} 本书籍`;
+        if (errors.length > 0) msg += `（${errors.length} 本失败）`;
+        showToast(msg, 'success');
       } else if (matched > 0) {
-        showToast(`同步完成！路径 ${path} 发现 ${total} 个文件，匹配 ${matched} 本电子书，没有新增`, 'success');
+        showToast(`同步完成！匹配 ${matched} 本电子书，没有新增`, 'success');
       } else if (total > 0) {
-        showToast(`路径 ${path} 找到 ${total} 个文件，但没有支持的电子书格式`, 'warning');
+        showToast(`找到 ${total} 个文件，但没有支持的电子书格式`, 'warning');
       } else {
-        showToast(`路径 ${path} 未找到任何文件，请检查WebDAV路径配置`, 'warning');
+        showToast('未找到任何文件，请检查WebDAV路径配置', 'warning');
       }
-      // 重新加载书籍列表
       await loadBooks();
     } else {
       showToast(result.error || '同步失败', 'error');
     }
   } catch (error) {
+    clearInterval(pollInterval);
     console.error('同步失败:', error);
     showToast('同步失败，请稍后重试', 'error');
   } finally {
-    // 隐藏加载遮罩
     overlay.classList.remove('show');
+    progressBar.style.display = 'none';
+    progressFill.style.width = '0%';
   }
 }
 

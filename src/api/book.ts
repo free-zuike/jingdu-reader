@@ -36,7 +36,7 @@ book.post('/sync', authMiddleware, async (c) => {
 
   const { files, totalFiles, matchedFiles } = filesResult.data;
 
-  // 同步书籍（下载、解析、缓存）
+  // 同步书籍（下载、解析、缓存），进度写入KV
   const result = await bookService.syncBooks(userId, files, webdavService);
 
   return c.json({
@@ -47,6 +47,19 @@ book.post('/sync', authMiddleware, async (c) => {
       matchedFiles
     }
   });
+});
+
+// 查询同步进度
+book.get('/sync/status', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const progressKey = `sync:${userId}`;
+  const progressData = await c.env.CACHE.get(progressKey);
+
+  if (progressData) {
+    return c.json(JSON.parse(progressData));
+  }
+
+  return c.json({ done: true, total: 0, processed: 0, current: '', errors: [] });
 });
 
 // 获取书籍详情

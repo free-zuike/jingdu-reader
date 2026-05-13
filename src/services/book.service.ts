@@ -28,18 +28,37 @@ export class BookService {
       let imported = 0;
       const errors: string[] = [];
 
-      for (const file of newFiles) {
+      // 初始化进度
+      const progressKey = `sync:${userId}`;
+      await this.cache.put(progressKey, JSON.stringify({
+        total: newFiles.length,
+        processed: 0,
+        current: '',
+        errors: [],
+        done: false
+      }), { expirationTtl: 600 });
+
+      for (let i = 0; i < newFiles.length; i++) {
+        const file = newFiles[i];
         try {
+          // 更新当前处理文件
+          await this.cache.put(progressKey, JSON.stringify({
+            total: newFiles.length,
+            processed: i,
+            current: file.name,
+            errors,
+            done: false
+          }), { expirationTtl: 600 });
+
           const bookId = generateUUID();
           const ext = file.name.toLowerCase().split('.').pop() || '';
 
-          // 从文件名初步提取标题/作者
           const { title: filenameTitle, author: filenameAuthor } = parseFilenameMetadata(file.name);
 
           let finalTitle = filenameTitle || file.name;
           let finalAuthor = filenameAuthor || '';
 
-          // 下载EPUB文件
+          // 下载文件
           const fileResult = await webdavService.getFile(userId, file.path);
           if (!fileResult.success) {
             errors.push(`${file.name}: 下载失败`);
@@ -48,67 +67,51 @@ export class BookService {
 
           const fileData = fileResult.data.content as ArrayBuffer;
 
-          // 提取EPUB元数据和内容
           if (ext === 'epub') {
             try {
               const metadata = await extractEpubMetadata(fileData);
               if (metadata.title) finalTitle = metadata.title;
               if (metadata.author) finalAuthor = metadata.author;
 
-              // 缓存封面到KV
               if (metadata.coverBase64) {
                 const base64Data = metadata.coverBase64.split(',')[1];
                 const binaryStr = atob(base64Data);
                 const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {
-                  bytes[i] = binaryStr.charCodeAt(i);
+                for (let j = 0; j < binaryStr.length; j++) {
+                  bytes[j] = binaryStr.charCodeAt(j);
                 }
                 await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
               }
 
-              // 提取全文内容并缓存到KV
               const content = await extractEpubContent(fileData);
               if (content.text) {
                 const contentJson = JSON.stringify(content);
                 if (contentJson.length < 25 * 1024 * 1024) {
-                  await this.cache.put(
-                    `book:${bookId}`,
-                    contentJson,
-                    { expirationTtl: 30 * 24 * 60 * 60 }
-                  );
+                  await this.cache.put(`book:${bookId}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
                 } else {
-                  // 内容太大，只保存章节信息，文本截断
                   const truncated = {
                     text: content.text.substring(0, 5 * 1024 * 1024),
                     chapters: content.chapters,
                     truncated: true
                   };
-                  await this.cache.put(
-                    `book:${bookId}`,
-                    JSON.stringify(truncated),
-                    { expirationTtl: 30 * 24 * 60 * 60 }
-                  );
+                  await this.cache.put(`book:${bookId}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
                 }
               }
             } catch (e) {
               console.error(`解析EPUB失败 ${file.name}:`, e);
+              errors.push(`${file.name}: 解析失败`);
             }
           } else if (ext === 'txt') {
-            // TXT文件直接读取文本
             try {
               const text = new TextDecoder().decode(fileData);
               const chapters = [{ title: '正文', startIndex: 0 }];
-              await this.cache.put(
-                `book:${bookId}`,
-                JSON.stringify({ text, chapters }),
-                { expirationTtl: 30 * 24 * 60 * 60 }
-              );
+              await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
             } catch (e) {
               console.error(`解析TXT失败 ${file.name}:`, e);
+              errors.push(`${file.name}: 解析失败`);
             }
           }
 
-          // 保存到数据库
           await this.db.createBook({
             id: bookId,
             user_id: userId,
@@ -127,6 +130,16 @@ export class BookService {
           errors.push(`${file.name}: 导入失败`);
         }
       }
+
+      // 标记完成
+      await this.cache.put(progressKey, JSON.stringify({
+        total: newFiles.length,
+        processed: newFiles.length,
+        current: '',
+        errors,
+        done: true,
+        imported
+      }), { expirationTtl: 600 });
 
       let message = `同步完成，新增 ${imported} 本书籍`;
       if (errors.length > 0) {
