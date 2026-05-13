@@ -96,13 +96,9 @@ export class BookService {
               if (metadata.author) finalAuthor = metadata.author;
 
               if (metadata.coverBase64) {
+                const mimeType = metadata.coverBase64.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
                 const base64Data = metadata.coverBase64.split(',')[1];
-                const binaryStr = atob(base64Data);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let j = 0; j < binaryStr.length; j++) {
-                  bytes[j] = binaryStr.charCodeAt(j);
-                }
-                await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
+                await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
               }
             } catch (e: any) {
               console.error(`提取EPUB元数据失败 ${file.name}:`, e?.message || e);
@@ -170,12 +166,8 @@ export class BookService {
 
               if (metadata.coverBase64) {
                 const base64Data = metadata.coverBase64.split(',')[1];
-                const binaryStr = atob(base64Data);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let j = 0; j < binaryStr.length; j++) {
-                  bytes[j] = binaryStr.charCodeAt(j);
-                }
-                await this.cache.put(`cover:${book.id}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
+                const mimeType = metadata.coverBase64.match(/^data:([^;]+);/)?.[1] || 'image/jpeg';
+                await this.cache.put(`cover:${book.id}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
               }
             } catch (e: any) {
               console.error(`重新提取封面失败 ${file.name}:`, e?.message || e);

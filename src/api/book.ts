@@ -109,12 +109,30 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  // 从KV读取缓存的封面
   const cacheKey = `cover:${bookId}`;
-  const cachedCover = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
+  const cachedCover = await c.env.CACHE.get(cacheKey);
 
   if (cachedCover) {
-    return new Response(cachedCover, {
+    if (typeof cachedCover === 'string' && cachedCover.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(cachedCover);
+        if (parsed.mimeType && parsed.data) {
+          const binaryStr = atob(parsed.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          return new Response(bytes, {
+            headers: {
+              'Content-Type': parsed.mimeType,
+              'Cache-Control': 'public, max-age=86400'
+            }
+          });
+        }
+      } catch {}
+    }
+    const bytes = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
+    return new Response(bytes, {
       headers: {
         'Content-Type': 'image/jpeg',
         'Cache-Control': 'public, max-age=86400'
