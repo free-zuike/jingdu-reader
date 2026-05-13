@@ -91,6 +91,13 @@ async function saveWebDAVConfig(config) {
   });
 }
 
+async function patchWebDAVConfig(updates) {
+  return request('/api/user/webdav', {
+    method: 'PATCH',
+    body: JSON.stringify(updates)
+  });
+}
+
 async function testWebDAVConnection(config) {
   return request('/api/user/webdav/test', {
     method: 'POST',

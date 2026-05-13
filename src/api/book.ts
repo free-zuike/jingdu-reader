@@ -46,7 +46,8 @@ book.post('/sync', authMiddleware, async (c) => {
     data: {
       ...result.data,
       totalFiles,
-      matchedFiles
+      matchedFiles,
+      path: filesResult.data?.path
     }
   });
 });

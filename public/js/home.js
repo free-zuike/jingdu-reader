@@ -138,13 +138,16 @@ async function handleSync() {
       const total = result.data?.totalFiles || 0;
       const matched = result.data?.matchedFiles || 0;
       const added = result.data?.added || 0;
+      const path = result.data?.path || '';
       
       if (added > 0) {
-        showToast(`同步完成！发现 ${total} 个文件，匹配 ${matched} 本电子书，新增 ${added} 本`, 'success');
+        showToast(`同步完成！路径 ${path} 发现 ${total} 个文件，匹配 ${matched} 本电子书，新增 ${added} 本`, 'success');
       } else if (matched > 0) {
-        showToast(`同步完成！发现 ${total} 个文件，匹配 ${matched} 本电子书，没有新增`, 'success');
+        showToast(`同步完成！路径 ${path} 发现 ${total} 个文件，匹配 ${matched} 本电子书，没有新增`, 'success');
+      } else if (total > 0) {
+        showToast(`路径 ${path} 找到 ${total} 个文件，但没有支持的电子书格式`, 'warning');
       } else {
-        showToast(`WebDAV目录中找到 ${total} 个文件，但没有 epub/txt/pdf 格式的电子书`, 'warning');
+        showToast(`路径 ${path} 未找到任何文件，请检查WebDAV路径配置`, 'warning');
       }
       // 重新加载书籍列表
       await loadBooks();

@@ -96,4 +96,26 @@ user.put('/webdav', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 局部更新WebDAV配置（无需密码）
+user.patch('/webdav', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const { serverUrl, username, password, basePath } = await c.req.json();
+
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+
+  const result = await webdavService.updateConfigPartial(userId, {
+    serverUrl,
+    username,
+    password,
+    basePath
+  });
+
+  if (!result.success) {
+    return c.json(result, 400);
+  }
+
+  return c.json(result);
+});
+
 export default user;

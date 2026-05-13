@@ -103,6 +103,47 @@ export class WebDAVService {
     }
   }
 
+  // 局部更新WebDAV配置（无需密码）
+  async updateConfigPartial(userId: string, updates: {
+    serverUrl?: string;
+    username?: string;
+    password?: string;
+    basePath?: string;
+  }): Promise<ApiResponse> {
+    try {
+      const existingConfig = await this.db.getWebDAVConfigByUserId(userId);
+      if (!existingConfig) {
+        return { success: false, error: 'WebDAV配置不存在，请先保存配置' };
+      }
+
+      const updateData: Record<string, string | null> = {};
+
+      if (updates.serverUrl !== undefined) {
+        updateData.server_url = updates.serverUrl;
+      }
+      if (updates.username !== undefined) {
+        updateData.username = updates.username;
+      }
+      if (updates.password !== undefined && updates.password !== '') {
+        updateData.password_encrypted = await encrypt(updates.password, this.encryptionKey);
+      }
+      if (updates.basePath !== undefined) {
+        updateData.base_path = updates.basePath;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return { success: true, message: '无需更新' };
+      }
+
+      await this.db.updateWebDAVConfig(userId, updateData as any);
+
+      return { success: true, message: 'WebDAV配置已更新' };
+    } catch (error) {
+      console.error('更新WebDAV配置失败:', error);
+      return { success: false, error: '更新WebDAV配置失败' };
+    }
+  }
+
   // 测试WebDAV连接
   async testConnection(serverUrl: string, username: string, password: string): Promise<{ success: boolean; status?: number; error?: string }> {
     try {
@@ -205,12 +246,12 @@ export class WebDAVService {
 
       const files = this.parseWebDAVResponse(xmlText, targetPath);
 
-      // 支持的电子书格式
+      // 支持的电子书格式（大小写不敏感）
       const supportedFormats = ['epub', 'txt', 'pdf', 'mobi', 'azw3', 'azw', 'docx', 'doc', 'rtf', 'fb2', 'html', 'htm', 'cbr', 'cbz', 'djvu'];
 
       const bookFiles = files.filter(file => {
-        const ext = file.name.toLowerCase().split('.').pop();
-        return supportedFormats.includes(ext || '');
+        const ext = file.name.toLowerCase().split('.').pop() || '';
+        return supportedFormats.includes(ext.toLowerCase());
       });
 
       return {
@@ -218,7 +259,8 @@ export class WebDAVService {
         data: {
           files: bookFiles,
           totalFiles: files.length,
-          matchedFiles: bookFiles.length
+          matchedFiles: bookFiles.length,
+          path: targetPath
         }
       };
     } catch (error: any) {
@@ -265,16 +307,18 @@ export class WebDAVService {
     }
   }
 
-  // 解析WebDAV PROPFIND响应
+  // 解析WebDAV PROPFIND响应（大小写不敏感 + 通用命名空间兼容）
   private parseWebDAVResponse(xmlText: string, basePath: string): WebDAVFile[] {
     const files: WebDAVFile[] = [];
 
-    const responseRegex = /<D:response[^>]*>([\s\S]*?)<\/D:response>/g;
-    const hrefRegex = /<D:href>([^<]*)<\/D:href>/;
-    const displayNameRegex = /<D:displayname>([^<]*)<\/D:displayname>/;
-    const contentLengthRegex = /<D:getcontentlength>([^<]*)<\/D:getcontentlength>/;
-    const lastModifiedRegex = /<D:getlastmodified>([^<]*)<\/D:getlastmodified>/;
-    const collectionRegex = /<D:resourcetype>\s*<D:collection\s*\/>\s*<\/D:resourcetype>/;
+    // 支持 D:、d:、ns0:、lp1: 等常见 WebDAV 命名空间前缀
+    const ns = '[a-zA-Z0-9_]*:';
+    const responseRegex = new RegExp(`<${ns}?response[^>]*>([\\s\\S]*?)<\\/${ns}?response>`, 'g');
+    const hrefRegex = new RegExp(`<${ns}?href>([^<]*)<\\/${ns}?href>`);
+    const displayNameRegex = new RegExp(`<${ns}?displayname>([^<]*)<\\/${ns}?displayname>`);
+    const contentLengthRegex = new RegExp(`<${ns}?getcontentlength>([^<]*)<\\/${ns}?getcontentlength>`);
+    const lastModifiedRegex = new RegExp(`<${ns}?getlastmodified>([^<]*)<\\/${ns}?getlastmodified>`);
+    const collectionRegex = new RegExp(`<${ns}?resourcetype>\\s*<${ns}?collection\\s*\\/>\\s*<\\/${ns}?resourcetype>`);
 
     let match;
     while ((match = responseRegex.exec(xmlText)) !== null) {
@@ -289,16 +333,13 @@ export class WebDAVService {
       const lastModifiedMatch = responseXml.match(lastModifiedRegex);
       const isCollection = collectionRegex.test(responseXml);
 
-      // 从 href 提取文件名作为 fallback
       const nameFromHref = href.split('/').filter(s => s.length > 0).pop() || '';
       const name = (displayNameMatch && displayNameMatch[1]) ? displayNameMatch[1] : nameFromHref;
 
-      // 跳过当前目录本身和空名称
       if (!name || name === '' || href === basePath || href === basePath + '/') {
         continue;
       }
 
-      // 跳过目录
       if (isCollection) continue;
 
       files.push({

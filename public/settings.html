@@ -226,13 +226,25 @@
       btn.querySelector('.btn-loading').style.display = 'flex';
       
       try {
-        const result = await saveWebDAVConfig({
-          serverUrl,
-          username,
-          password: password || '',
-          basePath: basePath || '/',
-          skipTest: true
-        });
+        let result;
+        
+        if (hasSavedConfig && !password) {
+          // 已有配置且未输入密码，使用 PATCH 局部更新
+          result = await patchWebDAVConfig({
+            serverUrl,
+            username,
+            basePath: basePath || '/'
+          });
+        } else {
+          // 完整保存（包含密码）
+          result = await saveWebDAVConfig({
+            serverUrl,
+            username,
+            password,
+            basePath: basePath || '/',
+            skipTest: true
+          });
+        }
         
         if (result.success) {
           hasSavedConfig = true;
@@ -242,7 +254,7 @@
           document.getElementById('testSavedBtn').style.display = 'inline-block';
           document.getElementById('password').value = '';
           document.getElementById('password').removeAttribute('required');
-          showToast('WebDAV配置保存成功', 'success');
+          showToast(result.message || '保存成功', 'success');
         } else {
           showToast(result.error || '保存失败', 'error');
         }
