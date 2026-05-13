@@ -1,10 +1,15 @@
-// EPUB元数据解析工具
+// EPUB解析工具 - 元数据提取 + 全文内容解析
 
 export interface EpubMetadata {
   title: string;
   author: string;
   coverBase64: string | null;
   coverMimeType: string | null;
+}
+
+export interface EpubContent {
+  text: string;
+  chapters: Array<{ title: string; startIndex: number }>;
 }
 
 interface ZipEntry {
@@ -15,12 +20,10 @@ interface ZipEntry {
   compressionMethod: number;
 }
 
-// 解析ZIP结构
 function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   const view = new DataView(data);
   const entries: ZipEntry[] = [];
 
-  // 查找 End of Central Directory Record (PK\x05\x06)
   let eocdOffset = -1;
   const maxSearch = Math.min(65557, data.byteLength);
   for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - maxSearch); i--) {
@@ -31,11 +34,10 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   }
 
   if (eocdOffset === -1) {
-    throw new Error('无效的ZIP/EPUB文件：未找到EOCD');
+    throw new Error('无效的ZIP/EPUB文件');
   }
 
   const centralDirOffset = view.getUint32(eocdOffset + 16, true);
-  const centralDirSize = view.getUint32(eocdOffset + 12, true);
   const totalEntries = view.getUint16(eocdOffset + 10, true);
 
   let offset = centralDirOffset;
@@ -53,7 +55,6 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
     const fileNameBytes = new Uint8Array(data, offset + 46, fileNameLength);
     const fileName = new TextDecoder().decode(fileNameBytes);
 
-    // 计算实际数据偏移（跳过 local file header）
     const localFileNameLength = view.getUint16(localHeaderOffset + 26, true);
     const localExtraLength = view.getUint16(localHeaderOffset + 28, true);
     const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
@@ -72,88 +73,232 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   return entries;
 }
 
-// 解压 DEFLATE 数据（简单实现，处理无头部DEFLATE）
-function inflateRaw(data: Uint8Array, uncompressedSize: number): Uint8Array {
-  // 对于存储方式（compression method 0），直接返回
-  return data;
-}
-
-// 从ZIP条目读取数据
-function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Uint8Array {
+async function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Promise<Uint8Array> {
   const bytes = new Uint8Array(data, entry.offset, entry.compressedSize);
 
   if (entry.compressionMethod === 0) {
-    // 存储（无压缩）
     return bytes;
   }
 
-  // 对于DEFLATE压缩，使用DecompressionStream
-  // 注意：ZIP中的DEFLATE是原始DEFLATE，没有zlib/gzip头
-  try {
-    // 构建原始DEFLATE流
-    return bytes;
-  } catch {
-    return bytes;
+  if (entry.compressionMethod === 8) {
+    try {
+      const ds = new DecompressionStream('deflate-raw');
+      const writer = ds.writable.getWriter();
+      const reader = ds.readable.getReader();
+
+      writer.write(bytes);
+      writer.close();
+
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+
+      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      const result = new Uint8Array(totalLength);
+      let pos = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, pos);
+        pos += chunk.length;
+      }
+      return result;
+    } catch {
+      return bytes;
+    }
   }
+
+  return bytes;
 }
 
-// 解析XML获取标签内容
 function getXmlTagContent(xml: string, tagName: string): string | null {
-  const regex = new RegExp(`<${tagName}[^>]*>([^<]*)<\\/${tagName}>`, 'i');
+  const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
   const match = xml.match(regex);
   return match ? match[1].trim() : null;
 }
 
-// 解析XML获取属性值
 function getXmlAttribute(xml: string, tagName: string, attrName: string): string | null {
   const regex = new RegExp(`<${tagName}[^>]*${attrName}=["']([^"']*)["'][^>]*>`, 'i');
   const match = xml.match(regex);
   return match ? match[1] : null;
 }
 
-// 从EPUB中提取元数据
+// 从HTML中提取纯文本
+function stripHtml(html: string): string {
+  return html
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?p[^>]*>/gi, '\n')
+    .replace(/<\/?div[^>]*>/gi, '\n')
+    .replace(/<\/?h\d[^>]*>/gi, '\n')
+    .replace(/<\/?li[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+// 从EPUB中提取完整内容
+export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubContent> {
+  const entries = parseZipEntries(fileData);
+
+  const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
+  if (!containerEntry) {
+    return { text: '', chapters: [] };
+  }
+
+  const containerBytes = await readZipEntry(fileData, containerEntry);
+  const containerXml = new TextDecoder().decode(containerBytes);
+  const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
+  if (!opfPath) {
+    return { text: '', chapters: [] };
+  }
+
+  const opfEntry = entries.find(e => e.name === opfPath);
+  if (!opfEntry) {
+    return { text: '', chapters: [] };
+  }
+
+  const opfBytes = await readZipEntry(fileData, opfEntry);
+  const opfXml = new TextDecoder().decode(opfBytes);
+  const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+
+  // 构建 manifest (id -> href)
+  const manifest = new Map<string, string>();
+  const itemRegex = /<item[^>]*id=["']([^"']*)["'][^>]*href=["']([^"']*)["'][^>]*\/?>/gi;
+  let itemMatch;
+  while ((itemMatch = itemRegex.exec(opfXml)) !== null) {
+    manifest.set(itemMatch[1], itemMatch[2]);
+  }
+
+  // 获取 spine 顺序
+  const spineItems: string[] = [];
+  const spineRegex = /<itemref[^>]*idref=["']([^"']*)["'][^>]*\/?>/gi;
+  let spineMatch;
+  while ((spineMatch = spineRegex.exec(opfXml)) !== null) {
+    spineItems.push(spineMatch[1]);
+  }
+
+  // 读取所有内容文件
+  const fullTexts: string[] = [];
+  const chapters: Array<{ title: string; startIndex: number }> = [];
+  let currentOffset = 0;
+
+  for (const idref of spineItems) {
+    const href = manifest.get(idref);
+    if (!href) continue;
+
+    const contentPath = href.startsWith('/') || href.startsWith('http')
+      ? href
+      : opfDir + href;
+
+    const contentEntry = entries.find(e =>
+      e.name === contentPath ||
+      e.name.endsWith('/' + href) ||
+      e.name === decodeURIComponent(contentPath)
+    );
+
+    if (!contentEntry) continue;
+
+    try {
+      const contentBytes = await readZipEntry(fileData, contentEntry);
+      const html = new TextDecoder().decode(contentBytes);
+      const text = stripHtml(html);
+
+      if (text.length > 0) {
+        // 尝试从HTML中提取标题作为章节名
+        const hMatch = html.match(/<h\d[^>]*>([^<]+)<\/h\d>/i);
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+        const chapterTitle = hMatch ? hMatch[1].trim() : (titleMatch ? titleMatch[1].trim() : `章节 ${chapters.length + 1}`);
+
+        chapters.push({
+          title: chapterTitle,
+          startIndex: currentOffset
+        });
+
+        fullTexts.push(text);
+        currentOffset += text.length + 2; // +2 for \n\n separator
+      }
+    } catch {
+      // 跳过无法读取的文件
+    }
+  }
+
+  const text = fullTexts.join('\n\n');
+
+  // 如果没有从HTML中提取到有意义的章节，用文本正则再找
+  if (chapters.length <= 1 && text.length > 0) {
+    chapters.length = 0;
+    const chapterRegex = /(?:第[一二三四五六七八九十百千万\d]+[章节卷部篇回]|Chapter\s+\d+|序言|前言|楔子|尾声|后记|番外)[^\n]{0,50}/g;
+    let match;
+    while ((match = chapterRegex.exec(text)) !== null) {
+      if (match.index < text.length * 0.9) {
+        chapters.push({
+          title: match[0].trim(),
+          startIndex: match.index
+        });
+      }
+    }
+  }
+
+  if (chapters.length === 0) {
+    const pageSize = 4000;
+    const totalPages = Math.ceil(text.length / pageSize);
+    for (let i = 0; i < totalPages; i++) {
+      chapters.push({
+        title: `第${i + 1}页`,
+        startIndex: i * pageSize
+      });
+    }
+  }
+
+  return { text, chapters };
+}
+
+// 从EPUB中提取元数据（标题、作者、封面）
 export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMetadata> {
   const entries = parseZipEntries(fileData);
 
-  // 1. 找到 container.xml
   const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
   if (!containerEntry) {
     return { title: '', author: '', coverBase64: null, coverMimeType: null };
   }
 
-  const containerBytes = readZipEntry(fileData, containerEntry);
+  const containerBytes = await readZipEntry(fileData, containerEntry);
   const containerXml = new TextDecoder().decode(containerBytes);
-
-  // 2. 找到 OPF 文件路径
   const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
   if (!opfPath) {
     return { title: '', author: '', coverBase64: null, coverMimeType: null };
   }
 
-  // 3. 读取 OPF 文件
   const opfEntry = entries.find(e => e.name === opfPath);
   if (!opfEntry) {
     return { title: '', author: '', coverBase64: null, coverMimeType: null };
   }
 
-  const opfBytes = readZipEntry(fileData, opfEntry);
+  const opfBytes = await readZipEntry(fileData, opfEntry);
   const opfXml = new TextDecoder().decode(opfBytes);
-
-  // 4. 提取标题和作者
-  const title = getXmlTagContent(opfXml, 'dc:title') || '';
-  let author = getXmlTagContent(opfXml, 'dc:creator') || '';
-
-  // 5. 提取封面图片
   const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
 
-  // 查找 cover 属性
+  const title = getXmlTagContent(opfXml, 'dc:title') || '';
+  const author = getXmlTagContent(opfXml, 'dc:creator') || '';
+
+  // 提取封面
   const coverIdMatch = opfXml.match(/<meta[^>]*name=["']cover["'][^>]*content=["']([^"']*)["'][^>]*\/?>/i);
   let coverHref: string | null = null;
   let coverMimeType: string | null = null;
 
   if (coverIdMatch) {
     const coverId = coverIdMatch[1];
-    // 在 manifest 中查找对应的 item
     const itemRegex = new RegExp(`<item[^>]*id=["']${coverId}["'][^>]*href=["']([^"']*)["'][^>]*media-type=["']([^"']*)["'][^>]*\/?>`, 'i');
     const itemMatch = opfXml.match(itemRegex);
     if (itemMatch) {
@@ -162,7 +307,6 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
     }
   }
 
-  // 如果没找到 cover meta，尝试找第一个 image/*
   if (!coverHref) {
     const imageMatch = opfXml.match(/<item[^>]*media-type=["']image\/([^"']*)["'][^>]*href=["']([^"']*)["'][^>]*\/?>/i);
     if (imageMatch) {
@@ -171,7 +315,6 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
     }
   }
 
-  // 6. 提取封面图片数据
   let coverBase64: string | null = null;
   if (coverHref) {
     const coverPath = coverHref.startsWith('/') || coverHref.startsWith('http')
@@ -180,7 +323,7 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
 
     const coverEntry = entries.find(e => e.name === coverPath || e.name.endsWith('/' + coverHref));
     if (coverEntry) {
-      const coverBytes = readZipEntry(fileData, coverEntry);
+      const coverBytes = await readZipEntry(fileData, coverEntry);
       const base64 = btoa(String.fromCharCode(...coverBytes));
       coverBase64 = `data:${coverMimeType || 'image/jpeg'};base64,${base64}`;
     }
@@ -189,29 +332,25 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
   return { title, author, coverBase64, coverMimeType };
 }
 
-// 从文件名提取更好的标题和作者
+// 从文件名提取标题和作者
 export function parseFilenameMetadata(filename: string): { title: string; author: string } {
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
 
-  // 尝试 "作者 - 书名" 格式
   const dashMatch = nameWithoutExt.match(/^(.+?)\s*[-–—]\s*(.+)$/);
   if (dashMatch) {
     return { author: dashMatch[1].trim(), title: dashMatch[2].trim() };
   }
 
-  // 尝试 "书名 (作者)" 格式
   const parenMatch = nameWithoutExt.match(/^(.+?)\s*[（(]([^）)]+)[）)]$/);
   if (parenMatch) {
     return { title: parenMatch[1].trim(), author: parenMatch[2].trim() };
   }
 
-  // 尝试 "[作者] 书名" 格式
   const bracketMatch = nameWithoutExt.match(/^\[([^\]]+)\]\s*(.+)$/);
   if (bracketMatch) {
     return { author: bracketMatch[1].trim(), title: bracketMatch[2].trim() };
   }
 
-  // 清理文件名（替换下划线、多余空格）
   const cleaned = nameWithoutExt
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')

@@ -131,7 +131,7 @@ async function getBookContent(bookId) {
 }
 
 async function fetchBookCover(bookId) {
-  const token = getAuthToken();
+  const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {
     headers: {
       'Authorization': `Bearer ${token}`

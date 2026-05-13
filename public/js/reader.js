@@ -28,7 +28,7 @@ async function initReader(bookId) {
   // 加载书籍内容
   const contentResult = await getBookContent(bookId);
   if (contentResult.success) {
-    bookContent = contentResult.data.content;
+    bookContent = contentResult.data.text;
     chapters = contentResult.data.chapters || [];
     
     // 计算总长度
