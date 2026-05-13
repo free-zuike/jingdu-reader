@@ -36,10 +36,19 @@ book.post('/sync', authMiddleware, async (c) => {
     return c.json(filesResult, 400);
   }
 
-  // 同步书籍
-  const result = await bookService.syncBooks(userId, filesResult.data.files);
+  const { files, totalFiles, matchedFiles } = filesResult.data;
 
-  return c.json(result);
+  // 同步书籍
+  const result = await bookService.syncBooks(userId, files);
+
+  return c.json({
+    ...result,
+    data: {
+      ...result.data,
+      totalFiles,
+      matchedFiles
+    }
+  });
 });
 
 // 获取书籍详情

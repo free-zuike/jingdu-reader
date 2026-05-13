@@ -137,10 +137,20 @@ export class WebDAVService {
     try {
       const config = await this.db.getWebDAVConfigByUserId(userId);
       if (!config) {
-        return { success: false, error: 'WebDAV配置不存在' };
+        return { success: false, error: 'WebDAV配置不存在，请先在设置中保存配置' };
       }
 
-      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      let password: string;
+      try {
+        password = await decrypt(config.password_encrypted, this.encryptionKey);
+      } catch {
+        return { success: false, error: 'WebDAV密码解密失败，请重新保存配置' };
+      }
+
+      if (!password) {
+        return { success: false, error: 'WebDAV密码为空，请重新保存配置' };
+      }
+
       const targetPath = path || config.base_path;
       const fullUrl = `${config.server_url.replace(/\/$/, '')}/${targetPath.replace(/^\//, '')}`;
 
@@ -162,14 +172,24 @@ export class WebDAVService {
 </D:propfind>`
       });
 
+      if (response.status === 401) {
+        return { success: false, error: 'WebDAV认证失败，请检查用户名和密码' };
+      }
+      if (response.status === 404) {
+        return { success: false, error: `WebDAV路径不存在: ${targetPath}` };
+      }
       if (response.status !== 207) {
-        return { success: false, error: '获取文件列表失败' };
+        return { success: false, error: `WebDAV请求失败，状态码: ${response.status}` };
       }
 
       const xmlText = await response.text();
+
+      if (!xmlText || xmlText.trim().length === 0) {
+        return { success: false, error: 'WebDAV服务器返回空响应，可能认证信息有误或路径不存在' };
+      }
+
       const files = this.parseWebDAVResponse(xmlText, targetPath);
 
-      // 过滤出电子书文件
       const bookFiles = files.filter(file => {
         const ext = file.name.toLowerCase().split('.').pop();
         return ['epub', 'txt', 'pdf'].includes(ext || '');
@@ -177,11 +197,19 @@ export class WebDAVService {
 
       return {
         success: true,
-        data: { files: bookFiles }
+        data: {
+          files: bookFiles,
+          totalFiles: files.length,
+          matchedFiles: bookFiles.length
+        }
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('列出WebDAV文件失败:', error);
-      return { success: false, error: '列出WebDAV文件失败' };
+      const errMsg = error?.message || String(error);
+      if (errMsg.includes('fetch') || errMsg.includes('Failed') || errMsg.includes('ENOTFOUND')) {
+        return { success: false, error: '无法连接到WebDAV服务器，请检查服务器地址' };
+      }
+      return { success: false, error: `列出文件失败: ${errMsg}` };
     }
   }
 

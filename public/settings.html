@@ -224,6 +224,7 @@
       const serverUrl = document.getElementById('serverUrl').value;
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
+      const basePath = document.getElementById('basePath').value;
       
       if (!serverUrl || !username || !password) {
         showToast('请填写完整的WebDAV配置', 'warning');
@@ -242,7 +243,22 @@
         });
         
         if (result.success) {
-          showToast('连接测试成功！WebDAV服务正常', 'success');
+          showToast('连接测试成功！正在保存配置...', 'success');
+          
+          // 测试成功后自动保存配置
+          const saveResult = await saveWebDAVConfig({
+            serverUrl,
+            username,
+            password,
+            basePath: basePath || '/',
+            skipTest: true
+          });
+          
+          if (saveResult.success) {
+            showToast('WebDAV配置已保存', 'success');
+          } else {
+            showToast(saveResult.error || '配置保存失败', 'error');
+          }
         } else {
           showToast(result.error || '连接测试失败', 'error');
         }

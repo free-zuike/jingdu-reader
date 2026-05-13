@@ -135,7 +135,17 @@ async function handleSync() {
     const result = await syncBooks();
     
     if (result.success) {
-      showToast(result.message || '同步成功', 'success');
+      const total = result.data?.totalFiles || 0;
+      const matched = result.data?.matchedFiles || 0;
+      const added = result.data?.added || 0;
+      
+      if (added > 0) {
+        showToast(`同步完成！发现 ${total} 个文件，匹配 ${matched} 本电子书，新增 ${added} 本`, 'success');
+      } else if (matched > 0) {
+        showToast(`同步完成！发现 ${total} 个文件，匹配 ${matched} 本电子书，没有新增`, 'success');
+      } else {
+        showToast(`WebDAV目录中找到 ${total} 个文件，但没有 epub/txt/pdf 格式的电子书`, 'warning');
+      }
       // 重新加载书籍列表
       await loadBooks();
     } else {
