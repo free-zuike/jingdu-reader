@@ -34,7 +34,32 @@ function renderBooks(books) {
   books.forEach(book => {
     const card = createBookCard(book);
     grid.appendChild(card);
+    // 异步加载封面
+    loadBookCover(book, card);
   });
+}
+
+// 异步加载书籍封面
+async function loadBookCover(book, card) {
+  try {
+    const coverUrl = await fetchBookCover(book.id);
+    if (coverUrl) {
+      const coverEl = card.querySelector('.book-cover');
+      const placeholder = coverEl.querySelector('.book-cover-placeholder');
+      if (placeholder) {
+        const img = document.createElement('img');
+        img.src = coverUrl;
+        img.alt = book.title;
+        img.className = 'book-cover-img';
+        img.onerror = () => {
+          img.remove();
+        };
+        placeholder.replaceWith(img);
+      }
+    }
+  } catch (e) {
+    // 封面加载失败，保持占位符
+  }
 }
 
 // 创建书籍卡片
@@ -46,15 +71,10 @@ function createBookCard(book) {
   };
   
   const progress = book.progress || 0;
-  const hasCover = book.cover && book.cover.length > 0;
-  
-  const coverHtml = hasCover
-    ? `<img src="${book.cover}" alt="${book.title}" class="book-cover-img" onerror="this.parentElement.innerHTML='<span class=\\'book-cover-placeholder\\'>${getFormatIcon(book.format)}</span>'">`
-    : `<span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>`;
   
   card.innerHTML = `
     <div class="book-cover">
-      ${coverHtml}
+      <span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>
       <span class="book-format-badge">${book.format.toUpperCase()}</span>
     </div>
     <div class="book-info">

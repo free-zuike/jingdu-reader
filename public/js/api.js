@@ -130,6 +130,18 @@ async function getBookContent(bookId) {
   return request(`/api/books/${bookId}/content`);
 }
 
+async function fetchBookCover(bookId) {
+  const token = getAuthToken();
+  const response = await fetch(`/api/books/${bookId}/cover`, {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 async function getReadingProgress(bookId) {
   return request(`/api/books/${bookId}/progress`);
 }

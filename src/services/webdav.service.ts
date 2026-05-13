@@ -152,7 +152,8 @@ export class WebDAVService {
         headers: {
           'Authorization': 'Basic ' + btoa(`${username}:${password}`),
           'Content-Type': 'text/xml; charset=utf-8',
-          'Depth': '0'
+          'Depth': '0',
+          'User-Agent': 'JingDu-Reader/1.0'
         },
         body: `<?xml version="1.0" encoding="utf-8"?>
 <D:propfind xmlns:D="DAV:">
@@ -215,7 +216,8 @@ export class WebDAVService {
         headers: {
           'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
           'Content-Type': 'text/xml; charset=utf-8',
-          'Depth': '1'
+          'Depth': '1',
+          'User-Agent': 'JingDu-Reader/1.0'
         },
         body: `<?xml version="1.0" encoding="utf-8"?>
 <D:propfind xmlns:D="DAV:">
@@ -287,7 +289,8 @@ export class WebDAVService {
       const response = await fetch(fullUrl, {
         method: 'GET',
         headers: {
-          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`)
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'User-Agent': 'JingDu-Reader/1.0'
         }
       });
 
@@ -328,13 +331,28 @@ export class WebDAVService {
 
       // 如果 filePath 以服务器路径开头，使用 origin + filePath
       if (filePath.startsWith(serverPath + '/') || filePath === serverPath) {
-        return `${origin}${filePath}`;
+        // 确保路径被正确编码（保留已编码的部分）
+        const encodedPath = filePath.split('/').map(segment => {
+          try {
+            return encodeURIComponent(decodeURIComponent(segment));
+          } catch {
+            return segment;
+          }
+        }).join('/');
+        return `${origin}${encodedPath}`;
       }
 
       // filePath 可能是相对路径，拼接到 server_url
-      return `${serverUrl.replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
+      const cleanPath = filePath.replace(/^\//, '');
+      const encodedPath = cleanPath.split('/').map(segment => {
+        try {
+          return encodeURIComponent(decodeURIComponent(segment));
+        } catch {
+          return segment;
+        }
+      }).join('/');
+      return `${serverUrl.replace(/\/$/, '')}/${encodedPath}`;
     } catch {
-      // URL 解析失败，回退到简单拼接
       return `${serverUrl.replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
     }
   }
