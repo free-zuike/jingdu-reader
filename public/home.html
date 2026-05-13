@@ -73,14 +73,15 @@
   <!-- 同步加载遮罩 -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-content">
-      <div class="spinner-large"></div>
-      <p>正在同步书籍...</p>
+      <div class="spinner-large" id="syncSpinner"></div>
+      <p id="syncStatusText">正在同步书籍...</p>
       <div class="sync-progress" id="syncProgressBar" style="display:none;">
         <div class="sync-progress-bar">
           <div class="sync-progress-fill" id="syncProgressFill"></div>
         </div>
         <p class="sync-progress-text" id="syncProgressText">准备中...</p>
       </div>
+      <div class="sync-error-list" id="syncErrorList" style="display:none;"></div>
     </div>
   </div>
 

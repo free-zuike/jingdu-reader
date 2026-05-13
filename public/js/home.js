@@ -202,8 +202,15 @@ async function handleSync() {
       
       if (added > 0 || recached > 0) {
         let msg = `同步完成！新增 ${added} 本，重新缓存 ${recached} 本`;
-        if (errors.length > 0) msg += `（${errors.length} 本失败）`;
-        showToast(msg, 'success');
+        if (errors.length > 0) {
+          msg += `（${errors.length} 本失败）`;
+          showToast(msg, 'success');
+          setTimeout(() => {
+            showToast(`错误列表: ${errors.join(', ')}`, 'error');
+          }, 100);
+        } else {
+          showToast(msg, 'success');
+        }
       } else if (matched > 0) {
         showToast(`同步完成！匹配 ${matched} 本电子书，没有新增`, 'success');
       } else if (total > 0) {
