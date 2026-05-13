@@ -42,20 +42,24 @@ function createBookCard(book) {
   const card = document.createElement('div');
   card.className = 'book-card';
   card.onclick = () => {
-    window.location.href = `/reader/${book.id}`;
+    window.location.href = `/reader?id=${book.id}`;
   };
   
-  const formatIcon = getFormatIcon(book.format);
   const progress = book.progress || 0;
+  const hasCover = book.cover && book.cover.length > 0;
+  
+  const coverHtml = hasCover
+    ? `<img src="${book.cover}" alt="${book.title}" class="book-cover-img" onerror="this.parentElement.innerHTML='<span class=\\'book-cover-placeholder\\'>${getFormatIcon(book.format)}</span>'">`
+    : `<span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>`;
   
   card.innerHTML = `
     <div class="book-cover">
-      <span class="book-cover-placeholder">${formatIcon}</span>
-      <span class="book-format-badge">${book.format}</span>
+      ${coverHtml}
+      <span class="book-format-badge">${book.format.toUpperCase()}</span>
     </div>
     <div class="book-info">
-      <h3 class="book-title" title="${book.title}">${book.title}</h3>
-      <p class="book-author" title="${book.author || '未知作者'}">${book.author || '未知作者'}</p>
+      <h3 class="book-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</h3>
+      <p class="book-author" title="${escapeHtml(book.author || '')}">${escapeHtml(book.author) || '未知作者'}</p>
       <div class="book-meta">
         <span>${formatFileSize(book.size || 0)}</span>
         ${progress > 0 ? `
@@ -71,6 +75,12 @@ function createBookCard(book) {
   `;
   
   return card;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // 获取格式图标

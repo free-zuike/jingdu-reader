@@ -149,6 +149,31 @@ export class Database {
     return result;
   }
 
+  async updateBookMeta(id: string, updates: { title?: string; author?: string; cover_url?: string }): Promise<void> {
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.title !== undefined) {
+      fields.push('title = ?');
+      values.push(updates.title);
+    }
+    if (updates.author !== undefined) {
+      fields.push('author = ?');
+      values.push(updates.author);
+    }
+    if (updates.cover_url !== undefined) {
+      fields.push('cover_url = ?');
+      values.push(updates.cover_url);
+    }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+    await this.db.prepare(
+      `UPDATE books SET ${fields.join(', ')} WHERE id = ?`
+    ).bind(...values).run();
+  }
+
   async deleteBook(id: string): Promise<void> {
     await this.db.prepare(
       'DELETE FROM books WHERE id = ?'

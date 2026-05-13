@@ -282,7 +282,7 @@ export class WebDAVService {
       }
 
       const password = await decrypt(config.password_encrypted, this.encryptionKey);
-      const fullUrl = `${config.server_url.replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
 
       const response = await fetch(fullUrl, {
         method: 'GET',
@@ -292,7 +292,14 @@ export class WebDAVService {
       });
 
       if (!response.ok) {
-        return { success: false, error: '获取文件失败' };
+        console.error('获取文件失败, status:', response.status, 'url:', fullUrl);
+        if (response.status === 401) {
+          return { success: false, error: '认证失败，请检查用户名和密码' };
+        }
+        if (response.status === 404) {
+          return { success: false, error: '文件不存在，可能路径有误' };
+        }
+        return { success: false, error: `获取文件失败 (状态码: ${response.status})` };
       }
 
       const content = await response.arrayBuffer();
@@ -304,6 +311,31 @@ export class WebDAVService {
     } catch (error) {
       console.error('获取WebDAV文件失败:', error);
       return { success: false, error: '获取WebDAV文件失败' };
+    }
+  }
+
+  // 构建文件访问URL（处理路径重复问题）
+  private buildFileUrl(serverUrl: string, filePath: string): string {
+    // 如果已经是完整URL，直接返回
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      return filePath;
+    }
+
+    try {
+      const serverUrlObj = new URL(serverUrl);
+      const origin = serverUrlObj.origin;
+      const serverPath = serverUrlObj.pathname.replace(/\/$/, '');
+
+      // 如果 filePath 以服务器路径开头，使用 origin + filePath
+      if (filePath.startsWith(serverPath + '/') || filePath === serverPath) {
+        return `${origin}${filePath}`;
+      }
+
+      // filePath 可能是相对路径，拼接到 server_url
+      return `${serverUrl.replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
+    } catch {
+      // URL 解析失败，回退到简单拼接
+      return `${serverUrl.replace(/\/$/, '')}/${filePath.replace(/^\//, '')}`;
     }
   }
 

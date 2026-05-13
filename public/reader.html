@@ -116,11 +116,16 @@
       // 检查登录状态
       if (!checkAuth()) return;
       
-      // 获取书籍ID
-      const pathParts = window.location.pathname.split('/');
-      const bookId = pathParts[pathParts.length - 1];
+      // 获取书籍ID（支持 /reader?id=xxx 和 /reader/xxx）
+      const urlParams = new URLSearchParams(window.location.search);
+      let bookId = urlParams.get('id');
       
       if (!bookId) {
+        const pathParts = window.location.pathname.split('/');
+        bookId = pathParts[pathParts.length - 1];
+      }
+      
+      if (!bookId || bookId === 'reader') {
         window.location.href = '/home';
         return;
       }

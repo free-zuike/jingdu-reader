@@ -4,6 +4,7 @@ import type { KVNamespace } from '@cloudflare/workers-types';
 import { Database } from '../utils/db';
 import { generateUUID } from '../utils/crypto';
 import type { Book, BookListItem, BookContent, ReadingProgress, ApiResponse, WebDAVFile } from '../types';
+import { parseFilenameMetadata } from '../utils/epub';
 
 export class BookService {
   private db: Database;
@@ -17,36 +18,23 @@ export class BookService {
   // 同步WebDAV书籍
   async syncBooks(userId: string, webdavFiles: WebDAVFile[]): Promise<ApiResponse> {
     try {
-      // 获取现有书籍
       const existingBooks = await this.db.getBooksByUserId(userId);
       const existingPaths = new Set(existingBooks.map(b => b.webdav_path));
 
-      // 新增的书籍
       const newFiles = webdavFiles.filter(file => !existingPaths.has(file.path));
       
-      // 为每本新书创建记录
       for (const file of newFiles) {
         const bookId = generateUUID();
         const ext = file.name.toLowerCase().split('.').pop() || '';
         
-        // 从文件名提取标题和作者（简单处理）
-        const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-        let title = fileNameWithoutExt;
-        let author: string | undefined;
-        
-        // 尝试解析 "作者 - 书名" 格式
-        const match = fileNameWithoutExt.match(/^(.+?)\s*-\s*(.+)$/);
-        if (match) {
-          author = match[1].trim();
-          title = match[2].trim();
-        }
+        const { title, author } = parseFilenameMetadata(file.name);
 
         await this.db.createBook({
           id: bookId,
           user_id: userId,
           webdav_path: file.path,
-          title,
-          author,
+          title: title || file.name,
+          author: author || '',
           format: ext as Book['format'],
           file_size: file.size,
           last_modified: file.lastModified,
@@ -70,7 +58,6 @@ export class BookService {
     try {
       const books = await this.db.getBooksByUserId(userId);
       
-      // 获取阅读进度
       const booksWithProgress: BookListItem[] = await Promise.all(
         books.map(async (book) => {
           const progressKey = `progress:${userId}:${book.id}`;
@@ -84,9 +71,10 @@ export class BookService {
           return {
             id: book.id,
             title: book.title,
-            author: book.author,
-            cover: book.cover_url,
+            author: book.author || '',
+            cover: book.cover_url || '',
             format: book.format,
+            size: book.file_size,
             lastReadAt: progress ? new Date(progress.lastReadAt).toISOString() : undefined,
             progress: progress ? Math.round((progress.currentPosition / progress.totalLength) * 100) : undefined
           };
