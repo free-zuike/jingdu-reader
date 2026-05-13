@@ -431,17 +431,36 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
       }
     }
 
-    if (!coverHref) {
-      const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'titlepage.jpg'];
-      for (const name of coverNames) {
-        const found = entries.find(e => {
-          const n = e.name.toLowerCase();
-          return n.endsWith('/' + name) || n === name;
-        });
-        if (found) {
-          coverHref = found.name;
-          coverMimeType = found.name.toLowerCase().endsWith('.png') ? 'image/png' :
-                          found.name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+    const imageEntries = entries.filter(e => {
+      const n = e.name.toLowerCase();
+      return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.gif') || n.endsWith('.webp');
+    });
+
+    if (!coverHref && imageEntries.length > 0) {
+      const coverNames = ['cover', 'frontcover', 'front_cover', 'fc', 'title', 'titlepage', 'title_page', 'thumbnail', 'thumb'];
+      for (const img of imageEntries) {
+        const imgName = img.name.toLowerCase().split('/').pop() || '';
+        const baseName = imgName.replace(/\.[^.]+$/, '');
+        if (coverNames.some(c => baseName.includes(c))) {
+          coverHref = img.name;
+          coverMimeType = img.name.toLowerCase().endsWith('.png') ? 'image/png' :
+                          img.name.toLowerCase().endsWith('.gif') ? 'image/gif' :
+                          img.name.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+          break;
+        }
+      }
+    }
+
+    if (!coverHref && imageEntries.length > 0) {
+      for (const img of imageEntries) {
+        const imgName = img.name.toLowerCase();
+        const parts = imgName.split('/');
+        const filePart = parts[parts.length - 1];
+        if (/^[a-z_-]*[0-9]*\.jpg$/i.test(filePart) || /^cover\./i.test(filePart) || /^front\./i.test(filePart)) {
+          coverHref = img.name;
+          coverMimeType = img.name.toLowerCase().endsWith('.png') ? 'image/png' :
+                          img.name.toLowerCase().endsWith('.gif') ? 'image/gif' :
+                          img.name.toLowerCase().endsWith('.webp') ? 'image/webp' : 'image/jpeg';
           break;
         }
       }
@@ -450,12 +469,13 @@ export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMe
     let coverBase64: string | null = null;
     if (coverHref) {
       const coverPath = coverHref.startsWith('/') ? coverHref.substring(1) : opfDir + coverHref;
-      const coverEntry = entries.find(e => {
-        if (e.name === coverPath) return true;
-        if (e.name === decodeURIComponent(coverPath)) return true;
-        if (coverHref!.endsWith('/' + coverHref)) return true;
-        return false;
-      });
+      let coverEntry = entries.find(e => e.name === coverPath);
+      if (!coverEntry) coverEntry = entries.find(e => e.name === decodeURIComponent(coverPath));
+      if (!coverEntry) coverEntry = entries.find(e => e.name.endsWith('/' + coverHref.replace(/^.*\//, '')));
+      if (!coverEntry) {
+        const coverFile = coverHref.replace(/^.*\//, '');
+        coverEntry = entries.find(e => e.name.toLowerCase().endsWith('/' + coverFile.toLowerCase()) || e.name.toLowerCase() === coverFile.toLowerCase());
+      }
       if (coverEntry) {
         try {
           const coverBytes = await readZipEntry(fileData, coverEntry);
