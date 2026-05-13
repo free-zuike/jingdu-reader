@@ -112,19 +112,60 @@ async function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Promise<Uint8Ar
   return bytes;
 }
 
+function safeMatchAll(text: string, pattern: string): string[][] {
+  try {
+    const regex = new RegExp(pattern, 'gi');
+    const results: string[][] = [];
+    let match;
+    let safe = 0;
+    while ((match = regex.exec(text)) !== null && safe < 1000) {
+      results.push([...match]);
+      if (!regex.global) break;
+      if (match.index === regex.lastIndex) regex.lastIndex++;
+      safe++;
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 function getXmlTagContent(xml: string, tagName: string): string | null {
-  const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'i');
-  const match = xml.match(regex);
-  return match ? match[1].trim() : null;
+  try {
+    const pattern = `<${tagName}[^>]*>([^<]*)</${tagName}>`;
+    const regex = new RegExp(pattern, 'i');
+    const match = regex.exec(xml);
+    return match ? match[1].trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function getXmlAttribute(xml: string, tagName: string, attrName: string): string | null {
-  const regex = new RegExp(`<${tagName}[^>]*${attrName}=["']([^"']*)["'][^>]*>`, 'i');
-  const match = xml.match(regex);
-  return match ? match[1] : null;
+  try {
+    const regex = new RegExp(`${tagName}[^>]*${attrName}=["']([^"']*)["']`, 'i');
+    const match = regex.exec(xml);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
 }
 
-// 从HTML中提取纯文本
+function findXmlAttribute(xml: string, tagName: string, attrName: string, valueContains: string): string | null {
+  try {
+    const allMatches = safeMatchAll(xml, `<${tagName}[^>]*>`, 100);
+    for (const fullMatch of allMatches) {
+      const full = fullMatch[0];
+      if (valueContains && !full.includes(valueContains)) continue;
+      const attrMatch = new RegExp(`${attrName}=["']([^"']*)["']`, 'i').exec(full);
+      if (attrMatch) return attrMatch[1];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
@@ -147,233 +188,237 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-// 从EPUB中提取完整内容
+function safeSubstring(str: string, start: number, len: number): string {
+  return str.substring(start, start + len);
+}
+
 export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubContent> {
-  const entries = parseZipEntries(fileData);
+  try {
+    const entries = parseZipEntries(fileData);
 
-  const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
-  if (!containerEntry) {
-    return { text: '', chapters: [] };
-  }
+    const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
+    if (!containerEntry) return { text: '', chapters: [] };
 
-  const containerBytes = await readZipEntry(fileData, containerEntry);
-  const containerXml = new TextDecoder().decode(containerBytes);
-  const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
-  if (!opfPath) {
-    return { text: '', chapters: [] };
-  }
+    const containerBytes = await readZipEntry(fileData, containerEntry);
+    const containerXml = new TextDecoder().decode(containerBytes);
+    const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
+    if (!opfPath) return { text: '', chapters: [] };
 
-  const opfEntry = entries.find(e => e.name === opfPath);
-  if (!opfEntry) {
-    return { text: '', chapters: [] };
-  }
+    const opfEntry = entries.find(e => e.name === opfPath);
+    if (!opfEntry) return { text: '', chapters: [] };
 
-  const opfBytes = await readZipEntry(fileData, opfEntry);
-  const opfXml = new TextDecoder().decode(opfBytes);
-  const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+    const opfBytes = await readZipEntry(fileData, opfEntry);
+    const opfXml = new TextDecoder().decode(opfBytes);
+    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
 
-  // 构建 manifest (id -> href)
-  const manifest = new Map<string, string>();
-  const itemRegex = /<item[^>]*id=["']([^"']*)["'][^>]*href=["']([^"']*)["'][^>]*\/?>/gi;
-  let itemMatch;
-  while ((itemMatch = itemRegex.exec(opfXml)) !== null) {
-    manifest.set(itemMatch[1], itemMatch[2]);
-  }
-
-  // 获取 spine 顺序
-  const spineItems: string[] = [];
-  const spineRegex = /<itemref[^>]*idref=["']([^"']*)["'][^>]*\/?>/gi;
-  let spineMatch;
-  while ((spineMatch = spineRegex.exec(opfXml)) !== null) {
-    spineItems.push(spineMatch[1]);
-  }
-
-  // 读取所有内容文件
-  const fullTexts: string[] = [];
-  const chapters: Array<{ title: string; startIndex: number }> = [];
-  let currentOffset = 0;
-
-  for (const idref of spineItems) {
-    const href = manifest.get(idref);
-    if (!href) continue;
-
-    const contentPath = href.startsWith('/') || href.startsWith('http')
-      ? href
-      : opfDir + href;
-
-    const contentEntry = entries.find(e =>
-      e.name === contentPath ||
-      e.name.endsWith('/' + href) ||
-      e.name === decodeURIComponent(contentPath)
-    );
-
-    if (!contentEntry) continue;
-
-    try {
-      const contentBytes = await readZipEntry(fileData, contentEntry);
-      const html = new TextDecoder().decode(contentBytes);
-      const text = stripHtml(html);
-
-      if (text.length > 0) {
-        // 尝试从HTML中提取标题作为章节名
-        const hMatch = html.match(/<h\d[^>]*>([^<]+)<\/h\d>/i);
-        const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-        const chapterTitle = hMatch ? hMatch[1].trim() : (titleMatch ? titleMatch[1].trim() : `章节 ${chapters.length + 1}`);
-
-        chapters.push({
-          title: chapterTitle,
-          startIndex: currentOffset
-        });
-
-        fullTexts.push(text);
-        currentOffset += text.length + 2; // +2 for \n\n separator
-      }
-    } catch {
-      // 跳过无法读取的文件
-    }
-  }
-
-  const text = fullTexts.join('\n\n');
-
-  // 如果没有从HTML中提取到有意义的章节，用文本正则再找
-  if (chapters.length <= 1 && text.length > 0) {
-    chapters.length = 0;
-    const chapterRegex = /(?:第[一二三四五六七八九十百千万\d]+[章节卷部篇回]|Chapter\s+\d+|序言|前言|楔子|尾声|后记|番外)[^\n]{0,50}/g;
-    let match;
-    while ((match = chapterRegex.exec(text)) !== null) {
-      if (match.index < text.length * 0.9) {
-        chapters.push({
-          title: match[0].trim(),
-          startIndex: match.index
-        });
+    const manifest = new Map<string, string>();
+    const allItems = safeMatchAll(opfXml, `<item[^>]*>`, 500);
+    for (const itemMatch of allItems) {
+      const itemXml = itemMatch[0];
+      const idMatch = /id=["']([^"']*)["']/.exec(itemXml);
+      const hrefMatch = /href=["']([^"']*)["']/.exec(itemXml);
+      if (idMatch && hrefMatch) {
+        manifest.set(idMatch[1], hrefMatch[1]);
       }
     }
-  }
 
-  if (chapters.length === 0) {
-    const pageSize = 4000;
-    const totalPages = Math.ceil(text.length / pageSize);
-    for (let i = 0; i < totalPages; i++) {
-      chapters.push({
-        title: `第${i + 1}页`,
-        startIndex: i * pageSize
-      });
+    const spineItems: string[] = [];
+    const allSpine = safeMatchAll(opfXml, `<itemref[^>]*>`, 500);
+    for (const spineMatch of allSpine) {
+      const spineXml = spineMatch[0];
+      const idrefMatch = /idref=["']([^"']*)["']/.exec(spineXml);
+      if (idrefMatch) spineItems.push(idrefMatch[1]);
     }
-  }
 
-  return { text, chapters };
-}
+    const fullTexts: string[] = [];
+    const chapters: Array<{ title: string; startIndex: number }> = [];
+    let currentOffset = 0;
 
-// 从EPUB中提取元数据（标题、作者、封面）
-export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMetadata> {
-  const entries = parseZipEntries(fileData);
+    for (const idref of spineItems) {
+      const href = manifest.get(idref);
+      if (!href) continue;
 
-  const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
-  if (!containerEntry) {
-    return { title: '', author: '', coverBase64: null, coverMimeType: null };
-  }
+      const contentPath = href.startsWith('/') ? href : opfDir + href;
 
-  const containerBytes = await readZipEntry(fileData, containerEntry);
-  const containerXml = new TextDecoder().decode(containerBytes);
-  const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
-  if (!opfPath) {
-    return { title: '', author: '', coverBase64: null, coverMimeType: null };
-  }
-
-  const opfEntry = entries.find(e => e.name === opfPath);
-  if (!opfEntry) {
-    return { title: '', author: '', coverBase64: null, coverMimeType: null };
-  }
-
-  const opfBytes = await readZipEntry(fileData, opfEntry);
-  const opfXml = new TextDecoder().decode(opfBytes);
-  const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
-
-  const title = getXmlTagContent(opfXml, 'dc:title') || '';
-  const author = getXmlTagContent(opfXml, 'dc:creator') || '';
-
-  // 提取封面 - 多种策略
-  let coverHref: string | null = null;
-  let coverMimeType: string | null = null;
-
-  // 策略1: meta name="cover"
-  const coverIdMatch = opfXml.match(/<meta[^>]*name=["']cover["'][^>]*content=["']([^"']*)["'][^>]*\/?>/i);
-  if (coverIdMatch) {
-    const coverId = coverIdMatch[1];
-    const itemRegex = new RegExp(`<item[^>]*id=["']${coverId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*href=["']([^"']*)["'][^>]*media-type=["']([^"']*)["'][^>]*\/?>`, 'i');
-    const itemMatch = opfXml.match(itemRegex);
-    if (itemMatch) {
-      coverHref = itemMatch[1];
-      coverMimeType = itemMatch[2];
-    }
-  }
-
-  // 策略2: 查找 manifest 中 id 包含 cover 的图片项
-  if (!coverHref) {
-    const coverItemRegex = /<item[^>]*id=["']([^"']*cover[^"']*)["'][^>]*href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["'][^>]*\/?>/gi;
-    const match = opfXml.match(coverItemRegex);
-    if (match) {
-      const itemMatch2 = match.match(/id=["']([^"']*cover[^"']*)["'][^>]*href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["']/i);
-      if (itemMatch2) {
-        coverHref = itemMatch2[2];
-        coverMimeType = itemMatch2[3];
-      }
-    }
-  }
-
-  // 策略3: properties 包含 cover
-  if (!coverHref) {
-    const propCoverRegex = /<item[^>]*href=["']([^"']*)["'][^>]*properties=["'][^"']*cover[^"']*["'][^>]*media-type=["'](image\/[^"']*)["'][^>]*\/?>/gi;
-    const propMatch = opfXml.match(propCoverRegex);
-    if (propMatch) {
-      const itemMatch3 = propMatch[0].match(/href=["']([^"']*)["'][^>]*media-type=["'](image\/[^"']*)["']/i);
-      if (itemMatch3) {
-        coverHref = itemMatch3[1];
-        coverMimeType = itemMatch3[2];
-      }
-    }
-  }
-
-  // 策略4: 直接从ZIP中查找常见封面文件名
-  if (!coverHref) {
-    const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'title.jpeg', 'titlepage.jpg'];
-    for (const name of coverNames) {
-      const found = entries.find(e =>
-        e.name.endsWith(name) ||
-        e.name.endsWith('/' + name) ||
-        e.name.toLowerCase().endsWith(name)
+      const contentEntry = entries.find(e =>
+        e.name === contentPath ||
+        e.name.endsWith('/' + href) ||
+        e.name === decodeURIComponent(contentPath)
       );
-      if (found) {
-        coverHref = found.name;
-        coverMimeType = found.name.toLowerCase().endsWith('.png') ? 'image/png' :
-                        found.name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/jpeg';
-        break;
+      if (!contentEntry) continue;
+
+      try {
+        const contentBytes = await readZipEntry(fileData, contentEntry);
+        const html = new TextDecoder().decode(contentBytes);
+        const text = stripHtml(html);
+
+        if (text.length > 0) {
+          const hMatch = /<h\d[^>]*>([^<]+)<\/h\d>/i.exec(html);
+          const titleMatch = /<title>([^<]+)<\/title>/i.exec(html);
+          const chapterTitle = hMatch ? hMatch[1].trim() : (titleMatch ? titleMatch[1].trim() : `章节 ${chapters.length + 1}`);
+
+          chapters.push({ title: chapterTitle, startIndex: currentOffset });
+          fullTexts.push(text);
+          currentOffset += text.length + 2;
+        }
+      } catch {}
+    }
+
+    const text = fullTexts.join('\n\n');
+
+    if (chapters.length <= 1 && text.length > 0) {
+      chapters.length = 0;
+      const chapterRegex = /(?:第[一二三四五六七八九十百千万\d]+[章节卷部篇回]|Chapter\s+\d+|序言|前言|楔子|尾声|后记|番外)[^\n]{0,50}/g;
+      let match;
+      let safe = 0;
+      while ((match = chapterRegex.exec(text)) !== null && safe < 200) {
+        if (match.index < text.length * 0.9) {
+          chapters.push({ title: match[0].trim(), startIndex: match.index });
+        }
+        safe++;
       }
     }
-  }
 
-  let coverBase64: string | null = null;
-  if (coverHref) {
-    const coverPath = coverHref.startsWith('/') || coverHref.startsWith('http')
-      ? coverHref
-      : opfDir + coverHref;
-
-    const coverEntry = entries.find(e =>
-      e.name === coverPath ||
-      e.name.endsWith('/' + coverHref) ||
-      e.name === decodeURIComponent(coverPath)
-    );
-    if (coverEntry) {
-      const coverBytes = await readZipEntry(fileData, coverEntry);
-      const base64 = btoa(String.fromCharCode(...coverBytes));
-      coverBase64 = `data:${coverMimeType || 'image/jpeg'};base64,${base64}`;
+    if (chapters.length === 0) {
+      const pageSize = 4000;
+      const totalPages = Math.ceil(text.length / pageSize);
+      for (let i = 0; i < totalPages; i++) {
+        chapters.push({ title: `第${i + 1}页`, startIndex: i * pageSize });
+      }
     }
-  }
 
-  return { title, author, coverBase64, coverMimeType };
+    return { text, chapters };
+  } catch (e) {
+    return { text: '', chapters: [] };
+  }
 }
 
-// 从文件名提取标题和作者
+export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMetadata> {
+  try {
+    const entries = parseZipEntries(fileData);
+
+    const containerEntry = entries.find(e => e.name === 'META-INF/container.xml');
+    if (!containerEntry) {
+      return { title: '', author: '', coverBase64: null, coverMimeType: null };
+    }
+
+    const containerBytes = await readZipEntry(fileData, containerEntry);
+    const containerXml = new TextDecoder().decode(containerBytes);
+    const opfPath = getXmlAttribute(containerXml, 'rootfile', 'full-path');
+    if (!opfPath) {
+      return { title: '', author: '', coverBase64: null, coverMimeType: null };
+    }
+
+    const opfEntry = entries.find(e => e.name === opfPath);
+    if (!opfEntry) {
+      return { title: '', author: '', coverBase64: null, coverMimeType: null };
+    }
+
+    const opfBytes = await readZipEntry(fileData, opfEntry);
+    const opfXml = new TextDecoder().decode(opfBytes);
+    const opfDir = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+
+    const title = getXmlTagContent(opfXml, 'dc:title') || '';
+    const author = getXmlTagContent(opfXml, 'dc:creator') || '';
+
+    let coverHref: string | null = null;
+    let coverMimeType: string | null = null;
+
+    const metaMatches = safeMatchAll(opfXml, `<meta[^>]*>`, 200);
+    for (const m of metaMatches) {
+      const metaStr = m[0];
+      if (/name=["']cover["']/i.test(metaStr)) {
+        const contentMatch = /content=["']([^"']*)["']/i.exec(metaStr);
+        if (contentMatch) {
+          const coverId = contentMatch[1];
+          const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
+          for (const itemM of itemMatches) {
+            const itemStr = itemM[0];
+            if (itemStr.includes(`id="${coverId}"`) || itemStr.includes(`id='${coverId}'`)) {
+              const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
+              const mimeMatch = /media-type=["']([^"']*)["']/i.exec(itemStr);
+              if (hrefMatch && mimeMatch) {
+                coverHref = hrefMatch[1];
+                coverMimeType = mimeMatch[1];
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (coverHref) break;
+    }
+
+    if (!coverHref) {
+      const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
+      for (const itemM of itemMatches) {
+        const itemStr = itemM[0];
+        const idMatch = /id=["']([^"']*)["']/i.exec(itemStr);
+        if (idMatch && /cover/i.test(idMatch[1])) {
+          const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
+          const mimeMatch = /media-type=["'](image\/[^"']*)["']/i.exec(itemStr);
+          if (hrefMatch && mimeMatch) {
+            coverHref = hrefMatch[1];
+            coverMimeType = mimeMatch[1];
+            break;
+          }
+        }
+      }
+    }
+
+    if (!coverHref) {
+      const itemMatches = safeMatchAll(opfXml, `<item[^>]*>`, 500);
+      for (const itemM of itemMatches) {
+        const itemStr = itemM[0];
+        if (/properties=["'][^"']*cover[^"']*["']/i.test(itemStr)) {
+          const hrefMatch = /href=["']([^"']*)["']/i.exec(itemStr);
+          const mimeMatch = /media-type=["'](image\/[^"']*)["']/i.exec(itemStr);
+          if (hrefMatch && mimeMatch) {
+            coverHref = hrefMatch[1];
+            coverMimeType = mimeMatch[1];
+            break;
+          }
+        }
+      }
+    }
+
+    if (!coverHref) {
+      const coverNames = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif', 'frontcover.jpg', 'frontcover.jpeg', 'frontcover.png', 'title.jpg', 'title.jpeg', 'titlepage.jpg'];
+      for (const name of coverNames) {
+        const found = entries.find(e =>
+          e.name.endsWith(name) ||
+          e.name.endsWith('/' + name)
+        );
+        if (found) {
+          coverHref = found.name;
+          coverMimeType = found.name.toLowerCase().endsWith('.png') ? 'image/png' :
+                          found.name.toLowerCase().endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+          break;
+        }
+      }
+    }
+
+    let coverBase64: string | null = null;
+    if (coverHref) {
+      const coverPath = coverHref.startsWith('/') ? coverHref : opfDir + coverHref;
+      const coverEntry = entries.find(e =>
+        e.name === coverPath ||
+        e.name.endsWith('/' + coverHref) ||
+        e.name === decodeURIComponent(coverPath)
+      );
+      if (coverEntry) {
+        const coverBytes = await readZipEntry(fileData, coverEntry);
+        const base64 = btoa(String.fromCharCode(...coverBytes));
+        coverBase64 = `data:${coverMimeType || 'image/jpeg'};base64,${base64}`;
+      }
+    }
+
+    return { title, author, coverBase64, coverMimeType };
+  } catch {
+    return { title: '', author: '', coverBase64: null, coverMimeType: null };
+  }
+}
+
 export function parseFilenameMetadata(filename: string): { title: string; author: string } {
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
 
