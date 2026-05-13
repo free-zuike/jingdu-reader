@@ -107,13 +107,13 @@ export class BookService {
                 }
                 await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
               }
-
-              const rawBytes = new Uint8Array(fileData);
-              await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
             } catch (e: any) {
-              console.error(`处理EPUB失败 ${file.name}:`, e?.message || e);
-              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '处理失败'}`);
+              console.error(`提取EPUB元数据失败 ${file.name}:`, e?.message || e);
             }
+
+            const rawBytes = new Uint8Array(fileData);
+            await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
+
           } else if (ext === 'txt') {
             try {
               const text = new TextDecoder().decode(fileData);
@@ -180,13 +180,13 @@ export class BookService {
                 }
                 await this.cache.put(`cover:${book.id}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
               }
-
-              const rawBytes = new Uint8Array(fileData);
-              await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
             } catch (e: any) {
-              console.error(`重新处理EPUB失败 ${file.name}:`, e?.message || e);
-              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '处理失败'}`);
+              console.error(`重新提取封面失败 ${file.name}:`, e?.message || e);
             }
+
+            const rawBytes = new Uint8Array(fileData);
+            await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
+
           } else if (ext === 'txt') {
             try {
               const text = new TextDecoder().decode(fileData);
