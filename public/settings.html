@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>静读天下 - 设置</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/settings.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="header-content">
+      <a href="/home" class="logo">
+        <span class="logo-icon">📚</span>
+        <span class="logo-text">静读天下</span>
+      </a>
+      <h1 class="page-title">设置</h1>
+      <div class="header-actions">
+        <a href="/home" class="back-link">返回书架</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="main-content">
+    <div class="settings-container">
+      <!-- WebDAV设置 -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <span class="section-icon">☁️</span>
+          WebDAV配置
+        </h2>
+        <div class="section-content">
+          <form id="webdavForm" class="settings-form">
+            <div class="form-group">
+              <label for="serverUrl">服务器地址</label>
+              <input 
+                type="url" 
+                id="serverUrl" 
+                placeholder="https://example.com/webdav"
+                required
+              >
+              <p class="form-hint">您的WebDAV服务器地址，例如：https://dav.example.com</p>
+            </div>
+            
+            <div class="form-group">
+              <label for="username">用户名</label>
+              <input 
+                type="text" 
+                id="username" 
+                placeholder="请输入用户名"
+                required
+              >
+            </div>
+            
+            <div class="form-group">
+              <label for="password">密码</label>
+              <input 
+                type="password" 
+                id="password" 
+                placeholder="请输入密码"
+                required
+              >
+            </div>
+            
+            <div class="form-group">
+              <label for="basePath">基础路径（可选）</label>
+              <input 
+                type="text" 
+                id="basePath" 
+                placeholder="/books"
+              >
+              <p class="form-hint">书籍存放的目录路径，默认为根目录</p>
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-primary" id="saveWebdavBtn">
+                <span class="btn-text">保存配置</span>
+                <span class="btn-loading" style="display: none;">
+                  <svg class="spinner" viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle>
+                  </svg>
+                </span>
+              </button>
+              <button type="button" class="btn-secondary" id="testConnectionBtn">
+                测试连接
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- 账户信息 -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <span class="section-icon">👤</span>
+          账户信息
+        </h2>
+        <div class="section-content">
+          <div class="info-list">
+            <div class="info-item">
+              <span class="info-label">邮箱</span>
+              <span class="info-value" id="userEmail">-</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">注册时间</span>
+              <span class="info-value" id="createdAt">-</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 危险操作 -->
+      <section class="settings-section danger-zone">
+        <h2 class="section-title">
+          <span class="section-icon">⚠️</span>
+          危险操作
+        </h2>
+        <div class="section-content">
+          <button class="btn-danger" id="logoutBtn">
+            🚪 退出登录
+          </button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Toast提示 -->
+  <div class="toast" id="toast">
+    <span class="toast-message"></span>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    // 初始化页面
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 检查登录状态
+      if (!checkAuth()) return;
+      
+      // 加载用户信息
+      await loadUserInfo();
+      
+      // 加载WebDAV配置
+      await loadWebDAVConfig();
+      
+      // 绑定事件
+      document.getElementById('webdavForm').addEventListener('submit', handleSaveWebDAV);
+      document.getElementById('testConnectionBtn').addEventListener('click', handleTestConnection);
+      document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+    });
+    
+    // 加载用户信息
+    async function loadUserInfo() {
+      try {
+        const result = await getUserProfile();
+        if (result.success) {
+          document.getElementById('userEmail').textContent = result.data.email;
+          document.getElementById('createdAt').textContent = new Date(result.data.createdAt).toLocaleDateString('zh-CN');
+        }
+      } catch (error) {
+        console.error('加载用户信息失败:', error);
+      }
+    }
+    
+    // 加载WebDAV配置
+    async function loadWebDAVConfig() {
+      try {
+        const result = await getWebDAVConfig();
+        if (result.success) {
+          document.getElementById('serverUrl').value = result.data.serverUrl || '';
+          document.getElementById('username').value = result.data.username || '';
+          document.getElementById('basePath').value = result.data.basePath || '';
+          // 密码不显示，留空
+        }
+      } catch (error) {
+        console.error('加载WebDAV配置失败:', error);
+      }
+    }
+    
+    // 保存WebDAV配置
+    async function handleSaveWebDAV(e) {
+      e.preventDefault();
+      
+      const serverUrl = document.getElementById('serverUrl').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const basePath = document.getElementById('basePath').value;
+      
+      const btn = document.getElementById('saveWebdavBtn');
+      btn.disabled = true;
+      btn.querySelector('.btn-text').style.display = 'none';
+      btn.querySelector('.btn-loading').style.display = 'flex';
+      
+      try {
+        const result = await saveWebDAVConfig({
+          serverUrl,
+          username,
+          password,
+          basePath: basePath || '/'
+        });
+        
+        if (result.success) {
+          showToast('WebDAV配置保存成功', 'success');
+        } else {
+          showToast(result.error || '保存失败', 'error');
+        }
+      } catch (error) {
+        showToast('网络错误，请稍后重试', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.querySelector('.btn-text').style.display = 'block';
+        btn.querySelector('.btn-loading').style.display = 'none';
+      }
+    }
+    
+    // 测试连接
+    async function handleTestConnection() {
+      const serverUrl = document.getElementById('serverUrl').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      
+      if (!serverUrl || !username || !password) {
+        showToast('请填写完整的WebDAV配置', 'warning');
+        return;
+      }
+      
+      const btn = document.getElementById('testConnectionBtn');
+      btn.disabled = true;
+      btn.textContent = '测试中...';
+      
+      try {
+        // 先保存配置
+        await saveWebDAVConfig({
+          serverUrl,
+          username,
+          password,
+          basePath: document.getElementById('basePath').value || '/'
+        });
+        
+        showToast('连接测试成功', 'success');
+      } catch (error) {
+        showToast('连接测试失败', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '测试连接';
+      }
+    }
+    
+    // 显示Toast提示
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      toast.querySelector('.toast-message').textContent = message;
+      toast.className = `toast show ${type}`;
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+  </script>
+</body>

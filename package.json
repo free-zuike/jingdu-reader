@@ -1,0 +1,24 @@
+{
+  "name": "jingdu-web",
+  "version": "1.0.0",
+  "description": "静读天下Web端 - Cloudflare Workers在线阅读平台",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "keywords": ["cloudflare", "workers", "epub", "reader", "webdav"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20231218.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.22.1"
+  },
+  "dependencies": {
+    "hono": "^3.12.0",
+    "jose": "^5.2.0"
+  }
+}

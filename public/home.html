@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>静读天下 - 我的书架</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/home.css">
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="header-content">
+      <a href="/home" class="logo">
+        <span class="logo-icon">📚</span>
+        <span class="logo-text">静读天下</span>
+      </a>
+      
+      <div class="header-search">
+        <input type="text" id="searchInput" placeholder="搜索书籍...">
+        <button class="search-btn">🔍</button>
+      </div>
+      
+      <div class="header-actions">
+        <button class="sync-btn" id="syncBtn" title="同步WebDAV">
+          <span class="sync-icon">🔄</span>
+          <span>同步</span>
+        </button>
+        <div class="user-menu">
+          <button class="user-btn" id="userBtn">
+            <span class="user-avatar">👤</span>
+            <span class="user-email" id="userEmail"></span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div class="dropdown-menu" id="dropdownMenu">
+            <a href="/settings">⚙️ 设置</a>
+            <button id="logoutBtn">🚪 退出登录</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="main-content">
+    <!-- 空状态 -->
+    <div class="empty-state" id="emptyState" style="display: none;">
+      <div class="empty-icon">📖</div>
+      <h2>还没有书籍</h2>
+      <p>点击右上角"同步"按钮，从WebDAV导入您的书籍</p>
+      <button class="btn-primary" id="emptySyncBtn">立即同步</button>
+    </div>
+
+    <!-- 书籍列表 -->
+    <div class="books-container" id="booksContainer">
+      <div class="books-header">
+        <h1>我的书架</h1>
+        <div class="view-toggle">
+          <button class="view-btn active" data-view="grid">⊞ 网格</button>
+          <button class="view-btn" data-view="list">☰ 列表</button>
+        </div>
+      </div>
+      
+      <div class="books-grid" id="booksGrid">
+        <!-- 书籍卡片将在这里动态生成 -->
+      </div>
+    </div>
+  </main>
+
+  <!-- 同步加载遮罩 -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+      <div class="spinner-large"></div>
+      <p>正在同步书籍...</p>
+    </div>
+  </div>
+
+  <!-- Toast提示 -->
+  <div class="toast" id="toast">
+    <span class="toast-message"></span>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/home.js"></script>
+  <script>
+    // 初始化页面
+    document.addEventListener('DOMContentLoaded', () => {
+      // 检查登录状态
+      if (!checkAuth()) return;
+      
+      // 显示用户邮箱
+      const user = getCurrentUser();
+      document.getElementById('userEmail').textContent = user.email;
+      
+      // 加载书籍列表
+      loadBooks();
+      
+      // 用户菜单切换
+      const userBtn = document.getElementById('userBtn');
+      const dropdownMenu = document.getElementById('dropdownMenu');
+      
+      userBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdownMenu.classList.toggle('show');
+      });
+      
+      document.addEventListener('click', () => {
+        dropdownMenu.classList.remove('show');
+      });
+      
+      // 退出登录
+      document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+      
+      // 同步按钮
+      document.getElementById('syncBtn').addEventListener('click', handleSync);
+      document.getElementById('emptySyncBtn')?.addEventListener('click', handleSync);
+      
+      // 视图切换
+      document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const view = btn.dataset.view;
+          document.getElementById('booksGrid').className = view === 'grid' ? 'books-grid' : 'books-list';
+        });
+      });
+      
+      // 搜索功能
+      const searchInput = document.getElementById('searchInput');
+      searchInput.addEventListener('input', debounce((e) => {
+        filterBooks(e.target.value);
+      }, 300));
+    });
+  </script>
+</body>
+</html>

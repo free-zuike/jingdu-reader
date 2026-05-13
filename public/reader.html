@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>静读天下 - 阅读器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/reader.css">
+</head>
+<body>
+  <!-- 阅读器头部 -->
+  <header class="reader-header" id="readerHeader">
+    <div class="reader-header-left">
+      <button class="back-btn" onclick="window.location.href='/home'">
+        ← 返回书架
+      </button>
+      <h1 class="book-title" id="bookTitle">加载中...</h1>
+    </div>
+    <div class="reader-header-right">
+      <button class="header-btn" id="tocBtn" title="目录">
+        ☰ 目录
+      </button>
+      <button class="header-btn" id="settingsBtn" title="设置">
+        ⚙️ 设置
+      </button>
+    </div>
+  </header>
+
+  <!-- 阅读区域 -->
+  <main class="reader-content" id="readerContent">
+    <div class="content-wrapper">
+      <div class="chapter-title" id="chapterTitle"></div>
+      <div class="book-text" id="bookText">
+        <div class="loading-text">正在加载书籍内容...</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 阅读器底部 -->
+  <footer class="reader-footer" id="readerFooter">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="footer-controls">
+      <button class="nav-btn" id="prevBtn">← 上一章</button>
+      <span class="page-info" id="pageInfo">0%</span>
+      <button class="nav-btn" id="nextBtn">下一章 →</button>
+    </div>
+  </footer>
+
+  <!-- 目录侧边栏 -->
+  <aside class="toc-sidebar" id="tocSidebar">
+    <div class="toc-header">
+      <h3>目录</h3>
+      <button class="close-btn" id="closeToc">✕</button>
+    </div>
+    <div class="toc-list" id="tocList">
+      <!-- 目录项将在这里动态生成 -->
+    </div>
+  </aside>
+
+  <!-- 设置面板 -->
+  <div class="settings-panel" id="settingsPanel">
+    <div class="settings-content">
+      <div class="settings-header">
+        <h3>阅读设置</h3>
+        <button class="close-btn" id="closeSettings">✕</button>
+      </div>
+      
+      <div class="settings-section">
+        <label>字体大小</label>
+        <div class="font-size-controls">
+          <button class="size-btn" data-size="small">小</button>
+          <button class="size-btn active" data-size="medium">中</button>
+          <button class="size-btn" data-size="large">大</button>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <label>主题模式</label>
+        <div class="theme-options">
+          <button class="theme-btn active" data-theme="dark">
+            <span class="theme-preview dark"></span>
+            <span>深色</span>
+          </button>
+          <button class="theme-btn" data-theme="light">
+            <span class="theme-preview light"></span>
+            <span>浅色</span>
+          </button>
+          <button class="theme-btn" data-theme="sepia">
+            <span class="theme-preview sepia"></span>
+            <span>护眼</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 遮罩层 -->
+  <div class="overlay" id="overlay"></div>
+
+  <!-- Toast提示 -->
+  <div class="toast" id="toast">
+    <span class="toast-message"></span>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/reader.js"></script>
+  <script>
+    // 初始化阅读器
+    document.addEventListener('DOMContentLoaded', () => {
+      // 检查登录状态
+      if (!checkAuth()) return;
+      
+      // 获取书籍ID
+      const pathParts = window.location.pathname.split('/');
+      const bookId = pathParts[pathParts.length - 1];
+      
+      if (!bookId) {
+        window.location.href = '/home';
+        return;
+      }
+      
+      // 初始化阅读器
+      initReader(bookId);
+    });
+  </script>
+</body>
+</html>

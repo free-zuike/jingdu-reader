@@ -1,0 +1,33 @@
+name = "jingdu-web"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# 静态资源托管
+[site]
+bucket = "./public"
+
+# KV命名空间 - 用于会话、阅读进度、书籍缓存
+[[kv_namespaces]]
+binding = "CACHE"
+id = "<KV_NAMESPACE_ID>"
+
+# D1数据库 - 用于用户信息、WebDAV配置
+[[d1_databases]]
+binding = "DB"
+database_name = "jingdu-db"
+database_id = "<D1_DATABASE_ID>"
+
+# R2存储 - 用于书籍文件缓存
+[[r2_buckets]]
+binding = "BOOKS"
+bucket_name = "jingdu-books"
+
+# 环境变量
+[vars]
+JWT_SECRET = "your-jwt-secret-key-change-in-production"
+ENCRYPTION_KEY = "your-encryption-key-32chars-long!!"
+
+# 生产环境变量（需要加密）
+[env.production.vars]
+JWT_SECRET = "<PRODUCTION_JWT_SECRET>"
+ENCRYPTION_KEY = "<PRODUCTION_ENCRYPTION_KEY>"

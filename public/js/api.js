@@ -1,0 +1,122 @@
+// API调用封装
+
+const API_BASE_URL = '';
+
+// 获取token
+function getToken() {
+  return localStorage.getItem('token');
+}
+
+// 通用请求函数
+async function request(url, options = {}) {
+  const token = getToken();
+  
+  const defaultOptions = {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
+    }
+  };
+  
+  const response = await fetch(`${API_BASE_URL}${url}`, {
+    ...defaultOptions,
+    ...options,
+    headers: {
+      ...defaultOptions.headers,
+      ...options.headers
+    }
+  });
+  
+  const data = await response.json();
+  
+  // 如果token过期，跳转到登录页
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('email');
+    window.location.href = '/';
+    return;
+  }
+  
+  return data;
+}
+
+// 认证相关API
+async function sendVerificationCode(email, type = 'register') {
+  return request('/api/auth/verify-code', {
+    method: 'POST',
+    body: JSON.stringify({ email, type })
+  });
+}
+
+async function register(email, password, verifyCode) {
+  return request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, verifyCode })
+  });
+}
+
+async function login(email, password) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password })
+  });
+}
+
+async function logout() {
+  const result = await request('/api/auth/logout', {
+    method: 'POST'
+  });
+  
+  localStorage.removeItem('token');
+  localStorage.removeItem('userId');
+  localStorage.removeItem('email');
+  
+  return result;
+}
+
+// 用户相关API
+async function getUserProfile() {
+  return request('/api/user/profile');
+}
+
+async function getWebDAVConfig() {
+  return request('/api/user/webdav');
+}
+
+async function saveWebDAVConfig(config) {
+  return request('/api/user/webdav', {
+    method: 'PUT',
+    body: JSON.stringify(config)
+  });
+}
+
+// 书籍相关API
+async function getBooks() {
+  return request('/api/books');
+}
+
+async function syncBooks() {
+  return request('/api/books/sync', {
+    method: 'POST'
+  });
+}
+
+async function getBook(bookId) {
+  return request(`/api/books/${bookId}`);
+}
+
+async function getBookContent(bookId) {
+  return request(`/api/books/${bookId}/content`);
+}
+
+async function getReadingProgress(bookId) {
+  return request(`/api/books/${bookId}/progress`);
+}
+
+async function updateReadingProgress(bookId, position, totalLength) {
+  return request(`/api/books/${bookId}/progress`, {
+    method: 'PUT',
+    body: JSON.stringify({ position, totalLength })
+  });
+}
