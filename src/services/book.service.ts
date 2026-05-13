@@ -14,7 +14,7 @@ export class BookService {
     this.cache = cache;
   }
 
-  // 同步WebDAV书籍（下载、解析、缓存到本地）
+  // 同步WebDAV书籍（下载元数据+封面，原始EPUB存KV，阅读时惰性解析）
   async syncBooks(
     userId: string,
     webdavFiles: WebDAVFile[],
@@ -108,24 +108,11 @@ export class BookService {
                 await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
               }
 
-              const content = await extractEpubContent(fileData);
-              if (!content.text || content.text.length < 50) {
-                errors.push(`${file.name}: 内容为空或过短`);
-              }
-              const contentJson = JSON.stringify(content);
-              if (contentJson.length < 25 * 1024 * 1024) {
-                await this.cache.put(`book:${bookId}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-              } else {
-                const truncated = {
-                  text: content.text.substring(0, 5 * 1024 * 1024),
-                  chapters: content.chapters,
-                  truncated: true
-                };
-                await this.cache.put(`book:${bookId}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
-              }
+              const rawBytes = new Uint8Array(fileData);
+              await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
             } catch (e: any) {
-              console.error(`解析EPUB失败 ${file.name}:`, e?.message || e);
-              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '解析失败'}`);
+              console.error(`处理EPUB失败 ${file.name}:`, e?.message || e);
+              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '处理失败'}`);
             }
           } else if (ext === 'txt') {
             try {
@@ -194,21 +181,11 @@ export class BookService {
                 await this.cache.put(`cover:${book.id}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
               }
 
-              const content = await extractEpubContent(fileData);
-              const contentJson = JSON.stringify(content);
-              if (contentJson.length < 25 * 1024 * 1024) {
-                await this.cache.put(`book:${book.id}`, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-              } else {
-                const truncated = {
-                  text: content.text.substring(0, 5 * 1024 * 1024),
-                  chapters: content.chapters,
-                  truncated: true
-                };
-                await this.cache.put(`book:${book.id}`, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
-              }
+              const rawBytes = new Uint8Array(fileData);
+              await this.cache.put(`raw:${book.id}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
             } catch (e: any) {
-              console.error(`重新解析EPUB失败 ${file.name}:`, e?.message || e);
-              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '解析失败'}`);
+              console.error(`重新处理EPUB失败 ${file.name}:`, e?.message || e);
+              errors.push(`${file.name}: ${e?.message?.substring(0, 50) || '处理失败'}`);
             }
           } else if (ext === 'txt') {
             try {
@@ -318,7 +295,7 @@ export class BookService {
     }
   }
 
-  // 获取书籍内容（从KV缓存读取，不访问WebDAV）
+  // 获取书籍内容（惰性解析：优先从缓存读，没有则从原始EPUB提取并缓存）
   async getBookContent(userId: string, bookId: string): Promise<ApiResponse> {
     try {
       const book = await this.db.getBookById(bookId);
@@ -326,12 +303,40 @@ export class BookService {
         return { success: false, error: '书籍不存在' };
       }
 
-      // 从KV读取缓存内容
       const cacheKey = `book:${bookId}`;
       const cached = await this.cache.get(cacheKey);
 
       if (cached) {
         const content = JSON.parse(cached);
+        return {
+          success: true,
+          data: {
+            text: content.text,
+            chapters: content.chapters,
+            title: book.title,
+            author: book.author
+          }
+        };
+      }
+
+      const rawKey = `raw:${bookId}`;
+      const rawData = await this.cache.get(rawKey, 'arrayBuffer');
+      if (rawData) {
+        const fileData = rawData as ArrayBuffer;
+        const content = await extractEpubContent(fileData);
+
+        const contentJson = JSON.stringify(content);
+        if (contentJson.length < 25 * 1024 * 1024) {
+          await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
+        } else {
+          const truncated = {
+            text: content.text.substring(0, 5 * 1024 * 1024),
+            chapters: content.chapters,
+            truncated: true
+          };
+          await this.cache.put(cacheKey, JSON.stringify(truncated), { expirationTtl: 30 * 24 * 60 * 60 });
+        }
+
         return {
           success: true,
           data: {
