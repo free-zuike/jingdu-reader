@@ -122,7 +122,7 @@ export class BookService {
         });
       }
 
-      return { success: true, data: bookList };
+      return { success: true, data: { books: bookList } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取书籍列表失败' };
     }

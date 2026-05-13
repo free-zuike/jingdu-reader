@@ -8,8 +8,9 @@ async function loadBooks() {
   try {
     const result = await getBooks();
     
-    if (result.success && result.data.books) {
-      allBooks = result.data.books;
+    if (result.success) {
+      const books = Array.isArray(result.data) ? result.data : (result.data?.books || []);
+      allBooks = books;
       renderBooks(allBooks);
       
       // 显示空状态或书籍列表
