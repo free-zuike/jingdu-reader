@@ -2,7 +2,8 @@
 // 用法: node scripts/update-toml.js <d1_id> <kv_id> <jwt_secret> <encryption_key>
 const fs = require('fs');
 let content = fs.readFileSync('wrangler.toml', 'utf8');
-const [d1_id, kv_id, jwt_secret, encryption_key] = process.argv.slice(1);
+// process.argv: [node, script, arg1, arg2, ...] 所以参数从 index 2 开始
+const [, , d1_id, kv_id, jwt_secret, encryption_key] = process.argv;
 
 content = content.replace(/database_id = ".*"/, `database_id = "${d1_id}"`);
 content = content.replace(/(binding = "CACHE"\n\s*id = )".*"/, `$1"${kv_id}"`);
