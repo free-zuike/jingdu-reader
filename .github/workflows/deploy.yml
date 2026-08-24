@@ -50,56 +50,52 @@ jobs:
       - name: Setup D1 Database
         id: d1
         run: |
-          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
-          DB_NAME="jingdu-db"
+          echo "检查 D1 数据库 jingdu-db..."
+          D1_ID=$(npx wrangler d1 list --json 2>/dev/null | node -e "
+            const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            const db = data.find(d => d.name === 'jingdu-db');
+            if (db) process.stdout.write(db.uuid);
+          " || true)
 
-          echo "检查 D1 数据库 $DB_NAME..."
-          D1_LIST=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json")
-          D1_ID=$(echo $D1_LIST | jq -r '.result[] | select(.name=="'"$DB_NAME"'") | .uuid')
-
-          if [ -z "$D1_ID" ] || [ "$D1_ID" = "null" ]; then
-            echo "创建 D1 数据库 $DB_NAME..."
-            D1_CREATE=$(curl -s -X POST \
-              "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database" \
-              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -d '{"name":"'"$DB_NAME"'"}')
-            D1_ID=$(echo $D1_CREATE | jq -r '.result.uuid')
-            echo "✅ D1 数据库已创建: $D1_ID"
+          if [ -z "$D1_ID" ]; then
+            echo "创建 D1 数据库 jingdu-db..."
+            npx wrangler d1 create jingdu-db 2>&1 | tee /tmp/d1_create.txt
+            D1_ID=$(grep -oP 'database_id = "\K[a-f0-9-]{36}' /tmp/d1_create.txt || true)
           else
             echo "✅ D1 数据库已存在: $D1_ID"
           fi
+
+          if [ -z "$D1_ID" ]; then
+            echo "FATAL: 无法获取 D1 database_id"
+            exit 1
+          fi
           echo "d1_id=$D1_ID" >> $GITHUB_OUTPUT
+          echo "✅ D1 database_id: $D1_ID"
 
       - name: Setup KV Namespace
         id: kv
         run: |
-          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
-          KV_NAME="jingdu-cache"
+          echo "检查 KV 命名空间 jingdu-cache..."
+          KV_ID=$(npx wrangler kv namespace list --json 2>/dev/null | node -e "
+            const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            const kv = data.find(k => k.title === 'jingdu-cache');
+            if (kv) process.stdout.write(kv.id);
+          " || true)
 
-          echo "检查 KV 命名空间 $KV_NAME..."
-          KV_LIST=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json")
-          KV_ID=$(echo $KV_LIST | jq -r '.result[] | select(.title=="'"$KV_NAME"'") | .id')
-
-          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
-            echo "创建 KV 命名空间 $KV_NAME..."
-            KV_CREATE=$(curl -s -X POST \
-              "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
-              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-              -H "Content-Type: application/json" \
-              -d '{"title":"'"$KV_NAME"'"}')
-            KV_ID=$(echo $KV_CREATE | jq -r '.result.id')
-            echo "✅ KV 命名空间已创建: $KV_ID"
+          if [ -z "$KV_ID" ]; then
+            echo "创建 KV 命名空间 jingdu-cache..."
+            npx wrangler kv namespace create jingdu-cache 2>&1 | tee /tmp/kv_create.txt
+            KV_ID=$(grep -oP 'id = "\K[a-f0-9-]{32}' /tmp/kv_create.txt || true)
           else
             echo "✅ KV 命名空间已存在: $KV_ID"
           fi
+
+          if [ -z "$KV_ID" ]; then
+            echo "FATAL: 无法获取 KV namespace id"
+            exit 1
+          fi
           echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+          echo "✅ KV namespace id: $KV_ID"
 
       - name: Generate Secrets
         id: secrets
