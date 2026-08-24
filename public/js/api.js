@@ -63,6 +63,13 @@ async function login(email, password) {
   });
 }
 
+async function resetPassword(email, newPassword, verifyCode) {
+  return request('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ email, newPassword, verifyCode })
+  });
+}
+
 async function logout() {
   const result = await request('/api/auth/logout', {
     method: 'POST'
@@ -111,6 +118,37 @@ async function testSavedWebDAVConnection() {
   });
 }
 
+// 阅读偏好API
+async function getPreferences() {
+  return request('/api/user/preferences');
+}
+
+async function savePreferences(fontSize, theme) {
+  return request('/api/user/preferences', {
+    method: 'PUT',
+    body: JSON.stringify({ fontSize, theme })
+  });
+}
+
+// SMTP配置API
+async function getSmtpConfig() {
+  return request('/api/user/smtp-config');
+}
+
+async function saveSmtpConfig(config) {
+  return request('/api/user/smtp-config', {
+    method: 'PUT',
+    body: JSON.stringify(config)
+  });
+}
+
+async function testSmtpConnection(config) {
+  return request('/api/user/smtp-config/test', {
+    method: 'POST',
+    body: JSON.stringify(config)
+  });
+}
+
 // 书籍相关API
 async function getBooks() {
   return request('/api/books');
@@ -154,5 +192,11 @@ async function updateReadingProgress(bookId, position, totalLength) {
   return request(`/api/books/${bookId}/progress`, {
     method: 'PUT',
     body: JSON.stringify({ position, totalLength })
+  });
+}
+
+async function deleteBook(bookId) {
+  return request(`/api/books/${bookId}`, {
+    method: 'DELETE'
   });
 }

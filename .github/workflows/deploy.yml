@@ -1,39 +1,149 @@
+# ============================================
+# 静读天下 - 自动部署到 Cloudflare Workers
+# ============================================
+# Fork 者只需设置 1 个 Secret：
+#   - CLOUDFLARE_API_TOKEN（Workers/Pages/D1/KV 编辑权限）
+# Account ID 自动从 API Token 获取，无需手动设置
+# D1 数据库 / KV 命名空间自动创建
+# 密钥自动生成（JWT_SECRET, ENCRYPTION_KEY）
+
 name: Deploy to Cloudflare Workers
 
 on:
   push:
-    branches:
-      - main  # 当推送到main分支时触发
-  workflow_dispatch:  # 允许手动触发
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    name: Deploy
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Type check
-        run: npm run check
+        run: npx tsc --noEmit
 
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env production
+      - name: Get Account ID
+        id: account
+        run: |
+          echo "获取 Cloudflare Account ID..."
+          ACCOUNT_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+          echo "Account ID: $ACCOUNT_ID"
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Setup D1 Database
+        id: d1
+        run: |
+          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
+          DB_NAME="jingdu-db"
+
+          echo "检查 D1 数据库 $DB_NAME..."
+          D1_LIST=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json")
+          D1_ID=$(echo $D1_LIST | jq -r '.result[] | select(.name=="'"$DB_NAME"'") | .uuid')
+
+          if [ -z "$D1_ID" ] || [ "$D1_ID" = "null" ]; then
+            echo "创建 D1 数据库 $DB_NAME..."
+            D1_CREATE=$(curl -s -X POST \
+              "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/d1/database" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"name":"'"$DB_NAME"'"}')
+            D1_ID=$(echo $D1_CREATE | jq -r '.result.uuid')
+            echo "✅ D1 数据库已创建: $D1_ID"
+          else
+            echo "✅ D1 数据库已存在: $D1_ID"
+          fi
+          echo "d1_id=$D1_ID" >> $GITHUB_OUTPUT
+
+      - name: Setup KV Namespace
+        id: kv
+        run: |
+          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
+          KV_NAME="jingdu-cache"
+
+          echo "检查 KV 命名空间 $KV_NAME..."
+          KV_LIST=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json")
+          KV_ID=$(echo $KV_LIST | jq -r '.result[] | select(.title=="'"$KV_NAME"'") | .id')
+
+          if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
+            echo "创建 KV 命名空间 $KV_NAME..."
+            KV_CREATE=$(curl -s -X POST \
+              "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"title":"'"$KV_NAME"'"}')
+            KV_ID=$(echo $KV_CREATE | jq -r '.result.id')
+            echo "✅ KV 命名空间已创建: $KV_ID"
+          else
+            echo "✅ KV 命名空间已存在: $KV_ID"
+          fi
+          echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+
+      - name: Generate Secrets
+        id: secrets
+        run: |
+          JWT_SECRET=$(openssl rand -base64 32)
+          ENCRYPTION_KEY=$(openssl rand -base64 32)
+          echo "jwt_secret=$JWT_SECRET" >> $GITHUB_OUTPUT
+          echo "encryption_key=$ENCRYPTION_KEY" >> $GITHUB_OUTPUT
+
+      - name: Update wrangler.toml
+        run: |
+          # 更新 D1 database_id
+          sed -i "s/database_id = \".*/database_id = \"${{ steps.d1.outputs.d1_id }}\"/" wrangler.toml
+          # 更新 KV id（仅匹配 kv_namespaces 下的 id）
+          sed -i "/binding = \"CACHE\"/{n;s/id = \".*/id = \"${{ steps.kv.outputs.kv_id }}\"/}" wrangler.toml
+          # 更新 JWT_SECRET
+          sed -i "s/^JWT_SECRET = \".*/JWT_SECRET = \"${{ steps.secrets.outputs.jwt_secret }}\"/" wrangler.toml
+          # 更新 ENCRYPTION_KEY
+          sed -i "s/^ENCRYPTION_KEY = \".*/ENCRYPTION_KEY = \"${{ steps.secrets.outputs.encryption_key }}\"/" wrangler.toml
+          echo "✅ wrangler.toml 已更新"
+          echo "--- D1 database_id ---"
+          grep "^database_id" wrangler.toml
+          echo "--- KV id ---"
+          grep -A1 "binding = \"CACHE\"" wrangler.toml | tail -1
 
       - name: Initialize D1 Database
-        run: npx wrangler d1 execute jingdu-db --file=./schema.sql --remote --yes
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "初始化数据库表..."
+          npx wrangler d1 execute jingdu-db --file=./schema.sql --remote --yes
+          echo "✅ 数据库表已创建"
+
+      - name: Deploy
+        run: |
+          echo "部署静读天下..."
+          npx wrangler deploy
+          echo "✅ 部署完成"
+
+      - name: Deployment Info
+        run: |
+          echo "📚 静读天下部署完成!"
+          echo "📍 访问地址: https://jingdu-web.${{ steps.account.outputs.account_id }}.workers.dev"
+          echo "📧 首次注册后，请到设置页面配置 SMTP 以发送验证码邮件"
+          echo ""
+          echo "⚠️ 重要：请将以下密钥保存到 GitHub Secrets（可选但推荐）："
+          echo "    JWT_SECRET: ${{ steps.secrets.outputs.jwt_secret }}"
+          echo "    ENCRYPTION_KEY: ${{ steps.secrets.outputs.encryption_key }}"
+          echo "（部署脚本已在 wrangler.toml 中设置，如需持久化请保存）"

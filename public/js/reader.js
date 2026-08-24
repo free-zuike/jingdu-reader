@@ -265,30 +265,32 @@ function initEventListeners() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
+
       const size = btn.dataset.size;
       const content = document.querySelector('.reader-content');
       content.classList.remove('font-small', 'font-medium', 'font-large');
       content.classList.add(`font-${size}`);
-      
+
       // 保存设置
       localStorage.setItem('readerFontSize', size);
+      savePreferencesToServer(size, localStorage.getItem('readerTheme') || 'dark');
     });
   });
-  
+
   // 主题切换
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      
+
       const theme = btn.dataset.theme;
       const content = document.querySelector('.reader-content');
       content.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       content.classList.add(`theme-${theme}`);
-      
+
       // 保存设置
       localStorage.setItem('readerTheme', theme);
+      savePreferencesToServer(localStorage.getItem('readerFontSize') || 'medium', theme);
     });
   });
   
@@ -308,28 +310,44 @@ function initEventListeners() {
 }
 
 // 加载设置
-function loadSettings() {
-  // 字体大小
+async function loadSettings() {
+  // 先从 localStorage 快速加载（即时响应）
   const savedFontSize = localStorage.getItem('readerFontSize') || 'medium';
-  document.querySelectorAll('.size-btn').forEach(btn => {
-    if (btn.dataset.size === savedFontSize) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
-    }
-  });
-  document.querySelector('.reader-content').classList.add(`font-${savedFontSize}`);
-  
-  // 主题
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    if (btn.dataset.theme === savedTheme) {
-      btn.classList.add('active');
-    } else {
-      btn.classList.remove('active');
+  applySettings(savedFontSize, savedTheme);
+
+  // 再从服务器加载（跨设备同步）
+  try {
+    const result = await getPreferences();
+    if (result.success && result.data) {
+      const fontSize = result.data.fontSize || savedFontSize;
+      const theme = result.data.theme || savedTheme;
+      applySettings(fontSize, theme);
+      // 同步到 localStorage
+      localStorage.setItem('readerFontSize', fontSize);
+      localStorage.setItem('readerTheme', theme);
     }
+  } catch (e) {
+    // 服务器加载失败，使用本地设置
+  }
+}
+
+// 应用设置
+function applySettings(fontSize, theme) {
+  // 字体大小按钮
+  document.querySelectorAll('.size-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.size === fontSize);
   });
-  document.querySelector('.reader-content').classList.add(`theme-${savedTheme}`);
+  const content = document.querySelector('.reader-content');
+  content.classList.remove('font-small', 'font-medium', 'font-large');
+  content.classList.add(`font-${fontSize}`);
+
+  // 主题按钮
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === theme);
+  });
+  content.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  content.classList.add(`theme-${theme}`);
 }
 
 // 打开目录
@@ -390,4 +408,17 @@ function throttle(func, limit) {
       setTimeout(() => inThrottle = false, limit);
     }
   };
+}
+
+// 保存偏好到服务器（防抖，避免频繁请求）
+let savePrefsTimer = null;
+function savePreferencesToServer(fontSize, theme) {
+  if (savePrefsTimer) clearTimeout(savePrefsTimer);
+  savePrefsTimer = setTimeout(async () => {
+    try {
+      await savePreferences(fontSize, theme);
+    } catch (e) {
+      // 保存失败，静默处理
+    }
+  }, 2000);
 }

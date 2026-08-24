@@ -3,8 +3,16 @@
 export interface Env {
   CACHE: KVNamespace;
   DB: D1Database;
+  ASSETS: Fetcher;
   JWT_SECRET: string;
   ENCRYPTION_KEY: string;
+  SMTP_HOST: string;
+  SMTP_PORT: string;
+  SMTP_USER: string;
+  SMTP_PASS: string;
+  SENDER_EMAIL: string;
+  SENDER_NAME: string;
+  [key: string]: unknown;
 }
 
 // 用户类型
@@ -118,4 +126,28 @@ export interface WebDAVFile {
   size: number;
   lastModified: string;
   isDirectory: boolean;
+}
+
+// SMTP配置类型
+export interface SmtpConfig {
+  id: string;
+  user_id: string;
+  host: string;
+  port: number;
+  username: string;
+  password_encrypted: string;
+  sender_email: string;
+  sender_name: string;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmtpConfigInput {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  senderEmail: string;
+  senderName?: string;
 }

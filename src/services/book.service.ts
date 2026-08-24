@@ -87,13 +87,14 @@ export class BookService {
         return { success: false, error: fileResult.error || '下载失败' };
       }
 
-      const fileData = fileResult.data.content as ArrayBuffer;
+      const fileData = (fileResult.data as { content: ArrayBuffer }).content;
       const rawBytes = new Uint8Array(fileData);
       await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
 
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(fileData);
-        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters: [{ title: '正文', startIndex: 0 }] }), { expirationTtl: 30 * 24 * 60 * 60 });
+        const chapters = this.detectTxtChapters(text);
+        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
       }
 
       await this.db.markBookSynced(bookId);
@@ -112,15 +113,41 @@ export class BookService {
       for (const book of books) {
         const coverKey = `cover:${book.id}`;
         const cachedCover = await this.cache.get(coverKey);
+
+        // 获取阅读进度
+        const progressKey = `progress:${userId}:${book.id}`;
+        const progressData = await this.cache.get(progressKey);
+        let progress: number | undefined;
+        let lastReadAt: string | undefined;
+
+        if (progressData) {
+          try {
+            const p = JSON.parse(progressData);
+            if (p.totalLength > 0) {
+              progress = Math.round((p.currentPosition / p.totalLength) * 100);
+            }
+            lastReadAt = p.lastReadAt;
+          } catch {}
+        }
+
         bookList.push({
           id: book.id,
           title: book.title,
           author: book.author,
           cover: cachedCover ? `/api/books/${book.id}/cover` : undefined,
           format: book.format,
-          progress: undefined
+          progress,
+          lastReadAt
         });
       }
+
+      // 按最近阅读时间排序（有阅读记录的排前面）
+      bookList.sort((a, b) => {
+        if (!a.lastReadAt && !b.lastReadAt) return 0;
+        if (!a.lastReadAt) return 1;
+        if (!b.lastReadAt) return -1;
+        return new Date(b.lastReadAt).getTime() - new Date(a.lastReadAt).getTime();
+      });
 
       return { success: true, data: { books: bookList } };
     } catch (error: any) {
@@ -149,6 +176,29 @@ export class BookService {
       };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取书籍失败' };
+    }
+  }
+
+  // 删除书籍（从本地库和缓存中移除）
+  async deleteBook(userId: string, bookId: string): Promise<ApiResponse> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) {
+        return { success: false, error: '书籍不存在' };
+      }
+
+      // 删除KV缓存
+      await this.cache.delete(`book:${bookId}`);
+      await this.cache.delete(`raw:${bookId}`);
+      await this.cache.delete(`cover:${bookId}`);
+      await this.cache.delete(`progress:${userId}:${bookId}`);
+
+      // 删除数据库记录
+      await this.db.deleteBook(bookId);
+
+      return { success: true, message: '书籍已删除' };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '删除书籍失败' };
     }
   }
 
@@ -186,7 +236,7 @@ export class BookService {
 
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(rawData as ArrayBuffer);
-        const chapters = [{ title: '正文', startIndex: 0 }];
+        const chapters = this.detectTxtChapters(text);
         const contentJson = JSON.stringify({ text, chapters });
         await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
         return { success: true, data: { text, chapters, title: book.title, author: book.author } };
@@ -227,14 +277,15 @@ export class BookService {
   async readMoonProgress(userId: string, book: { id: string; title: string; author?: string; format: string }, webdavService: WebDAVService): Promise<{ chapter: number; location: string; percentage: number } | null> {
     try {
       const cacheResult = await webdavService.listMoonPlusCache(userId);
-      if (!cacheResult.success || !cacheResult.data?.files?.length) return null;
+      const cacheData = cacheResult.data as { files: any[]; path?: string } | undefined;
+      if (!cacheResult.success || !cacheData?.files?.length) return null;
 
       const bookTitle = book.title.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
       const bookAuthor = (book.author || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
 
       let bestMatch: { file: any; score: number } | null = null;
 
-      for (const poFile of cacheResult.data.files) {
+      for (const poFile of cacheData.files) {
         const poName = poFile.name.replace('.po', '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         let score = 0;
 
@@ -271,9 +322,10 @@ export class BookService {
 
       console.log(`[Moon+] 从进度文件读取: ${bestMatch.file.name} (score: ${bestMatch.score})`);
       const poResult = await webdavService.getMoonPlusProgressFile(userId, bestMatch.file.path);
-      if (!poResult.success || !poResult.data?.content) return null;
+      const poData = poResult.data as { content: string } | undefined;
+      if (!poResult.success || !poData?.content) return null;
 
-      return webdavService.parseMoonPlusProgress(poResult.data.content);
+      return webdavService.parseMoonPlusProgress(poData.content);
     } catch {
       return null;
     }
@@ -323,12 +375,13 @@ export class BookService {
       let poPath: string | null = null;
 
       const cacheResult = await webdavService.listMoonPlusCache(userId);
-      if (cacheResult.success && cacheResult.data?.files?.length) {
+      const cacheData = cacheResult.data as { files: any[]; path?: string } | undefined;
+      if (cacheResult.success && cacheData?.files?.length) {
         const bookTitle = book.title.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         const bookAuthor = (book.author || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         let bestMatch: { file: any; score: number } | null = null;
 
-        for (const poFile of cacheResult.data.files) {
+        for (const poFile of cacheData.files) {
           const poName = poFile.name.replace('.po', '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
           let score = 0;
 
@@ -377,5 +430,78 @@ export class BookService {
     } catch (e) {
       console.log('[Moon+] 写入进度失败:', e);
     }
+  }
+
+  // 检测TXT文件中的章节
+  private detectTxtChapters(text: string): Array<{ title: string; startIndex: number }> {
+    // 章节标题正则模式
+    const patterns: RegExp[] = [
+      /^第[一二三四五六七八九十百千万\d]+[章回节卷集部篇]/m,  // 第X章/回/节/卷
+      /^第[一二三四五六七八九十百千万\d]+章\s/m,               // 第X章（带空格）
+      /^[0-9]+[、.．]\s*.+/m,                                   // 1、标题 / 1. 标题
+      /^[Cc]hapter\s+\d+/m,                                     // Chapter 1
+      /^[Cc]hapter\s+[IVXLC]+/m,                                // Chapter IV
+      /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言)/m,      // 特殊章节
+      /^【.+】/m,                                                // 【标题】
+      /^[☆★◇◆□■○●△▲].+/m,                                    // 符号开头标题
+    ];
+
+    const chapters: Array<{ title: string; startIndex: number }> = [];
+    const lines = text.split('\n');
+    let currentOffset = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.length === 0 || line.length > 50) {
+        currentOffset += lines[i].length + 1;
+        continue;
+      }
+
+      // Check if this line matches any chapter pattern
+      let matched = false;
+      for (const pattern of patterns) {
+        if (pattern.test(line)) {
+          // Verify it's a standalone chapter title line (not too long, not a sentence)
+          if (line.length <= 40) {
+            chapters.push({ title: line, startIndex: currentOffset });
+            matched = true;
+            break;
+          }
+        }
+      }
+
+      currentOffset += lines[i].length + 1;
+    }
+
+    // 如果没有检测到章节，或者章节太少，尝试更宽松的匹配
+    if (chapters.length < 2 && text.length > 5000) {
+      chapters.length = 0;
+      currentOffset = 0;
+      const loosePattern = /^第[一二三四五六七八九十百千万\d]+[章回节卷]/m;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.length > 0 && line.length <= 40 && loosePattern.test(line)) {
+          chapters.push({ title: line, startIndex: currentOffset });
+        }
+        currentOffset += lines[i].length + 1;
+      }
+    }
+
+    // 如果仍然没有章节，或只有1个，使用分页
+    if (chapters.length <= 1) {
+      chapters.length = 0;
+      const pageSize = 5000;
+      const totalPages = Math.ceil(text.length / pageSize);
+      for (let i = 0; i < totalPages; i++) {
+        chapters.push({ title: `第${i + 1}页`, startIndex: i * pageSize });
+      }
+      // 确保至少有一个章节
+      if (chapters.length === 0) {
+        chapters.push({ title: '正文', startIndex: 0 });
+      }
+    }
+
+    return chapters;
   }
 }

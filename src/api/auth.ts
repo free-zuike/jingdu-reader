@@ -13,8 +13,8 @@ auth.post('/verify-code', async (c) => {
   const { email, type } = await c.req.json();
   
   const db = new Database(c.env.DB);
-  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
-  
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
+
   const result = await authService.sendVerificationCode(email, type || 'register');
   
   if (!result.success) {
@@ -29,7 +29,7 @@ auth.post('/register', async (c) => {
   const { email, password, verifyCode } = await c.req.json();
   
   const db = new Database(c.env.DB);
-  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
   
   const result = await authService.register(email, password, verifyCode);
   
@@ -45,7 +45,7 @@ auth.post('/login', async (c) => {
   const { email, password } = await c.req.json();
   
   const db = new Database(c.env.DB);
-  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
   
   const result = await authService.login(email, password);
   
@@ -62,9 +62,25 @@ auth.post('/logout', authMiddleware, async (c) => {
   const token = authHeader ? authHeader.substring(7) : '';
   
   const db = new Database(c.env.DB);
-  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
   
   const result = await authService.logout(token);
+  
+  return c.json(result);
+});
+
+// 重置密码
+auth.post('/reset-password', async (c) => {
+  const { email, newPassword, verifyCode } = await c.req.json();
+  
+  const db = new Database(c.env.DB);
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
+  
+  const result = await authService.resetPassword(email, newPassword, verifyCode);
+  
+  if (!result.success) {
+    return c.json(result, 400);
+  }
   
   return c.json(result);
 });

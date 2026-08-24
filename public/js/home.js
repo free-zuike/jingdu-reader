@@ -73,11 +73,15 @@ function createBookCard(book) {
   };
   
   const progress = book.progress || 0;
+  const lastRead = book.lastReadAt ? formatDate(book.lastReadAt) : '';
   
   card.innerHTML = `
     <div class="book-cover">
       <span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>
       <span class="book-format-badge">${book.format.toUpperCase()}</span>
+      <button class="book-delete-btn" data-book-id="${book.id}" title="删除">
+        ✕
+      </button>
     </div>
     <div class="book-info">
       <h3 class="book-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</h3>
@@ -93,8 +97,28 @@ function createBookCard(book) {
           </div>
         ` : '<span class="new-badge">NEW</span>'}
       </div>
+      ${lastRead ? `<div class="book-last-read">上次阅读: ${lastRead}</div>` : ''}
     </div>
   `;
+
+  // 删除按钮事件
+  const deleteBtn = card.querySelector('.book-delete-btn');
+  deleteBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (confirm(`确定要删除《${book.title}》吗？\n（仅从书架移除，不影响WebDAV上的原文件）`)) {
+      try {
+        const result = await deleteBook(book.id);
+        if (result.success) {
+          showToast('删除成功', 'success');
+          loadBooks();
+        } else {
+          showToast(result.error || '删除失败', 'error');
+        }
+      } catch (err) {
+        showToast('删除失败', 'error');
+      }
+    }
+  });
   
   return card;
 }

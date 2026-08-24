@@ -98,6 +98,104 @@
         </div>
       </section>
 
+      <!-- SMTP邮件配置 -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <span class="section-icon">📧</span>
+          邮件发送(SMTP)
+          <span class="config-status" id="smtpConfigStatus" style="display:none;"></span>
+        </h2>
+        <div class="section-content">
+          <form id="smtpForm" class="settings-form">
+            <div class="form-group">
+              <label for="smtpHost">SMTP服务器地址</label>
+              <input type="text" id="smtpHost" placeholder="smtp.qq.com" required>
+              <p class="form-hint">SMTP服务器地址，例如 smtp.qq.com</p>
+            </div>
+            <div class="form-group">
+              <label for="smtpPort">端口</label>
+              <input type="number" id="smtpPort" placeholder="587" value="587">
+              <p class="form-hint">通常为 587（TLS）或 465（SSL）</p>
+            </div>
+            <div class="form-group">
+              <label for="smtpUser">邮箱账号</label>
+              <input type="text" id="smtpUser" placeholder="your@qq.com" required>
+            </div>
+            <div class="form-group">
+              <label for="smtpPass">SMTP授权码</label>
+              <input type="password" id="smtpPass" placeholder="SMTP授权码（非登录密码）">
+              <p class="form-hint">QQ邮箱需在设置中生成授权码，163邮箱使用登录密码</p>
+            </div>
+            <div class="form-group">
+              <label for="smtpSenderEmail">发件人地址</label>
+              <input type="email" id="smtpSenderEmail" placeholder="your@qq.com" required>
+            </div>
+            <div class="form-group">
+              <label for="smtpSenderName">发件人名称</label>
+              <input type="text" id="smtpSenderName" placeholder="静读天下">
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary" id="saveSmtpBtn">
+                <span class="btn-text">保存配置</span>
+                <span class="btn-loading" style="display: none;">
+                  <svg class="spinner" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle></svg>
+                </span>
+              </button>
+              <button type="button" class="btn-secondary" id="testSmtpBtn">测试连接</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- 阅读偏好设置 -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <span class="section-icon">📖</span>
+          阅读偏好
+        </h2>
+        <div class="section-content">
+          <div class="settings-form">
+            <div class="form-group">
+              <label>默认字体大小</label>
+              <div class="pref-options">
+                <button type="button" class="pref-btn" data-pref="fontSize" data-value="small">小</button>
+                <button type="button" class="pref-btn" data-pref="fontSize" data-value="medium">中</button>
+                <button type="button" class="pref-btn" data-pref="fontSize" data-value="large">大</button>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>默认主题模式</label>
+              <div class="pref-options">
+                <button type="button" class="pref-btn theme-pref-btn" data-pref="theme" data-value="dark">
+                  <span class="theme-preview dark"></span>
+                  <span>深色</span>
+                </button>
+                <button type="button" class="pref-btn theme-pref-btn" data-pref="theme" data-value="light">
+                  <span class="theme-preview light"></span>
+                  <span>浅色</span>
+                </button>
+                <button type="button" class="pref-btn theme-pref-btn" data-pref="theme" data-value="sepia">
+                  <span class="theme-preview sepia"></span>
+                  <span>护眼</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="btn-primary" id="savePrefsBtn">
+                <span class="btn-text">保存偏好</span>
+                <span class="btn-loading" style="display: none;">
+                  <svg class="spinner" viewBox="0 0 50 50">
+                    <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle>
+                  </svg>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 账户信息 -->
       <section class="settings-section">
         <h2 class="section-title">
@@ -140,231 +238,5 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
-  <script>
-    let hasSavedConfig = false;
-
-    // 初始化页面
-    document.addEventListener('DOMContentLoaded', async () => {
-      // 检查登录状态
-      if (!checkAuth()) return;
-      
-      // 加载用户信息
-      await loadUserInfo();
-      
-      // 加载WebDAV配置
-      await loadWebDAVConfig();
-      
-      // 绑定事件
-      document.getElementById('webdavForm').addEventListener('submit', handleSaveWebDAV);
-      document.getElementById('testConnectionBtn').addEventListener('click', handleTestConnection);
-      document.getElementById('testSavedBtn').addEventListener('click', handleTestSaved);
-      document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-    });
-    
-    // 加载用户信息
-    async function loadUserInfo() {
-      try {
-        const result = await getUserProfile();
-        if (result.success) {
-          document.getElementById('userEmail').textContent = result.data.email;
-          document.getElementById('createdAt').textContent = new Date(result.data.createdAt).toLocaleDateString('zh-CN');
-        }
-      } catch (error) {
-        console.error('加载用户信息失败:', error);
-      }
-    }
-    
-    // 加载WebDAV配置
-    async function loadWebDAVConfig() {
-      try {
-        const result = await getWebDAVConfig();
-        if (result.success && result.data && result.data.hasConfig) {
-          hasSavedConfig = true;
-          document.getElementById('serverUrl').value = result.data.serverUrl || '';
-          document.getElementById('username').value = result.data.username || '';
-          document.getElementById('basePath').value = result.data.basePath || '';
-          document.getElementById('password').value = '';
-          document.getElementById('password').removeAttribute('required');
-          
-          // 显示已保存状态
-          const statusEl = document.getElementById('configStatus');
-          statusEl.textContent = '✅ 已配置';
-          statusEl.style.display = 'inline';
-          statusEl.style.color = '#4ade80';
-          statusEl.style.fontSize = '0.8rem';
-          statusEl.style.fontWeight = 'normal';
-          
-          document.getElementById('savedHint').style.display = 'inline';
-          document.getElementById('testSavedBtn').style.display = 'inline-block';
-        } else {
-          hasSavedConfig = false;
-          document.getElementById('configStatus').style.display = 'none';
-          document.getElementById('savedHint').style.display = 'none';
-          document.getElementById('testSavedBtn').style.display = 'none';
-        }
-      } catch (error) {
-        console.error('加载WebDAV配置失败:', error);
-      }
-    }
-    
-    // 保存WebDAV配置
-    async function handleSaveWebDAV(e) {
-      e.preventDefault();
-      
-      const serverUrl = document.getElementById('serverUrl').value;
-      const username = document.getElementById('username').value;
-      let password = document.getElementById('password').value;
-      const basePath = document.getElementById('basePath').value;
-      
-      if (!password && !hasSavedConfig) {
-        showToast('请输入密码', 'warning');
-        return;
-      }
-      
-      const btn = document.getElementById('saveWebdavBtn');
-      btn.disabled = true;
-      btn.querySelector('.btn-text').style.display = 'none';
-      btn.querySelector('.btn-loading').style.display = 'flex';
-      
-      try {
-        let result;
-        
-        if (hasSavedConfig && !password) {
-          // 已有配置且未输入密码，使用 PATCH 局部更新
-          result = await patchWebDAVConfig({
-            serverUrl,
-            username,
-            basePath: basePath || '/'
-          });
-        } else {
-          // 完整保存（包含密码）
-          result = await saveWebDAVConfig({
-            serverUrl,
-            username,
-            password,
-            basePath: basePath || '/',
-            skipTest: true
-          });
-        }
-        
-        if (result.success) {
-          hasSavedConfig = true;
-          document.getElementById('configStatus').textContent = '✅ 已配置';
-          document.getElementById('configStatus').style.display = 'inline';
-          document.getElementById('savedHint').style.display = 'inline';
-          document.getElementById('testSavedBtn').style.display = 'inline-block';
-          document.getElementById('password').value = '';
-          document.getElementById('password').removeAttribute('required');
-          showToast(result.message || '保存成功', 'success');
-        } else {
-          showToast(result.error || '保存失败', 'error');
-        }
-      } catch (error) {
-        showToast('网络错误，请稍后重试', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.querySelector('.btn-text').style.display = 'block';
-        btn.querySelector('.btn-loading').style.display = 'none';
-      }
-    }
-    
-    // 测试连接（使用表单输入的密码）
-    async function handleTestConnection() {
-      const serverUrl = document.getElementById('serverUrl').value;
-      const username = document.getElementById('username').value;
-      let password = document.getElementById('password').value;
-      
-      if (!serverUrl || !username) {
-        showToast('请填写服务器地址和用户名', 'warning');
-        return;
-      }
-      
-      if (!password) {
-        if (hasSavedConfig) {
-          // 密码为空但有已保存配置，使用已保存密码测试
-          await handleTestSaved();
-          return;
-        }
-        showToast('请输入密码', 'warning');
-        return;
-      }
-      
-      const btn = document.getElementById('testConnectionBtn');
-      btn.disabled = true;
-      btn.textContent = '测试中...';
-      
-      try {
-        const result = await testWebDAVConnection({
-          serverUrl,
-          username,
-          password
-        });
-        
-        if (result.success) {
-          showToast('连接测试成功！正在保存配置...', 'success');
-          
-          const saveResult = await saveWebDAVConfig({
-            serverUrl,
-            username,
-            password,
-            basePath: document.getElementById('basePath').value || '/',
-            skipTest: true
-          });
-          
-          if (saveResult.success) {
-            hasSavedConfig = true;
-            document.getElementById('configStatus').textContent = '✅ 已配置';
-            document.getElementById('configStatus').style.display = 'inline';
-            document.getElementById('savedHint').style.display = 'inline';
-            document.getElementById('testSavedBtn').style.display = 'inline-block';
-            document.getElementById('password').value = '';
-            document.getElementById('password').removeAttribute('required');
-            showToast('WebDAV配置已保存', 'success');
-          } else {
-            showToast(saveResult.error || '配置保存失败', 'error');
-          }
-        } else {
-          showToast(result.error || '连接测试失败', 'error');
-        }
-      } catch (error) {
-        showToast('网络错误，请稍后重试', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '测试连接';
-      }
-    }
-    
-    // 使用已保存密码测试
-    async function handleTestSaved() {
-      const btn = document.getElementById('testSavedBtn');
-      btn.disabled = true;
-      btn.textContent = '测试中...';
-      
-      try {
-        const result = await testSavedWebDAVConnection();
-        
-        if (result.success) {
-          showToast('使用已保存密码测试成功！连接正常', 'success');
-        } else {
-          showToast(result.error || '测试失败，请重新输入密码保存', 'error');
-        }
-      } catch (error) {
-        showToast('网络错误，请稍后重试', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = '使用已保存密码测试';
-      }
-    }
-    
-    // 显示Toast提示
-    function showToast(message, type = 'info') {
-      const toast = document.getElementById('toast');
-      toast.querySelector('.toast-message').textContent = message;
-      toast.className = `toast show ${type}`;
-      
-      setTimeout(() => {
-        toast.classList.remove('show');
-      }, 3000);
-    }
-  </script>
+  <script src="/js/settings.js"></script>
 </body>

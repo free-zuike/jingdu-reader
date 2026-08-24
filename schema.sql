@@ -48,6 +48,22 @@ CREATE TABLE IF NOT EXISTS books (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- SMTP配置表
+CREATE TABLE IF NOT EXISTS smtp_configs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER DEFAULT 587,
+  username TEXT NOT NULL,
+  password_encrypted TEXT NOT NULL,
+  sender_email TEXT NOT NULL,
+  sender_name TEXT DEFAULT '静读天下',
+  enabled INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_webdav_configs_user_id ON webdav_configs(user_id);

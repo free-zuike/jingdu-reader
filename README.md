@@ -5,10 +5,13 @@
 ## 功能特性
 
 - **用户认证**：邮箱注册、登录、会话管理
+- **密码重置**：通过邮箱验证码重置密码
 - **WebDAV 同步**：连接 WebDAV 服务器同步书籍
-- **在线阅读**：支持 TXT 格式书籍的在线阅读
-- **阅读进度**：自动保存和恢复阅读进度
-- **阅读设置**：支持字体大小、主题切换
+- **在线阅读**：支持 EPUB 和 TXT 格式书籍的在线阅读
+- **TXT 章节检测**：自动识别 TXT 文件中的章节（第X章、Chapter X、序言等）
+- **阅读进度**：自动保存和恢复阅读进度，支持 Moon+ Reader 进度同步
+- **阅读设置**：支持字体大小、主题切换，设置跨设备同步
+- **书籍管理**：支持从书架删除书籍（不影响 WebDAV 原文件）
 - **响应式设计**：适配桌面端和移动端
 
 ## 技术栈
@@ -36,13 +39,15 @@
 │   │   └── book.service.ts
 │   ├── utils/            # 工具函数
 │   │   ├── crypto.ts     # 加密工具
-│   │   └── db.ts         # 数据库操作
+│   │   ├── db.ts         # 数据库操作
+│   │   └── epub.ts       # EPUB 解析工具
 │   ├── types/            # 类型定义
 │   │   └── index.ts
 │   └── index.ts          # 入口文件
 ├── public/               # 前端静态文件
 │   ├── index.html        # 登录页
 │   ├── register.html     # 注册页
+│   ├── forgot-password.html # 忘记密码页
 │   ├── home.html         # 书籍列表页
 │   ├── reader.html       # 阅读器页
 │   ├── settings.html      # 设置页
@@ -56,7 +61,8 @@
 │       ├── api.js
 │       ├── auth.js
 │       ├── home.js
-│       └── reader.js
+│       ├── reader.js
+│       └── settings.js
 ├── schema.sql            # 数据库 Schema
 ├── wrangler.toml         # Wrangler 配置
 └── package.json          # 项目依赖
@@ -131,6 +137,7 @@ npm run deploy
 | `/api/auth/register` | POST | 用户注册 |
 | `/api/auth/login` | POST | 用户登录 |
 | `/api/auth/logout` | POST | 用户登出 |
+| `/api/auth/reset-password` | POST | 重置密码 |
 
 ### 用户 API
 
@@ -139,15 +146,23 @@ npm run deploy
 | `/api/user/profile` | GET | 获取用户信息 |
 | `/api/user/webdav` | GET | 获取 WebDAV 配置 |
 | `/api/user/webdav` | PUT | 保存 WebDAV 配置 |
+| `/api/user/webdav` | PATCH | 局部更新 WebDAV 配置 |
+| `/api/user/webdav/test` | POST | 测试 WebDAV 连接 |
+| `/api/user/webdav/test-saved` | POST | 使用已保存配置测试连接 |
+| `/api/user/preferences` | GET | 获取阅读偏好 |
+| `/api/user/preferences` | PUT | 保存阅读偏好 |
 
 ### 书籍 API
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
-| `/api/books` | GET | 获取书籍列表 |
+| `/api/books` | GET | 获取书籍列表（含阅读进度） |
 | `/api/books/sync` | POST | 同步 WebDAV 书籍 |
+| `/api/books/sync/status` | GET | 查询同步进度 |
 | `/api/books/:id` | GET | 获取书籍详情 |
+| `/api/books/:id` | DELETE | 删除书籍 |
 | `/api/books/:id/content` | GET | 获取书籍内容 |
+| `/api/books/:id/cover` | GET | 获取书籍封面 |
 | `/api/books/:id/progress` | GET | 获取阅读进度 |
 | `/api/books/:id/progress` | PUT | 更新阅读进度 |
 

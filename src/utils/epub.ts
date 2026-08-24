@@ -179,7 +179,7 @@ function findMetaCoverItemId(text: string): string | null {
 
 function stripHtml(html: string): string {
   let result = html;
-  const removals: [string, string][] = [
+  const removals: [RegExp, string][] = [
     [/<\/?head[^>]*>[\s\S]*?<\/head>/gi, ''],
     [/<\/?style[^>]*>[\s\S]*?<\/style>/gi, ''],
     [/<\/?script[^>]*>[\s\S]*?<\/script>/gi, ''],

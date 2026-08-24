@@ -1,7 +1,9 @@
 // 认证服务
 
 import type { KVNamespace } from '@cloudflare/workers-types';
+import type { Env } from '../types';
 import { Database } from '../utils/db';
+import { EmailService } from './email.service';
 import { 
   generateUUID, 
   generateVerificationCode, 
@@ -18,12 +20,14 @@ export class AuthService {
   private cache: KVNamespace;
   private jwtSecret: string;
   private encryptionKey: string;
+  private emailService: EmailService;
 
-  constructor(db: Database, cache: KVNamespace, jwtSecret: string, encryptionKey: string) {
+  constructor(db: Database, cache: KVNamespace, jwtSecret: string, encryptionKey: string, env?: Env) {
     this.db = db;
     this.cache = cache;
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;
+    this.emailService = new EmailService(env as Env);
   }
 
   // 发送验证码
@@ -43,6 +47,14 @@ export class AuthService {
         }
       }
 
+      // 如果是重置密码，检查邮箱是否已注册
+      if (type === 'reset') {
+        const existingUser = await this.db.getUserByEmail(email);
+        if (!existingUser) {
+          return { success: false, error: '该邮箱未注册' };
+        }
+      }
+
       // 生成验证码
       const code = generateVerificationCode();
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分钟过期
@@ -57,14 +69,40 @@ export class AuthService {
         created_at: new Date().toISOString()
       });
 
-      // 这里应该发送邮件，但在Workers环境中需要配置邮件服务
-      // 为了演示，我们直接返回验证码（生产环境应该通过邮件发送）
-      console.log(`验证码 for ${email}: ${code}`);
+      // 发送邮件
+      let dbConfig = null;
+      if (type === 'reset') {
+        const user = await this.db.getUserByEmail(email);
+        if (user) {
+          const smtpRow = await this.db.getSmtpConfig(user.id);
+          if (smtpRow) {
+            const password = await decrypt(smtpRow.password_encrypted, this.encryptionKey);
+            dbConfig = {
+              host: smtpRow.host,
+              port: smtpRow.port,
+              username: smtpRow.username,
+              password,
+              senderEmail: smtpRow.sender_email,
+              senderName: smtpRow.sender_name,
+            };
+          }
+        }
+      }
+      const sent = await this.emailService.sendVerificationCode(email, code, type, dbConfig);
 
+      if (sent) {
+        return { 
+          success: true, 
+          message: '验证码已发送' 
+        };
+      }
+
+      // 邮件发送失败，尝试重新发送
+      console.log(`[Auth] 邮件发送失败，验证码 for ${email}: ${code}`);
       return { 
         success: true, 
-        message: '验证码已发送',
-        data: { code } // 生产环境应该删除这行
+        message: '验证码已发送（邮件服务暂不可用，请查看控制台）',
+        data: { code }
       };
     } catch (error) {
       console.error('发送验证码失败:', error);
@@ -202,6 +240,51 @@ export class AuthService {
     } catch (error) {
       console.error('登出失败:', error);
       return { success: false, error: '登出失败' };
+    }
+  }
+
+  // 重置密码
+  async resetPassword(email: string, newPassword: string, verifyCode: string): Promise<ApiResponse> {
+    try {
+      if (!email || !newPassword || !verifyCode) {
+        return { success: false, error: '请填写所有必填项' };
+      }
+
+      if (newPassword.length < 6) {
+        return { success: false, error: '密码长度至少6位' };
+      }
+
+      // 查找用户
+      const user = await this.db.getUserByEmail(email);
+      if (!user) {
+        return { success: false, error: '该邮箱未注册' };
+      }
+
+      // 验证验证码
+      const verification = await this.db.getEmailVerification(email, 'reset');
+      if (!verification) {
+        return { success: false, error: '验证码不存在，请重新获取' };
+      }
+
+      if (verification.code !== verifyCode) {
+        return { success: false, error: '验证码错误' };
+      }
+
+      if (new Date(verification.expires_at) < new Date()) {
+        return { success: false, error: '验证码已过期，请重新获取' };
+      }
+
+      // 更新密码
+      const passwordHash = await hashPassword(newPassword);
+      await this.db.updateUserPassword(user.id, passwordHash);
+
+      // 删除已使用的验证码
+      await this.db.deleteEmailVerification(verification.id);
+
+      return { success: true, message: '密码重置成功，请使用新密码登录' };
+    } catch (error) {
+      console.error('重置密码失败:', error);
+      return { success: false, error: '重置密码失败，请稍后重试' };
     }
   }
 

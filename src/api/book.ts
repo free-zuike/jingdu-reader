@@ -34,7 +34,7 @@ book.post('/sync', authMiddleware, async (c) => {
     return c.json(filesResult, 400);
   }
 
-  const { files, totalFiles, matchedFiles } = filesResult.data;
+  const { files, totalFiles, matchedFiles } = filesResult.data as { files: any[]; totalFiles: number; matchedFiles: number };
 
   // 同步书籍（下载、解析、缓存），进度写入KV
   const result = await bookService.syncBooks(userId, files, webdavService);
@@ -42,7 +42,7 @@ book.post('/sync', authMiddleware, async (c) => {
   return c.json({
     ...result,
     data: {
-      ...result.data,
+      ...((result.data as object) || {}),
       totalFiles,
       matchedFiles
     }
@@ -178,6 +178,23 @@ book.put('/:id/progress', authMiddleware, async (c) => {
     } catch (e) {
       console.log('[progress] 同步到Moon+失败:', e);
     }
+  }
+
+  return c.json(result);
+});
+
+// 删除书籍（从本地库移除，不删除WebDAV上的原文件）
+book.delete('/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE);
+
+  const result = await bookService.deleteBook(userId, bookId);
+
+  if (!result.success) {
+    return c.json(result, 404);
   }
 
   return c.json(result);

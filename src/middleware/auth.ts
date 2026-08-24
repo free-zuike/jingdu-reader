@@ -24,7 +24,7 @@ export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) 
   const token = authHeader.substring(7);
   
   const db = new Database(c.env.DB);
-  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
+  const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
   
   const user = await authService.verifyToken(token);
   
@@ -47,7 +47,7 @@ export async function optionalAuthMiddleware(c: Context<{ Bindings: Env }>, next
     const token = authHeader.substring(7);
     
     const db = new Database(c.env.DB);
-    const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY);
+    const authService = new AuthService(db, c.env.CACHE, c.env.JWT_SECRET, c.env.ENCRYPTION_KEY, c.env);
     
     const user = await authService.verifyToken(token);
     

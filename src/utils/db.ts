@@ -32,6 +32,12 @@ export class Database {
     return result;
   }
 
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await this.db.prepare(
+      `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`
+    ).bind(passwordHash, new Date().toISOString(), userId).run();
+  }
+
   // WebDAV配置相关操作
   async createWebDAVConfig(config: WebDAVConfig): Promise<void> {
     await this.db.prepare(
@@ -189,6 +195,41 @@ export class Database {
   async deleteBooksByUserId(userId: string): Promise<void> {
     await this.db.prepare(
       'DELETE FROM books WHERE user_id = ?'
+    ).bind(userId).run();
+  }
+
+  // SMTP配置相关操作
+  async getSmtpConfig(userId: string): Promise<import('../types').SmtpConfig | null> {
+    const result = await this.db.prepare(
+      'SELECT * FROM smtp_configs WHERE user_id = ? AND enabled = 1 LIMIT 1'
+    ).bind(userId).first<import('../types').SmtpConfig>();
+    return result;
+  }
+
+  async upsertSmtpConfig(config: import('../types').SmtpConfig): Promise<void> {
+    const existing = await this.getSmtpConfig(config.user_id);
+    if (existing) {
+      await this.db.prepare(
+        `UPDATE smtp_configs SET host = ?, port = ?, username = ?, password_encrypted = ?, sender_email = ?, sender_name = ?, enabled = ?, updated_at = ? WHERE user_id = ?`
+      ).bind(
+        config.host, config.port, config.username, config.password_encrypted,
+        config.sender_email, config.sender_name, config.enabled,
+        new Date().toISOString(), config.user_id
+      ).run();
+    } else {
+      await this.db.prepare(
+        `INSERT INTO smtp_configs (id, user_id, host, port, username, password_encrypted, sender_email, sender_name, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        config.id, config.user_id, config.host, config.port, config.username,
+        config.password_encrypted, config.sender_email, config.sender_name,
+        config.enabled, config.created_at, config.updated_at
+      ).run();
+    }
+  }
+
+  async deleteSmtpConfig(userId: string): Promise<void> {
+    await this.db.prepare(
+      'DELETE FROM smtp_configs WHERE user_id = ?'
     ).bind(userId).run();
   }
 }

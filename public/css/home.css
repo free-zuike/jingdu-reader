@@ -361,6 +361,33 @@
   text-transform: uppercase;
 }
 
+.book-delete-btn {
+  position: absolute;
+  top: var(--spacing-sm);
+  left: var(--spacing-sm);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: 5;
+}
+
+.book-card:hover .book-delete-btn {
+  opacity: 1;
+}
+
+.book-delete-btn:hover {
+  background: var(--color-error);
+}
+
 .book-info {
   padding: var(--spacing-md);
 }
@@ -411,6 +438,19 @@
   background: var(--color-accent);
   border-radius: var(--radius-full);
   transition: width var(--transition-normal);
+}
+
+.new-badge {
+  color: var(--color-success);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+/* 上次阅读时间 */
+.book-last-read {
+  margin-top: var(--spacing-xs);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
 }
 
 /* 列表视图卡片 */
