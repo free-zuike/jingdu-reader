@@ -111,21 +111,7 @@ jobs:
 
       - name: Update wrangler.toml
         run: |
-          python3 -c "
-import re,sys
-d1_id = sys.argv[1]
-kv_id = sys.argv[2]
-jwt_secret = sys.argv[3]
-encryption_key = sys.argv[4]
-with open('wrangler.toml') as f: content = f.read()
-content = re.sub(r'database_id = \".*\"', f'database_id = \"{d1_id}\"', content)
-content = re.sub(r'(binding = \"CACHE\"\n\s*id = )\".*\"', rf'\1\"{kv_id}\"', content)
-content = re.sub(r'^JWT_SECRET = \".*\"', f'JWT_SECRET = \"{jwt_secret}\"', content, flags=re.MULTILINE)
-content = re.sub(r'^ENCRYPTION_KEY = \".*\"', f'ENCRYPTION_KEY = \"{encryption_key}\"', content, flags=re.MULTILINE)
-with open('wrangler.toml','w') as f: f.write(content)
-print('OK: database_id=' + d1_id)
-print('OK: kv_id=' + kv_id)
-" "${{ steps.d1.outputs.d1_id }}" "${{ steps.kv.outputs.kv_id }}" "${{ steps.secrets.outputs.jwt_secret }}" "${{ steps.secrets.outputs.encryption_key }}"
+          node scripts/update-toml.js "${{ steps.d1.outputs.d1_id }}" "${{ steps.kv.outputs.kv_id }}" "${{ steps.secrets.outputs.jwt_secret }}" "${{ steps.secrets.outputs.encryption_key }}"
           echo "--- verify ---"
           grep "^database_id\|^id =" wrangler.toml
 
