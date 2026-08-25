@@ -421,10 +421,14 @@ export class BookService {
   }
 
   // 更新阅读进度
-  async updateProgress(userId: string, bookId: string, position: number, totalLength: number): Promise<ApiResponse> {
+  async updateProgress(userId: string, bookId: string, position: number, totalLength: number, currentCfi?: string, percentage?: number): Promise<ApiResponse> {
     try {
       const progressKey = `progress:${userId}:${bookId}`;
-      const progress: ReadingProgress = { bookId, currentPosition: position, totalLength, lastReadAt: new Date().toISOString() };
+      const progress: ReadingProgress = {
+        bookId, currentPosition: position, totalLength,
+        lastReadAt: new Date().toISOString(),
+        currentCfi, percentage
+      };
       await this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 });
       return { success: true, data: progress };
     } catch (error: any) {

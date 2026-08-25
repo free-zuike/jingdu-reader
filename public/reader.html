@@ -9,34 +9,25 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/base.css">
   <link rel="stylesheet" href="/css/reader.css">
+  <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3/dist/epub.min.js"></script>
 </head>
 <body class="reader-page">
   <!-- 阅读器头部 -->
   <header class="reader-header" id="readerHeader">
     <div class="reader-header-left">
-      <button class="back-btn" onclick="window.location.href='/home'">
-        ← 返回书架
-      </button>
+      <button class="back-btn" onclick="window.location.href='/home'">← 返回书架</button>
       <h1 class="book-title" id="bookTitle">加载中...</h1>
     </div>
     <div class="reader-header-right">
-      <button class="header-btn" id="tocBtn" title="目录">
-        ☰ 目录
-      </button>
-      <button class="header-btn" id="settingsBtn" title="设置">
-        ⚙️ 设置
-      </button>
+      <button class="header-btn" id="tocBtn" title="目录">☰ 目录</button>
+      <button class="header-btn" id="settingsBtn" title="设置">⚙️ 设置</button>
     </div>
   </header>
 
-  <!-- 阅读区域 -->
+  <!-- EPUB 阅读器容器 -->
   <main class="reader-content" id="readerContent">
-    <div class="content-wrapper">
-      <div class="chapter-title" id="chapterTitle"></div>
-      <div class="book-text" id="bookText">
-        <div class="loading-text">正在加载书籍内容...</div>
-      </div>
-    </div>
+    <div id="epubViewer" style="width:100%;height:100%;"></div>
+    <div class="loading-text" id="loadingText">正在加载书籍...</div>
   </main>
 
   <!-- 阅读器底部 -->
@@ -45,9 +36,9 @@
       <div class="progress-fill" id="progressFill"></div>
     </div>
     <div class="footer-controls">
-      <button class="nav-btn" id="prevBtn">← 上一章</button>
+      <button class="nav-btn" id="prevBtn">← 上一页</button>
       <span class="page-info" id="pageInfo">0%</span>
-      <button class="nav-btn" id="nextBtn">下一章 →</button>
+      <button class="nav-btn" id="nextBtn">下一页 →</button>
     </div>
   </footer>
 
@@ -57,9 +48,7 @@
       <h3>目录</h3>
       <button class="close-btn" id="closeToc">✕</button>
     </div>
-    <div class="toc-list" id="tocList">
-      <!-- 目录项将在这里动态生成 -->
-    </div>
+    <div class="toc-list" id="tocList"></div>
   </aside>
 
   <!-- 设置面板 -->
@@ -69,7 +58,6 @@
         <h3>阅读设置</h3>
         <button class="close-btn" id="closeSettings">✕</button>
       </div>
-      
       <div class="settings-section">
         <label>字体大小</label>
         <div class="font-size-controls">
@@ -78,59 +66,33 @@
           <button class="size-btn" data-size="large">大</button>
         </div>
       </div>
-      
       <div class="settings-section">
         <label>主题模式</label>
         <div class="theme-options">
-          <button class="theme-btn active" data-theme="dark">
-            <span class="theme-preview dark"></span>
-            <span>深色</span>
-          </button>
-          <button class="theme-btn" data-theme="light">
-            <span class="theme-preview light"></span>
-            <span>浅色</span>
-          </button>
-          <button class="theme-btn" data-theme="sepia">
-            <span class="theme-preview sepia"></span>
-            <span>护眼</span>
-          </button>
+          <button class="theme-btn active" data-theme="dark"><span class="theme-preview dark"></span><span>深色</span></button>
+          <button class="theme-btn" data-theme="light"><span class="theme-preview light"></span><span>浅色</span></button>
+          <button class="theme-btn" data-theme="sepia"><span class="theme-preview sepia"></span><span>护眼</span></button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 遮罩层 -->
   <div class="overlay" id="overlay"></div>
-
-  <!-- Toast提示 -->
-  <div class="toast" id="toast">
-    <span class="toast-message"></span>
-  </div>
+  <div class="toast" id="toast"><span class="toast-message"></span></div>
 
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/reader.js"></script>
   <script>
-    // 初始化阅读器
     document.addEventListener('DOMContentLoaded', () => {
-      // 检查登录状态
       if (!checkAuth()) return;
-      
-      // 获取书籍ID（支持 /reader?id=xxx 和 /reader/xxx）
       const urlParams = new URLSearchParams(window.location.search);
       let bookId = urlParams.get('id');
-      
       if (!bookId) {
         const pathParts = window.location.pathname.split('/');
         bookId = pathParts[pathParts.length - 1];
       }
-      
-      if (!bookId || bookId === 'reader') {
-        window.location.href = '/home';
-        return;
-      }
-      
-      // 初始化阅读器
+      if (!bookId || bookId === 'reader') { window.location.href = '/home'; return; }
       initReader(bookId);
     });
   </script>

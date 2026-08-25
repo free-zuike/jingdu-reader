@@ -143,6 +143,49 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   return new Response(null, { status: 204 });
 });
 
+// 获取原始书籍文件（epub.js 前端渲染用）
+book.get('/:id/raw', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+
+  // 优先从 KV 缓存读取
+  const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  if (raw) {
+    const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
+    return new Response(raw, {
+      headers: {
+        'Content-Type': mime,
+        'Content-Disposition': `inline; filename="${bookData.title}.${bookData.format}"`,
+        'Cache-Control': 'public, max-age=86400'
+      }
+    });
+  }
+
+  // 缓存不存在，从 WebDAV 下载
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const fileResult = await webdavService.getFile(userId, bookData.webdav_path);
+  if (!fileResult.success) {
+    return c.json({ success: false, error: '文件获取失败' }, 404);
+  }
+
+  const content = (fileResult.data as { content: ArrayBuffer }).content;
+  const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
+  return new Response(content, {
+    headers: {
+      'Content-Type': mime,
+      'Content-Disposition': `inline; filename="${bookData.title}.${bookData.format}"`,
+      'Cache-Control': 'public, max-age=86400'
+    }
+  });
+});
+
 // 获取阅读进度（优先从 Moon+ 读取）
 book.get('/:id/progress', authMiddleware, async (c) => {
   const userId = c.get('userId');
@@ -161,7 +204,7 @@ book.get('/:id/progress', authMiddleware, async (c) => {
 book.put('/:id/progress', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
-  const { position, totalLength } = await c.req.json();
+  const { position, totalLength, currentCfi, percentage } = await c.req.json();
 
   if (typeof position !== 'number' || typeof totalLength !== 'number') {
     return c.json({ success: false, error: '请提供有效的阅读进度' }, 400);
@@ -171,7 +214,7 @@ book.put('/:id/progress', authMiddleware, async (c) => {
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.updateProgress(userId, bookId, position, totalLength);
+  const result = await bookService.updateProgress(userId, bookId, position, totalLength, currentCfi, percentage);
 
   if (result.success) {
     try {
