@@ -191,7 +191,7 @@ export class BookService {
           id: book.id,
           title: book.title,
           author: book.author,
-          cover: cachedCover ? `/api/books/${book.id}/cover` : undefined,
+          cover: `/api/books/${book.id}/cover`,
           format: book.format,
           progress,
           lastReadAt
