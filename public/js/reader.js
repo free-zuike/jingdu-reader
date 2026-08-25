@@ -61,6 +61,12 @@ async function initTextReader(bookId) {
       updateProgressBar();
       debounceSaveProgress();
     }, 1000));
+
+    // 点击阅读区切换顶栏/底栏
+    document.querySelector('.reader-content').addEventListener('click', (e) => {
+      if (e.target.tagName === 'A' || e.target.closest('a')) return;
+      toggleHeaderFooter();
+    });
   } else {
     document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架</p>';
   }
