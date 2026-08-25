@@ -149,27 +149,19 @@ export class BookService {
       const books = await this.db.getBooksByUserId(userId);
       const bookList: BookListItem[] = [];
 
-      for (const book of books) {
-        const coverKey = `cover:${book.id}`;
-        let cachedCover = await this.cache.get(coverKey);
+      // 并行读取所有书的封面和进度（避免串行 await 超时）
+      const coverPromises = books.map(b => this.cache.get(`cover:${b.id}`).catch(() => null));
+      const progressPromises = books.map(b => this.cache.get(`progress:${userId}:${b.id}`).catch(() => null));
+      const covers = await Promise.all(coverPromises);
+      const progresses = await Promise.all(progressPromises);
 
-        // 惰性提取封面：raw 已缓存（之前阅读过）但封面缺失时，自动补上
-        if (!cachedCover && book.format !== 'txt') {
-          try {
-            const rawData = await this.cache.get(`raw:${book.id}`, 'arrayBuffer');
-            if (rawData) {
-              await this.cacheCoverFromRaw(book.id, rawData, book);
-              cachedCover = await this.cache.get(coverKey);
-            }
-          } catch {}
-        }
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i];
+        const cachedCover = covers[i];
 
-        // 获取阅读进度
-        const progressKey = `progress:${userId}:${book.id}`;
-        const progressData = await this.cache.get(progressKey);
         let progress: number | undefined;
         let lastReadAt: string | undefined;
-
+        const progressData = progresses[i];
         if (progressData) {
           try {
             const p = JSON.parse(progressData);
