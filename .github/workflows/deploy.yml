@@ -2,10 +2,11 @@
 # 静读天下 - 自动部署到 Cloudflare Workers
 # ============================================
 # Fork 者只需设置 1 个 Secret：
-#   - CLOUDFLARE_API_TOKEN（Workers/Pages/D1/KV 编辑权限）
-# Account ID 自动从 API Token 获取，无需手动设置
-# D1 数据库 / KV 命名空间自动创建
-# 密钥自动生成（JWT_SECRET, ENCRYPTION_KEY）
+#   - CLOUDFLARE_API_TOKEN（Workers/D1/KV 编辑权限）
+# D1 数据库 / KV 命名空间由 wrangler 4 自动创建
+# JWT_SECRET / ENCRYPTION_KEY 自动生成并通过 secret put 设置
+# 可选 Secret（推荐设置，密钥稳定不变）：
+#   - JWT_SECRET / ENCRYPTION_KEY（不设置则每次部署自动生成）
 
 name: Deploy to Cloudflare Workers
 
@@ -36,80 +37,19 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Get Account ID
-        id: account
+      - name: Deploy Worker (自动创建 D1/KV)
+        run: npx wrangler deploy
+
+      - name: Set secrets
         run: |
-          echo "获取 Cloudflare Account ID..."
-          ACCOUNT_ID=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/accounts" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json" | jq -r '.result[0].id')
-          echo "Account ID: $ACCOUNT_ID"
-          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+          # 优先使用 GitHub Secrets 中配置的密钥，否则自动生成
+          JWT_SECRET="${{ secrets.JWT_SECRET }}"
+          if [ -z "$JWT_SECRET" ]; then JWT_SECRET=$(openssl rand -base64 32); fi
+          ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}"
+          if [ -z "$ENCRYPTION_KEY" ]; then ENCRYPTION_KEY=$(openssl rand -base64 32); fi
 
-      - name: Setup D1 Database
-        id: d1
-        run: |
-          echo "检查 D1 数据库 jingdu-db..."
-          D1_ID=$(npx wrangler d1 list --json 2>/dev/null | node -e "
-            const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-            const db = data.find(d => d.name === 'jingdu-db');
-            if (db) process.stdout.write(db.uuid);
-          " || true)
-
-          if [ -z "$D1_ID" ]; then
-            echo "创建 D1 数据库 jingdu-db..."
-            npx wrangler d1 create jingdu-db 2>&1 | tee /tmp/d1_create.txt
-            D1_ID=$(grep -oP 'database_id = "\K[a-f0-9-]{36}' /tmp/d1_create.txt || true)
-          else
-            echo "✅ D1 数据库已存在: $D1_ID"
-          fi
-
-          if [ -z "$D1_ID" ]; then
-            echo "FATAL: 无法获取 D1 database_id"
-            exit 1
-          fi
-          echo "d1_id=$D1_ID" >> $GITHUB_OUTPUT
-          echo "✅ D1 database_id: $D1_ID"
-
-      - name: Setup KV Namespace
-        id: kv
-        run: |
-          echo "检查 KV 命名空间 jingdu-cache..."
-          KV_ID=$(npx wrangler kv namespace list --json 2>/dev/null | node -e "
-            const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-            const kv = data.find(k => k.title === 'jingdu-cache');
-            if (kv) process.stdout.write(kv.id);
-          " || true)
-
-          if [ -z "$KV_ID" ]; then
-            echo "创建 KV 命名空间 jingdu-cache..."
-            npx wrangler kv namespace create jingdu-cache 2>&1 | tee /tmp/kv_create.txt
-            KV_ID=$(grep -oP 'id = "\K[a-f0-9-]{32}' /tmp/kv_create.txt || true)
-          else
-            echo "✅ KV 命名空间已存在: $KV_ID"
-          fi
-
-          if [ -z "$KV_ID" ]; then
-            echo "FATAL: 无法获取 KV namespace id"
-            exit 1
-          fi
-          echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
-          echo "✅ KV namespace id: $KV_ID"
-
-      - name: Generate Secrets
-        id: secrets
-        run: |
-          JWT_SECRET=$(openssl rand -base64 32)
-          ENCRYPTION_KEY=$(openssl rand -base64 32)
-          echo "jwt_secret=$JWT_SECRET" >> $GITHUB_OUTPUT
-          echo "encryption_key=$ENCRYPTION_KEY" >> $GITHUB_OUTPUT
-
-      - name: Update wrangler.toml
-        run: |
-          node scripts/update-toml.js "${{ steps.d1.outputs.d1_id }}" "${{ steps.kv.outputs.kv_id }}" "${{ steps.secrets.outputs.jwt_secret }}" "${{ steps.secrets.outputs.encryption_key }}"
-          echo "--- verify ---"
-          grep "^database_id\|^id =" wrangler.toml
+          echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET
+          echo "$ENCRYPTION_KEY" | npx wrangler secret put ENCRYPTION_KEY
 
       - name: Initialize D1 Database
         run: |
@@ -117,19 +57,9 @@ jobs:
           npx wrangler d1 execute jingdu-db --file=./schema.sql --remote --yes
           echo "✅ 数据库表已创建"
 
-      - name: Deploy
-        run: |
-          echo "部署静读天下..."
-          npx wrangler deploy
-          echo "✅ 部署完成"
-
       - name: Deployment Info
         run: |
           echo "📚 静读天下部署完成!"
-          echo "📍 访问地址: https://jingdu-web.${{ steps.account.outputs.account_id }}.workers.dev"
+          echo "📍 访问地址: https://jingdu-web.<你的账号>.workers.dev"
           echo "📧 首次注册后，请到设置页面配置 SMTP 以发送验证码邮件"
-          echo ""
-          echo "⚠️ 重要：请将以下密钥保存到 GitHub Secrets（可选但推荐）："
-          echo "    JWT_SECRET: ${{ steps.secrets.outputs.jwt_secret }}"
-          echo "    ENCRYPTION_KEY: ${{ steps.secrets.outputs.encryption_key }}"
-          echo "（部署脚本已在 wrangler.toml 中设置，如需持久化请保存）"
+          echo "🔑 密钥建议固定到 GitHub Secrets（JWT_SECRET / ENCRYPTION_KEY），避免每次部署变化"

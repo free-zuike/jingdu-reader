@@ -10,29 +10,17 @@ binding = "ASSETS"
 not_found_handling = "none"
 
 # KV命名空间 - 用于会话、阅读进度、书籍缓存
-# ⚠️ 部署前请替换为你的 Cloudflare KV Namespace ID
+# wrangler 4 部署时自动创建（无需手动指定 id）
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder-kv-id"
 
 # D1数据库 - 用于用户信息、WebDAV配置
-# ⚠️ 部署前请替换为你的 Cloudflare D1 Database ID
+# wrangler 4 部署时自动创建（无需手动指定 database_id）
 [[d1_databases]]
 binding = "DB"
 database_name = "jingdu-db"
-database_id = "00000000-0000-0000-0000-000000000000"
 
-# 生产环境密钥（通过 wrangler secret put 设置，不硬编码在文件中）
-# 部署前执行：
-#   wrangler secret put JWT_SECRET
-#   wrangler secret put ENCRYPTION_KEY
-#   wrangler secret put SMTP_HOST
-#   wrangler secret put SMTP_PORT
-#   wrangler secret put SMTP_USER
-#   wrangler secret put SMTP_PASS
-#   wrangler secret put SENDER_EMAIL
-#   wrangler secret put SENDER_NAME
-# 以下为本地开发默认值，部署后会被 secret 覆盖
+# 本地开发默认值（生产环境密钥通过 wrangler secret put 设置）
 [vars]
 JWT_SECRET = "local-dev-jwt-secret-key-change-in-production"
 ENCRYPTION_KEY = "local-dev-encryption-key-32char"
