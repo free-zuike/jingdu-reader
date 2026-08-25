@@ -21,6 +21,8 @@ export class AuthService {
   private jwtSecret: string;
   private encryptionKey: string;
   private emailService: EmailService;
+  private adminEmails: string[];
+  private adminPassword: string;
 
   constructor(db: Database, cache: KVNamespace, jwtSecret: string, encryptionKey: string, env?: Env) {
     this.db = db;
@@ -28,6 +30,8 @@ export class AuthService {
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;
     this.emailService = new EmailService(env as Env);
+    this.adminEmails = (env?.ADMIN_EMAIL || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    this.adminPassword = env?.ADMIN_PASSWORD || '';
   }
 
   // 发送验证码
@@ -93,16 +97,15 @@ export class AuthService {
       if (sent) {
         return { 
           success: true, 
-          message: '验证码已发送' 
+          message: '验证码已发送至邮箱' 
         };
       }
 
-      // 邮件发送失败，尝试重新发送
-      console.log(`[Auth] 邮件发送失败，验证码 for ${email}: ${code}`);
+      // 邮件发送失败：不降级返回验证码，注册/重置必须真实收到邮件
+      console.error(`[Auth] 验证码邮件发送失败: ${email}`);
       return { 
-        success: true, 
-        message: '验证码已发送（邮件服务暂不可用，请查看控制台）',
-        data: { code }
+        success: false, 
+        error: '验证码邮件发送失败，请检查 SMTP 配置后重试' 
       };
     } catch (error) {
       console.error('发送验证码失败:', error);
@@ -193,7 +196,35 @@ export class AuthService {
         return { success: false, error: '请填写邮箱和密码' };
       }
 
-      // 查找用户
+      // 预置账号（环境变量 ADMIN_EMAIL/ADMIN_PASSWORD 配置，登录时自动创建）
+      const isAdminCandidate = this.adminEmails.includes(email.trim().toLowerCase()) && !!this.adminPassword;
+
+      if (isAdminCandidate) {
+        if (password !== this.adminPassword) {
+          return { success: false, error: '邮箱或密码错误' };
+        }
+        let user = await this.db.getUserByEmail(email);
+        if (!user) {
+          // 自动创建预置账号
+          const userId = generateUUID();
+          const passwordHash = await hashPassword(password);
+          const now = new Date().toISOString();
+          await this.db.createUser({
+            id: userId,
+            email,
+            password_hash: passwordHash,
+            created_at: now,
+            updated_at: now
+          });
+          user = await this.db.getUserByEmail(email);
+        }
+        if (user) {
+          return this.issueSession(user);
+        }
+        return { success: false, error: '预置账号创建失败' };
+      }
+
+      // 常规登录
       const user = await this.db.getUserByEmail(email);
       if (!user) {
         return { success: false, error: '邮箱或密码错误' };
@@ -205,31 +236,36 @@ export class AuthService {
         return { success: false, error: '邮箱或密码错误' };
       }
 
-      // 生成Token
-      const token = await generateToken({ userId: user.id, email: user.email }, this.jwtSecret);
-
-      // 保存会话到KV
-      const session: Session = {
-        userId: user.id,
-        email: user.email,
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24小时
-      };
-      await this.cache.put(`session:${token}`, JSON.stringify(session), {
-        expirationTtl: 24 * 60 * 60 // 24小时
-      });
-
-      return {
-        success: true,
-        data: {
-          userId: user.id,
-          email: user.email,
-          token
-        }
-      };
+      return this.issueSession(user);
     } catch (error) {
       console.error('登录失败:', error);
       return { success: false, error: '登录失败，请稍后重试' };
     }
+  }
+
+  // 签发会话
+  private async issueSession(user: User): Promise<ApiResponse> {
+    // 生成Token
+    const token = await generateToken({ userId: user.id, email: user.email }, this.jwtSecret);
+
+    // 保存会话到KV
+    const session: Session = {
+      userId: user.id,
+      email: user.email,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24小时
+    };
+    await this.cache.put(`session:${token}`, JSON.stringify(session), {
+      expirationTtl: 24 * 60 * 60 // 24小时
+    });
+
+    return {
+      success: true,
+      data: {
+        userId: user.id,
+        email: user.email,
+        token
+      }
+    };
   }
 
   // 用户登出

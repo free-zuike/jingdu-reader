@@ -24,7 +24,11 @@ database_name = "jingdu-db"
 # - JWT_SECRET / ENCRYPTION_KEY 由 CI 首次部署时生成并保存在 secret 中（不写仓库）
 #   后续部署检测到已存在则跳过，密钥永续不轮换
 # - SMTP 配置优先通过 Web 设置页面保存到 D1 数据库，以下为回退值
+# - 预置账号：ADMIN_EMAIL（逗号分隔多邮箱）+ ADMIN_PASSWORD（公共密码），
+#   登录时若账号不存在会自动创建，无需邮箱注册
 [vars]
+ADMIN_EMAIL = ""
+ADMIN_PASSWORD = ""
 SMTP_HOST = ""
 SMTP_PORT = "587"
 SMTP_USER = ""

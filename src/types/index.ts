@@ -12,6 +12,9 @@ export interface Env {
   SMTP_PASS: string;
   SENDER_EMAIL: string;
   SENDER_NAME: string;
+  // 预置账号：逗号分隔的多邮箱 + 公共密码，登录时自动创建（无需邮箱注册）
+  ADMIN_EMAIL?: string;
+  ADMIN_PASSWORD?: string;
   [key: string]: unknown;
 }
 
