@@ -483,7 +483,8 @@ export class WebDAVService {
   }
 
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
-  async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string): Promise<ArrayBuffer | null> {
+  // bookFileName 是书籍的原始文件名（如 乡村教师.epub），用于直接构造封面路径
+  async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string, bookFileName?: string): Promise<ArrayBuffer | null> {
     try {
       const config = await this.db.getWebDAVConfigByUserId(userId);
       if (!config) return null;
@@ -491,9 +492,23 @@ export class WebDAVService {
       const password = await decrypt(config.password_encrypted, this.encryptionKey);
       const basePath = config.base_path.replace(/\/$/, '');
       const coverDir = `${basePath}/.Moon+/Cover`;
-      const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
 
-      // 列出封面目录
+      // 如果有书籍文件名，直接构造封面路径并尝试下载（最快方式）
+      if (bookFileName) {
+        const fileName = bookFileName.split('/').pop() || bookFileName;
+        const baseName = fileName.replace(/\.[^.]+$/, '');
+        // Moon+ 封面命名规则：{书名}.epub_2.png
+        const coverFileName = `${baseName}.epub_2.png`;
+        const coverPath = `${coverDir}/${coverFileName}`;
+        const coverUrl = `${config.server_url.replace(/\/$/, '')}${coverPath}`;
+        const directResp = await fetch(coverUrl, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
+        });
+        if (directResp.ok) return directResp.arrayBuffer();
+      }
+
+      // 兜底：列出封面目录，按书名匹配
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
       const response = await fetch(fullUrl, {
         method: 'PROPFIND',
         headers: {
@@ -507,28 +522,19 @@ export class WebDAVService {
   <D:prop><D:displayname/><D:getcontentlength/><D:getlastmodified/></D:prop>
 </D:propfind>`
       });
-
       if (response.status !== 207) return null;
 
       const xmlText = await response.text();
       const files = this.parseWebDAVResponse(xmlText, coverDir);
 
-      // 清理书名和作者，与封面文件名匹配
       const clean = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
-
-      // 提取核心书名（取第一个括号/空格前的内容，忽略版本标签）
       const coreTitle = (bookTitle.split(/[（(]/)[0] || bookTitle).trim();
-      const bookKey = clean(bookTitle);
       const coreKey = clean(coreTitle);
 
-      // 找匹配的封面文件
       const coverFiles = files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
       for (const f of coverFiles) {
         const name = clean(f.name.replace(/\.[^.]+$/, ''));
-        // 先尝试完整匹配，再尝试核心书名匹配
-        if (name.includes(bookKey) || bookKey.includes(name) ||
-            name.includes(coreKey) || coreKey.includes(name)) {
-          // 下载封面
+        if (name.includes(coreKey) || coreKey.includes(name)) {
           const fileUrl = this.buildFileUrl(config.server_url, f.path);
           const imgResp = await fetch(fileUrl, {
             headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }

@@ -138,7 +138,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   try {
     const { WebDAVService } = await import('../services/webdav.service');
     const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-    const coverData = await webdavService.getMoonPlusCover(userId, bookData.title, bookData.author || '');
+    const coverData = await webdavService.getMoonPlusCover(userId, bookData.title, bookData.author || '', bookData.webdav_path);
     if (coverData) {
       const base64Data = btoa(String.fromCharCode(...new Uint8Array(coverData)));
       await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
