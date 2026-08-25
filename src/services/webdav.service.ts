@@ -493,55 +493,18 @@ export class WebDAVService {
       const basePath = config.base_path.replace(/\/$/, '');
       const coverDir = `${basePath}/.Moon+/Cover`;
 
-      // 如果有书籍文件名，直接构造封面路径并尝试下载（最快方式）
-      if (bookFileName) {
-        const fileName = bookFileName.split('/').pop() || bookFileName;
-        const baseName = fileName.replace(/\.[^.]+$/, '');
-        // Moon+ 封面命名规则：{书名}.epub_2.png
-        const coverFileName = `${baseName}.epub_2.png`;
-        const coverPath = `${coverDir}/${coverFileName}`;
-        const coverUrl = `${config.server_url.replace(/\/$/, '')}${coverPath}`;
-        const directResp = await fetch(coverUrl, {
-          headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
-        });
-        if (directResp.ok) return directResp.arrayBuffer();
-      }
-
-      // 兜底：列出封面目录，按书名匹配
-      const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
-      const response = await fetch(fullUrl, {
-        method: 'PROPFIND',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
-          'Content-Type': 'text/xml; charset=utf-8',
-          'Depth': '1',
-          'User-Agent': 'JingDu-Reader/1.0'
-        },
-        body: `<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:">
-  <D:prop><D:displayname/><D:getcontentlength/><D:getlastmodified/></D:prop>
-</D:propfind>`
+      // 直接根据书籍文件名构造封面路径（Moon+ 命名规则：{书名}.epub_2.png）
+      if (!bookFileName) return null;
+      const fileName = bookFileName.split('/').pop() || bookFileName;
+      const baseName = fileName.replace(/\.[^.]+$/, '');
+      const coverFileName = `${baseName}.epub_2.png`;
+      const coverPath = `${coverDir}/${coverFileName}`;
+      const coverUrl = `${config.server_url.replace(/\/$/, '')}${coverPath}`;
+      const directResp = await fetch(coverUrl, {
+        headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
       });
-      if (response.status !== 207) return null;
+      if (directResp.ok) return directResp.arrayBuffer();
 
-      const xmlText = await response.text();
-      const files = this.parseWebDAVResponse(xmlText, coverDir);
-
-      const clean = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
-      const coreTitle = (bookTitle.split(/[（(]/)[0] || bookTitle).trim();
-      const coreKey = clean(coreTitle);
-
-      const coverFiles = files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
-      for (const f of coverFiles) {
-        const name = clean(f.name.replace(/\.[^.]+$/, ''));
-        if (name.includes(coreKey) || coreKey.includes(name)) {
-          const fileUrl = this.buildFileUrl(config.server_url, f.path);
-          const imgResp = await fetch(fileUrl, {
-            headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
-          });
-          if (imgResp.ok) return imgResp.arrayBuffer();
-        }
-      }
       return null;
     } catch {
       return null;
