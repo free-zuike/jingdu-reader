@@ -516,3 +516,23 @@ export function parseFilenameMetadata(filename: string): { title: string; author
 
   return { title: name.replace(/_/g, ' ').replace(/\s+/g, ' ').trim(), author: '' };
 }
+
+// 从 EPUB ZIP 中提取指定路径的资源（epub.js 内部资源路由用）
+export async function extractEpubResource(fileData: ArrayBuffer, resourcePath: string): Promise<Uint8Array | null> {
+  try {
+    const entries = parseZipEntries(fileData);
+    // 按路径匹配：先精确匹配，再尝试忽略大小写
+    let entry = entries.find(e => e.name === resourcePath);
+    if (!entry) {
+      entry = entries.find(e => e.name.toLowerCase() === resourcePath.toLowerCase());
+    }
+    if (!entry) {
+      // 尝试匹配路径末尾（部分 EPUB 使用绝对路径）
+      entry = entries.find(e => e.name.endsWith('/' + resourcePath) || e.name.endsWith(resourcePath));
+    }
+    if (!entry) return null;
+    return await readZipEntry(fileData, entry);
+  } catch {
+    return null;
+  }
+}

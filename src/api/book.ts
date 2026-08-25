@@ -248,4 +248,51 @@ book.delete('/:id', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// EPUB 内部资源路由（epub.js 请求 META-INF/container.xml 等资源）
+book.get('/:id/:resource{.*}', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const resourcePath = c.req.param('resource');
+
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+
+  // 获取原始 EPUB 文件
+  const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  if (!raw) {
+    return c.json({ success: false, error: '文件尚未缓存' }, 404);
+  }
+
+  // 从 ZIP 中提取指定资源
+  try {
+    const { extractEpubResource } = await import('../utils/epub');
+    const result = await extractEpubResource(raw, resourcePath);
+    if (!result) {
+      return c.json({ success: false, error: '资源不存在' }, 404);
+    }
+    const mime = guessMimeType(resourcePath);
+    return new Response(result, {
+      headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
+    });
+  } catch {
+    return c.json({ success: false, error: '资源读取失败' }, 500);
+  }
+});
+
+function guessMimeType(path: string): string {
+  const ext = path.toLowerCase().split('.').pop() || '';
+  const mimeMap: Record<string, string> = {
+    'xml': 'application/xml', 'html': 'text/html', 'htm': 'text/html',
+    'xhtml': 'application/xhtml+xml', 'css': 'text/css',
+    'js': 'application/javascript', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+    'png': 'image/png', 'gif': 'image/gif', 'svg': 'image/svg+xml',
+    'ttf': 'font/ttf', 'otf': 'font/otf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+    'ncx': 'application/x-dtbncx+xml', 'opf': 'application/oebps-package+xml'
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
+
 export default book;
