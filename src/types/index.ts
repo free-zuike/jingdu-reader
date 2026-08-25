@@ -12,7 +12,9 @@ export interface Env {
   SMTP_PASS: string;
   SENDER_EMAIL: string;
   SENDER_NAME: string;
-  // 预置账号：逗号分隔的多邮箱 + 公共密码，登录时自动创建（无需邮箱注册）
+  // 预置账号：BOOTSTRAP_ACCOUNTS 格式 "邮箱1:密码1,邮箱2:密码2"（每个账号独立密码）
+  // 兼容旧配置：ADMIN_EMAIL（逗号分隔多邮箱）+ ADMIN_PASSWORD（共用密码）
+  BOOTSTRAP_ACCOUNTS?: string;
   ADMIN_EMAIL?: string;
   ADMIN_PASSWORD?: string;
   [key: string]: unknown;

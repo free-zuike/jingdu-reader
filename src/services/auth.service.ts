@@ -21,8 +21,7 @@ export class AuthService {
   private jwtSecret: string;
   private encryptionKey: string;
   private emailService: EmailService;
-  private adminEmails: string[];
-  private adminPassword: string;
+  private bootstrapAccounts: Map<string, string>; // email -> password
 
   constructor(db: Database, cache: KVNamespace, jwtSecret: string, encryptionKey: string, env?: Env) {
     this.db = db;
@@ -30,8 +29,33 @@ export class AuthService {
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;
     this.emailService = new EmailService(env as Env);
-    this.adminEmails = (env?.ADMIN_EMAIL || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    this.adminPassword = env?.ADMIN_PASSWORD || '';
+    this.bootstrapAccounts = this.parseBootstrapAccounts(env);
+  }
+
+  // 解析预置账号：
+  //   BOOTSTRAP_ACCOUNTS = "a@x.com:pw1,b@y.com:pw2"（每账号独立密码）
+  //   兼容旧配置 ADMIN_EMAIL + ADMIN_PASSWORD（共用密码）
+  private parseBootstrapAccounts(env?: Env): Map<string, string> {
+    const accounts = new Map<string, string>();
+
+    const raw = env?.BOOTSTRAP_ACCOUNTS || '';
+    for (const pair of raw.split(',')) {
+      const idx = pair.indexOf(':');
+      if (idx > 0) {
+        const email = pair.substring(0, idx).trim().toLowerCase();
+        const password = pair.substring(idx + 1);
+        if (email && password) accounts.set(email, password);
+      }
+    }
+
+    const adminEmails = (env?.ADMIN_EMAIL || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (env?.ADMIN_PASSWORD && adminEmails.length > 0) {
+      for (const email of adminEmails) {
+        if (!accounts.has(email)) accounts.set(email, env.ADMIN_PASSWORD);
+      }
+    }
+
+    return accounts;
   }
 
   // 发送验证码
@@ -196,11 +220,11 @@ export class AuthService {
         return { success: false, error: '请填写邮箱和密码' };
       }
 
-      // 预置账号（环境变量 ADMIN_EMAIL/ADMIN_PASSWORD 配置，登录时自动创建）
-      const isAdminCandidate = this.adminEmails.includes(email.trim().toLowerCase()) && !!this.adminPassword;
+      // 预置账号（环境变量 BOOTSTRAP_ACCOUNTS / ADMIN_EMAIL+ADMIN_PASSWORD 配置，登录时自动创建）
+      const presetPassword = this.bootstrapAccounts.get(email.trim().toLowerCase());
 
-      if (isAdminCandidate) {
-        if (password !== this.adminPassword) {
+      if (presetPassword !== undefined) {
+        if (password !== presetPassword) {
           return { success: false, error: '邮箱或密码错误' };
         }
         let user = await this.db.getUserByEmail(email);
