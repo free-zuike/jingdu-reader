@@ -267,9 +267,8 @@ function initEventListeners() {
       btn.classList.add('active');
 
       const size = btn.dataset.size;
-      const content = document.querySelector('.reader-content');
-      content.classList.remove('font-small', 'font-medium', 'font-large');
-      content.classList.add(`font-${size}`);
+      document.body.classList.remove('font-small', 'font-medium', 'font-large');
+      document.body.classList.add(`font-${size}`);
 
       // 保存设置
       localStorage.setItem('readerFontSize', size);
@@ -284,9 +283,8 @@ function initEventListeners() {
       btn.classList.add('active');
 
       const theme = btn.dataset.theme;
-      const content = document.querySelector('.reader-content');
-      content.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
-      content.classList.add(`theme-${theme}`);
+      document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+      document.body.classList.add(`theme-${theme}`);
 
       // 保存设置
       localStorage.setItem('readerTheme', theme);
@@ -338,16 +336,15 @@ function applySettings(fontSize, theme) {
   document.querySelectorAll('.size-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.size === fontSize);
   });
-  const content = document.querySelector('.reader-content');
-  content.classList.remove('font-small', 'font-medium', 'font-large');
-  content.classList.add(`font-${fontSize}`);
+  document.body.classList.remove('font-small', 'font-medium', 'font-large');
+  document.body.classList.add(`font-${fontSize}`);
 
   // 主题按钮
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.theme === theme);
   });
-  content.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
-  content.classList.add(`theme-${theme}`);
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  document.body.classList.add(`theme-${theme}`);
 }
 
 // 打开目录

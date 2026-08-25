@@ -1,347 +1,276 @@
-/* 首页样式 */
+/* ============================================
+   书架 · 一间安静的书房
+   ============================================ */
 
-/* 头部导航 */
+/* ---------- 顶栏（书眉条） ---------- */
+
 .header {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 64px;
-  background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--color-border);
-  z-index: 1000;
+  z-index: 100;
+  background: rgba(246, 240, 227, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
 }
 
 .header-content {
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
-  height: 100%;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--spacing-lg);
-  gap: var(--spacing-lg);
+  padding: 0 var(--sp-lg);
+  gap: var(--sp-lg);
 }
 
 .logo {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text);
-  text-decoration: none;
+  gap: var(--sp-sm);
+  color: var(--ink);
   flex-shrink: 0;
 }
-
-.logo-icon {
-  font-size: 1.5rem;
-}
+.logo:hover { color: var(--ink); }
 
 .logo-text {
   font-family: var(--font-serif);
-  background: linear-gradient(135deg, var(--color-text), var(--color-accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
 }
 
-/* 搜索框 */
+/* 搜索（纸面刻线） */
 .header-search {
   flex: 1;
-  max-width: 500px;
+  max-width: 460px;
   position: relative;
 }
-
 .header-search input {
   width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  padding-right: 40px;
-  background: var(--color-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  color: var(--color-text);
+  padding: 8px 30px 8px 2px;
+  background: transparent;
+  border-bottom: 1.5px solid var(--line);
+  color: var(--ink);
   font-size: 0.95rem;
-  transition: all var(--transition-fast);
+  transition: border-color var(--t-fast);
 }
-
-.header-search input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.1);
-}
-
+.header-search input:focus { border-bottom-color: var(--seal); }
 .search-btn {
   position: absolute;
-  right: 8px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  font-size: 1.1rem;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity var(--transition-fast);
+  font-size: 1rem;
+  opacity: 0.55;
 }
+.search-btn:hover { opacity: 1; }
 
-.search-btn:hover {
-  opacity: 1;
-}
-
-/* 头部操作区 */
 .header-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--sp-md);
 }
 
+/* 同步按钮（朱印钮） */
 .sync-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-accent);
-  color: white;
-  border-radius: var(--radius-md);
+  gap: 8px;
+  padding: 9px 20px;
+  background: var(--seal);
+  color: var(--paper-white);
   font-size: 0.9rem;
-  font-weight: 500;
-  transition: all var(--transition-fast);
+  letter-spacing: 0.06em;
+  box-shadow: var(--shadow-ink);
+  transition: all var(--t-fast);
 }
-
-.sync-btn:hover {
-  background: var(--color-accent-hover);
-  transform: translateY(-1px);
-}
-
-.sync-icon {
-  font-size: 1rem;
-}
+.sync-btn:hover { background: var(--seal-deep); box-shadow: var(--shadow-lift); }
+.sync-icon { font-size: 0.95rem; }
 
 /* 用户菜单 */
-.user-menu {
-  position: relative;
-}
-
+.user-menu { position: relative; }
 .user-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text);
+  gap: var(--sp-sm);
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--ink-soft);
   font-size: 0.9rem;
-  transition: all var(--transition-fast);
+  border: 1px solid var(--line);
+  transition: all var(--t-fast);
 }
-
-.user-btn:hover {
-  border-color: var(--color-accent);
-}
-
-.user-avatar {
-  font-size: 1.2rem;
-}
-
+.user-btn:hover { border-color: var(--gold); color: var(--ink); }
 .user-email {
-  max-width: 150px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.dropdown-arrow {
-  font-size: 0.7rem;
-  opacity: 0.7;
-}
+.dropdown-arrow { font-size: 0.65rem; opacity: 0.7; }
 
 .dropdown-menu {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 8px);
   right: 0;
-  margin-top: var(--spacing-sm);
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  min-width: 160px;
+  min-width: 170px;
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lift);
   opacity: 0;
   visibility: hidden;
-  transform: translateY(-10px);
-  transition: all var(--transition-fast);
-  overflow: hidden;
+  transform: translateY(-6px);
+  transition: all var(--t-fast);
 }
-
-.dropdown-menu.show {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
+.dropdown-menu.show { opacity: 1; visibility: visible; transform: translateY(0); }
 .dropdown-menu a,
 .dropdown-menu button {
   display: block;
   width: 100%;
-  padding: var(--spacing-md);
-  color: var(--color-text);
-  text-decoration: none;
-  font-size: 0.9rem;
+  padding: 12px 18px;
   text-align: left;
+  font-size: 0.9rem;
+  color: var(--ink);
   background: none;
-  border: none;
-  cursor: pointer;
-  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--line-soft);
 }
-
 .dropdown-menu a:hover,
-.dropdown-menu button:hover {
-  background: var(--color-secondary);
-}
+.dropdown-menu button:hover { background: var(--page-deep); }
+.dropdown-menu button:last-child { border-bottom: none; }
 
-/* 主内容区 */
+/* ---------- 主内容 ---------- */
+
 .main-content {
-  padding-top: 64px;
-  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 64px);
 }
 
-/* 空状态 */
+/* 空状态（一本摊开的书） */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   min-height: calc(100vh - 64px);
-  padding: var(--spacing-2xl);
+  padding: var(--sp-xl);
   text-align: center;
 }
-
 .empty-icon {
-  font-size: 5rem;
-  margin-bottom: var(--spacing-lg);
-  opacity: 0.5;
+  width: 92px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  border-radius: 6px 12px 12px 6px;
+  background: linear-gradient(to right, var(--page-deep) 0 10px, var(--paper-white) 10px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lift);
+  margin-bottom: var(--sp-lg);
 }
-
 .empty-state h2 {
+  font-family: var(--font-serif);
   font-size: 1.5rem;
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
-  color: var(--color-text);
+  margin-bottom: var(--sp-sm);
 }
-
 .empty-state p {
-  color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-xl);
+  color: var(--soft);
+  margin-bottom: var(--sp-lg);
+  font-size: 0.95rem;
 }
 
-.btn-primary {
-  padding: var(--spacing-md) var(--spacing-xl);
-  background: linear-gradient(135deg, var(--color-accent), #ff6b6b);
-  color: white;
-  border-radius: var(--radius-md);
-  font-size: 1rem;
-  font-weight: 600;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow-md);
-}
+/* ---------- 书架 ---------- */
 
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
-}
-
-/* 书籍容器 */
 .books-container {
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: var(--spacing-xl);
+  padding: var(--sp-lg) var(--sp-lg) var(--sp-xl);
 }
 
 .books-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: var(--sp-lg);
 }
-
 .books-header h1 {
-  font-size: 1.5rem;
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
   font-weight: 600;
-  color: var(--color-text);
+  letter-spacing: 0.06em;
 }
 
 .view-toggle {
   display: flex;
-  gap: var(--spacing-sm);
-  background: var(--color-secondary);
-  padding: 4px;
-  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
 }
-
 .view-btn {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
+  padding: 8px 18px;
   font-size: 0.85rem;
-  font-weight: 500;
-  transition: all var(--transition-fast);
+  color: var(--soft);
+  letter-spacing: 0.05em;
+  background: transparent;
+  border-right: 1px solid var(--line);
 }
+.view-btn:last-child { border-right: none; }
+.view-btn.active { background: var(--ink); color: var(--paper-white); }
+.view-btn:hover:not(.active) { color: var(--ink); }
 
-.view-btn.active {
-  background: var(--color-accent);
-  color: white;
-}
-
-.view-btn:hover:not(.active) {
-  color: var(--color-text);
-}
-
-/* 书籍网格 */
+/* 网格 */
 .books-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--spacing-xl);
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: 26px 22px;
 }
 
-/* 书籍列表 */
+/* 列表视图 */
 .books-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--sp-sm);
 }
 
-/* 书籍卡片 */
+/* ---------- 书卡（书脊式） ---------- */
+
 .book-card {
-  background: var(--color-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  transition: all var(--transition-fast);
+  background: var(--light-paper);
+  border: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
   cursor: pointer;
+  transition: all var(--t-fast);
+  display: flex;
+  flex-direction: column;
 }
-
 .book-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-  border-color: var(--color-accent);
+  transform: translateY(-3px);
+  border-color: var(--gold);
+  box-shadow: var(--shadow-lift);
 }
 
 .book-cover {
-  width: 100%;
-  aspect-ratio: 2/3;
-  background: linear-gradient(135deg, var(--color-secondary), var(--color-primary));
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(160deg, var(--paper-white) 0%, var(--page-deep) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   overflow: hidden;
+  border-bottom: 1px solid var(--line-soft);
 }
-
-.book-cover-placeholder {
-  font-size: 3rem;
-  opacity: 0.5;
+/* 书脊线 */
+.book-cover::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: linear-gradient(to right, rgba(43,39,36,0.10), transparent);
 }
-
+.book-cover-placeholder { font-size: 2.6rem; opacity: 0.75; }
 .book-cover-img {
   width: 100%;
   height: 100%;
@@ -350,62 +279,59 @@
 
 .book-format-badge {
   position: absolute;
-  top: var(--spacing-sm);
-  right: var(--spacing-sm);
-  padding: 2px 8px;
-  background: var(--color-accent);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 600;
-  border-radius: var(--radius-sm);
-  text-transform: uppercase;
+  top: 10px;
+  right: 10px;
+  padding: 2px 9px;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  background: rgba(251, 247, 238, 0.92);
+  border: 1px solid var(--line);
 }
 
+/* 删除钮（hover 出现） */
 .book-delete-btn {
   position: absolute;
-  top: var(--spacing-sm);
-  left: var(--spacing-sm);
+  top: 10px;
+  left: 12px;
   width: 24px;
   height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border-radius: var(--radius-full);
+  background: rgba(43, 39, 36, 0.72);
+  color: var(--paper-white);
   font-size: 0.7rem;
-  font-weight: 700;
+  border-radius: 50%;
   opacity: 0;
-  transition: opacity var(--transition-fast);
-  z-index: 5;
+  transition: opacity var(--t-fast);
+  z-index: 2;
 }
-
-.book-card:hover .book-delete-btn {
-  opacity: 1;
-}
-
-.book-delete-btn:hover {
-  background: var(--color-error);
-}
+.book-card:hover .book-delete-btn { opacity: 1; }
+.book-delete-btn:hover { background: var(--seal); }
 
 .book-info {
-  padding: var(--spacing-md);
+  padding: var(--sp-sm) var(--sp-md) var(--sp-md);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
 }
 
 .book-title {
-  font-size: 0.95rem;
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
   font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: var(--spacing-xs);
+  line-height: 1.5;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .book-author {
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-sm);
+  font-size: 0.82rem;
+  color: var(--soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -415,171 +341,152 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 0.75rem;
+  color: #9c937f;
 }
 
-.book-progress {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
+.book-progress { display: flex; align-items: center; gap: 6px; color: var(--gold); font-weight: 600; }
 .progress-bar {
-  width: 60px;
-  height: 4px;
-  background: var(--color-secondary);
-  border-radius: var(--radius-full);
+  width: 56px;
+  height: 3px;
+  background: var(--line);
   overflow: hidden;
+  border-radius: 2px;
 }
-
 .progress-fill {
   height: 100%;
-  background: var(--color-accent);
-  border-radius: var(--radius-full);
-  transition: width var(--transition-normal);
+  background: var(--seal);
+  border-radius: 2px;
+  transition: width var(--t-norm);
 }
 
 .new-badge {
-  color: var(--color-success);
+  color: var(--seal);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
   font-weight: 600;
-  font-size: 0.75rem;
 }
 
-/* 上次阅读时间 */
 .book-last-read {
-  margin-top: var(--spacing-xs);
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  color: #a89f8b;
 }
 
 /* 列表视图卡片 */
 .books-list .book-card {
-  display: flex;
   flex-direction: row;
   align-items: center;
-  padding: var(--spacing-md);
+  padding: var(--sp-sm) var(--sp-md);
+  border-bottom: 1px solid var(--line-soft);
 }
-
+.books-list .book-card:hover { transform: none; }
 .books-list .book-cover {
-  width: 60px;
-  height: 90px;
+  width: 44px;
+  height: 62px;
   aspect-ratio: auto;
-  border-radius: var(--radius-sm);
   flex-shrink: 0;
+  border-bottom: none;
+  border-right: 1px solid var(--line-soft);
 }
-
-.books-list .book-cover-placeholder {
-  font-size: 1.5rem;
-}
-
+.books-list .book-cover::before { width: 4px; }
+.books-list .book-cover-placeholder { font-size: 1.3rem; }
+.books-list .book-format-badge { display: none; }
 .books-list .book-info {
   flex: 1;
-  padding: 0 var(--spacing-md);
+  padding: 0 var(--sp-md);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-lg);
 }
+.books-list .book-title { white-space: normal; min-width: 160px; }
+.books-list .book-author { flex: 1; }
+.books-list .book-meta { margin-top: 0; padding-top: 0; }
 
-.books-list .book-title {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
+/* ---------- 同步遮罩 ---------- */
 
-/* 加载遮罩 */
 .loading-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(15, 15, 26, 0.9);
+  inset: 0;
+  background: rgba(246, 240, 227, 0.94);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
   opacity: 0;
   visibility: hidden;
-  transition: all var(--transition-normal);
+  transition: all var(--t-norm);
 }
-
-.loading-overlay.show {
-  opacity: 1;
-  visibility: visible;
-}
+.loading-overlay.show { opacity: 1; visibility: visible; }
 
 .loading-content {
   text-align: center;
-  color: var(--color-text);
+  color: var(--ink);
+  max-width: 380px;
+  padding: var(--sp-lg);
 }
-
 .spinner-large {
-  width: 50px;
-  height: 50px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-accent);
+  width: 46px;
+  height: 46px;
+  border: 2px solid var(--line);
+  border-top-color: var(--seal);
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin: 0 auto var(--spacing-md);
+  margin: 0 auto var(--sp-md);
 }
 
-.sync-progress {
-  margin-top: var(--spacing-lg);
-  width: 280px;
-}
-
+.sync-progress { margin-top: var(--sp-lg); }
 .sync-progress-bar {
   width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  height: 3px;
+  background: var(--line);
   overflow: hidden;
+  border-radius: 2px;
 }
-
 .sync-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--color-accent);
-  border-radius: 3px;
+  background: var(--seal);
+  border-radius: 2px;
   transition: width 0.3s ease;
 }
-
 .sync-progress-text {
   font-size: 0.85rem;
-  color: var(--color-text-secondary);
-  margin-top: var(--spacing-sm);
-  text-align: center;
+  color: var(--soft);
+  margin-top: var(--sp-sm);
 }
 
-/* 响应式适配 */
+.sync-error-list {
+  margin-top: var(--sp-md);
+  font-size: 0.82rem;
+  color: var(--seal);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.no-results {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--sp-xl);
+  color: var(--soft);
+}
+
+/* ---------- 响应式 ---------- */
+
 @media (max-width: 768px) {
-  .header-search {
-    display: none;
-  }
-  
-  .user-email {
-    display: none;
-  }
-  
+  .header-search { display: none; }
+  .user-email { display: none; }
   .books-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: var(--spacing-md);
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 18px 14px;
   }
-  
-  .books-container {
-    padding: var(--spacing-md);
-  }
-  
-  .view-toggle {
-    display: none;
-  }
+  .books-container { padding: var(--sp-md); }
+  .view-toggle { display: none; }
 }
 
 @media (max-width: 480px) {
-  .books-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .sync-btn span:last-child {
-    display: none;
-  }
+  .books-grid { grid-template-columns: repeat(2, 1fr); }
+  .sync-btn span:last-child { display: none; }
+  .books-list .book-info { flex-direction: column; align-items: flex-start; gap: 4px; }
 }
