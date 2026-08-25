@@ -21,13 +21,10 @@ binding = "DB"
 database_name = "jingdu-db"
 
 # 注意：
-# - JWT_SECRET / ENCRYPTION_KEY 固定写入 vars（不可每次部署轮换，否则 D1 中
-#   加密的 SMTP 密码将无法解密导致 535 认证失败）。如需保密可改用
-#   wrangler secret put 设置相同值。
+# - JWT_SECRET / ENCRYPTION_KEY 由 CI 首次部署时生成并保存在 secret 中（不写仓库）
+#   后续部署检测到已存在则跳过，密钥永续不轮换
 # - SMTP 配置优先通过 Web 设置页面保存到 D1 数据库，以下为回退值
 [vars]
-JWT_SECRET = "<JWT_SECRET>"
-ENCRYPTION_KEY = "<ENCRYPTION_KEY>"
 SMTP_HOST = ""
 SMTP_PORT = "587"
 SMTP_USER = ""

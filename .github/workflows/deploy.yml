@@ -4,9 +4,8 @@
 # Fork 者只需设置 1 个 Secret：
 #   - CLOUDFLARE_API_TOKEN（Workers/D1/KV 编辑权限）
 # D1 数据库 / KV 命名空间由 wrangler 4 自动创建
-# JWT_SECRET / ENCRYPTION_KEY 自动生成并通过 secret put 设置
-# 可选 Secret（推荐设置，密钥稳定不变）：
-#   - JWT_SECRET / ENCRYPTION_KEY（不设置则每次部署自动生成）
+# JWT_SECRET / ENCRYPTION_KEY：首次部署随机生成并保存为 secret，
+#   后续部署检测到已存在则跳过（密钥永续、不轮换、不进仓库）
 
 name: Deploy to Cloudflare Workers
 
@@ -40,6 +39,37 @@ jobs:
       - name: Deploy Worker (自动创建 D1/KV)
         run: npx wrangler deploy
 
+      - name: Set secrets (首次创建，已存在则跳过)
+        run: |
+          # 列出当前 Worker 已存在的 secrets
+          SECRETS=$(npx wrangler secret list --format json 2>/dev/null | node -e "
+            let raw='';
+            process.stdin.on('data',d=>raw+=d);
+            process.stdin.on('end',()=>{
+              try{
+                const d=JSON.parse(raw);
+                const arr=Array.isArray(d)?d:(d.result||[]);
+                console.log(arr.map(s=>s.name).join('\n'));
+              }catch(e){ process.exit(0); }
+            });
+          " || true)
+
+          # JWT_SECRET：仅在不存在时生成
+          if ! echo "$SECRETS" | grep -qx "JWT_SECRET"; then
+            echo "首次部署，生成 JWT_SECRET..."
+            openssl rand -base64 32 | npx wrangler secret put JWT_SECRET
+          else
+            echo "JWT_SECRET 已存在，跳过"
+          fi
+
+          # ENCRYPTION_KEY：仅在不存在时生成（固定后保证已加密数据可解密）
+          if ! echo "$SECRETS" | grep -qx "ENCRYPTION_KEY"; then
+            echo "首次部署，生成 ENCRYPTION_KEY..."
+            openssl rand -base64 32 | npx wrangler secret put ENCRYPTION_KEY
+          else
+            echo "ENCRYPTION_KEY 已存在，跳过"
+          fi
+
       - name: Initialize D1 Database
         run: |
           echo "初始化数据库表..."
@@ -51,4 +81,4 @@ jobs:
           echo "📚 静读天下部署完成!"
           echo "📍 访问地址: https://jingdu-web.<你的账号>.workers.dev"
           echo "📧 首次注册后，请到设置页面配置 SMTP 以发送验证码邮件"
-          echo "🔑 密钥建议固定到 GitHub Secrets（JWT_SECRET / ENCRYPTION_KEY），避免每次部署变化"
+          echo "🔑 密钥已由首次部署生成保存（JWT_SECRET / ENCRYPTION_KEY），后续部署不会轮换"
