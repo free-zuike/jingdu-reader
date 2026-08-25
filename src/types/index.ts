@@ -98,6 +98,7 @@ export interface ReadingProgress {
   lastReadAt: string | number;
   fromMoon?: boolean;
   currentCfi?: string; // epub.js 的 CFI 定位符
+  moonChapter?: number; // Moon+ 的章节号
 }
 
 // 邮箱验证码类型

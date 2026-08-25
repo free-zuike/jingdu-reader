@@ -404,15 +404,16 @@ export class BookService {
           if (book && book.user_id === userId) {
             const moonProgress = await this.readMoonProgress(userId, book, webdavService);
             if (moonProgress) {
-              // 解析 Moon+ 定位格式（如 0#1234），把行号作为 position
-              const pos = parseInt(moonProgress.location.split('#')[1] || moonProgress.location, 10) || 0;
+              // Moon+ 进度格式：chapter@location:percentage%
+              // 把章节号作为 position（前端根据章节号定位到正确章节）
               const progress = {
                 bookId,
-                currentPosition: pos,
+                currentPosition: moonProgress.chapter * 10000, // 用章节号编码为位置
                 totalLength: 0,
                 lastReadAt: new Date().toISOString(),
                 fromMoon: true,
-                percentage: moonProgress.percentage
+                percentage: moonProgress.percentage,
+                moonChapter: moonProgress.chapter
               };
               return { success: true, data: progress };
             }

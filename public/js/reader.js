@@ -45,6 +45,14 @@ async function initTextReader(bookId) {
     chapters = contentResult.data.chapters || [];
     totalLength = bookContent.length;
 
+    // 如果有 Moon+ 章节号，用它定位到对应章节
+    if (progressResult.success && progressResult.data && progressResult.data.moonChapter !== undefined) {
+      const mc = progressResult.data.moonChapter;
+      if (mc >= 0 && mc < chapters.length) {
+        currentChapterIndex = mc;
+      }
+    }
+
     // 渲染文本
     // 使用章节渲染（只显示当前章节，而非全部内容）
     document.getElementById('loadingText').style.display = 'none';
