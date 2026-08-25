@@ -504,6 +504,14 @@ export class WebDAVService {
         headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
       });
       if (directResp.ok) return directResp.arrayBuffer();
+      // 尝试 URL 编码版本（中文/空格问题）
+      const encodedUrl = encodeURI(coverUrl);
+      if (encodedUrl !== coverUrl) {
+        const encResp = await fetch(encodedUrl, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
+        });
+        if (encResp.ok) return encResp.arrayBuffer();
+      }
 
       // 直连没找到，尝试用核心书名匹配（去掉括号内容）
       const coreTitle = bookTitle.replace(/[（(][^）)]*[）)]/g, '').trim();
