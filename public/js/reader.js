@@ -102,8 +102,8 @@ function renderContent() {
 
 // 格式化文本
 function formatText(text) {
-  // 将文本分段
-  const paragraphs = text.split(/\n\n+/);
+  // 将文本分段（双换行分隔段落，单换行保留在段落内）
+  const paragraphs = text.split(/\n{2,}/);
   return paragraphs
     .filter(p => p.trim())
     .map(p => `<p>${escapeHtml(p.trim())}</p>`)

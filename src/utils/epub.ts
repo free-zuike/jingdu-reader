@@ -220,7 +220,7 @@ function stripHtml(html: string): string {
   }
   if (current.trim()) parts.push(current.trim());
 
-  result = parts.join(' ');
+  result = parts.join('');
   result = result
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -319,13 +319,20 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 
         if (text.length > 5) {
           let title = `章节 ${chapters.length + 1}`;
-          const h1Start = html.indexOf('<h1');
-          if (h1Start !== -1) {
-            const h1End = html.indexOf('>', h1Start);
-            const h1Close = html.indexOf('</h1>', h1End);
-            if (h1Close !== -1) {
-              const titleRaw = html.substring(h1End + 1, h1Close).replace(/<[^>]+>/g, '').trim();
-              if (titleRaw.length > 0 && titleRaw.length < 100) title = titleRaw;
+          // 按优先级检测 h1/h2/h3 作为章节标题
+          const tagPriority = ['h1', 'h2', 'h3'];
+          for (const tag of tagPriority) {
+            const tagStart = html.indexOf(`<${tag}`);
+            if (tagStart !== -1) {
+              const tagEnd = html.indexOf('>', tagStart);
+              const tagClose = html.indexOf(`</${tag}>`, tagEnd);
+              if (tagClose !== -1) {
+                const titleRaw = html.substring(tagEnd + 1, tagClose).replace(/<[^>]+>/g, '').trim();
+                if (titleRaw.length > 0 && titleRaw.length < 120) {
+                  title = titleRaw;
+                  break;
+                }
+              }
             }
           }
 

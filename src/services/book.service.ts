@@ -503,14 +503,17 @@ export class BookService {
   private detectTxtChapters(text: string): Array<{ title: string; startIndex: number }> {
     // 章节标题正则模式
     const patterns: RegExp[] = [
-      /^第[一二三四五六七八九十百千万\d]+[章回节卷集部篇]/m,  // 第X章/回/节/卷
-      /^第[一二三四五六七八九十百千万\d]+章\s/m,               // 第X章（带空格）
-      /^[0-9]+[、.．]\s*.+/m,                                   // 1、标题 / 1. 标题
-      /^[Cc]hapter\s+\d+/m,                                     // Chapter 1
-      /^[Cc]hapter\s+[IVXLC]+/m,                                // Chapter IV
-      /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言)/m,      // 特殊章节
-      /^【.+】/m,                                                // 【标题】
-      /^[☆★◇◆□■○●△▲].+/m,                                    // 符号开头标题
+      /^第\s*[一二三四五六七八九十百千万\d]+\s*[章回节卷集部篇]/m,  // 第X章/回/节/卷（容忍空格）
+      /^第\s*[一二三四五六七八九十百千万\d]+\s*章\s/m,               // 第X章（带空格）
+      /^[0-9]+[、.．]\s*.+/m,                                         // 1、标题 / 1. 标题
+      /^[Cc]hapter\s+\d+/m,                                           // Chapter 1
+      /^[Cc]hapter\s+[IVXLC]+/m,                                      // Chapter IV
+      /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言)/m,            // 特殊章节
+      /^【.+】/m,                                                      // 【标题】
+      /^[☆★◇◆□■○●△▲].+/m,                                          // 符号开头标题
+      /^[§\d]+\s*[.．、]\s*/m,                                        // §1. / 1./  编号
+      /^[零一二三四五六七八九十百千万]+[、.]/m,                        // 一、/ 二. 中文编号
+      /^第\s*[零一二三四五六七八九十百千万]+[章回节卷]/m,             // 第十章（中文数字带空格）
     ];
 
     const chapters: Array<{ title: string; startIndex: number }> = [];
