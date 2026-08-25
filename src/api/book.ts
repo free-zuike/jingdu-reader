@@ -146,9 +146,10 @@ book.get('/:id/cover', authMiddleware, async (c) => {
         headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }
       });
     }
-  } catch {}
-
-  return new Response(null, { status: 204 });
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'cover_not_found' } });
+  } catch {
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'exception' } });
+  }
 });
 book.get('/:id/raw', async (c) => {
   const bookId = c.req.param('id');
