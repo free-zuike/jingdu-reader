@@ -54,6 +54,19 @@ export class BookService {
               cached_at: new Date().toISOString()
             });
             added++;
+
+            // 同步时立即提取封面（EPUB 格式需下载文件提取，不缓存 raw 内容）
+            if (file.name.toLowerCase().endsWith('.epub')) {
+              try {
+                const fileResult = await webdavService.getFile(userId, file.path);
+                if (fileResult.success) {
+                  const fileData = (fileResult.data as { content: ArrayBuffer }).content;
+                  await this.cacheCoverFromRaw(bookId, fileData, { format: 'epub' });
+                }
+              } catch {
+                // 封面提取失败不影响同步
+              }
+            }
           } catch (e: any) {
             errors.push(`${file.name}: ${e?.message || '导入失败'}`);
           }
