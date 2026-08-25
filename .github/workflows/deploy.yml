@@ -39,6 +39,30 @@ jobs:
       - name: Deploy Worker (自动创建 D1/KV)
         run: npx wrangler deploy
 
+      - name: Set secrets（首次部署自动生成，已存在则跳过）
+        run: |
+          # 列出当前 Worker 已存在的 secrets
+          EXISTING=$(npx wrangler secret list --format json 2>/dev/null | node -e "
+            let raw='';
+            process.stdin.on('data',d=>raw+=d);
+            process.stdin.on('end',()=>{
+              try{
+                const d=JSON.parse(raw);
+                const arr=Array.isArray(d)?d:(d.result||[]);
+                console.log(arr.map(s=>s.name).join('\n'));
+              }catch(e){}
+            });
+          " || true)
+
+          if ! echo "$EXISTING" | grep -qx "JWT_SECRET"; then
+            echo "首次部署，生成 JWT_SECRET..."
+            openssl rand -base64 32 | npx wrangler secret put JWT_SECRET
+          fi
+          if ! echo "$EXISTING" | grep -qx "ENCRYPTION_KEY"; then
+            echo "首次部署，生成 ENCRYPTION_KEY..."
+            openssl rand -base64 32 | npx wrangler secret put ENCRYPTION_KEY
+          fi
+
       - name: Initialize D1 Database
         run: |
           echo "初始化数据库表..."

@@ -21,16 +21,13 @@ binding = "DB"
 database_name = "jingdu-db"
 
 # 注意：
-# - JWT_SECRET / ENCRYPTION_KEY 写死在 vars 中（部署时自动生效）
-#   如需保密可替换为 wrangler secret put 设置相同值
+# - JWT_SECRET / ENCRYPTION_KEY 首次部署时自动生成并保存为 secret（不进仓库）
 # - SMTP 配置优先通过 Web 设置页面保存到 D1 数据库，以下为回退值
 # - 预置账号（登录时若邮箱不存在则自动创建，无需邮箱注册）：
 #     方式1（每账号独立密码）: BOOTSTRAP_ACCOUNTS = "a@x.com:pw1,b@y.com:pw2"
 #     方式2（兼容，共用密码）: ADMIN_EMAIL = "a@x.com"  + ADMIN_PASSWORD = "pw"
 #   注意：密码请用 wrangler secret put 设置，避免写入版本库
 [vars]
-JWT_SECRET = "x/86CzBNiR9hV5zdEnDXo/fFsc98zyW+OMabTKBB69Q="
-ENCRYPTION_KEY = "ltFAz2sVZmqO0pa1XGK+A3es0gPZBOnuWOpR5TSi5Zc="
 BOOTSTRAP_ACCOUNTS = ""
 ADMIN_EMAIL = ""
 ADMIN_PASSWORD = ""
