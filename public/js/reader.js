@@ -46,10 +46,9 @@ async function initTextReader(bookId) {
     totalLength = bookContent.length;
 
     // 渲染文本
-    const textContainer = document.getElementById('bookText');
-    textContainer.innerHTML = `<div class="chapter-title" id="chapterTitle">${chapters.length > 0 ? chapters[0].title : ''}</div>
-      <div class="book-text">${formatText(bookContent)}</div>`;
+    // 使用章节渲染（只显示当前章节，而非全部内容）
     document.getElementById('loadingText').style.display = 'none';
+    renderTextContent();
 
     renderToc();
     if (currentPosition > 0) scrollToPosition(currentPosition);
@@ -58,7 +57,7 @@ async function initTextReader(bookId) {
 
     document.getElementById('prevBtn').addEventListener('click', prevChapter);
     document.getElementById('nextBtn').addEventListener('click', nextChapter);
-    textContainer.addEventListener('scroll', throttle(() => {
+    document.querySelector('.reader-content').addEventListener('scroll', throttle(() => {
       updateProgressBar();
       debounceSaveProgress();
     }, 1000));
@@ -90,7 +89,7 @@ function jumpToChapter(index) {
   currentChapterIndex = index;
   renderTextContent();
   closeToc();
-  document.querySelector('#epubViewer').scrollTop = 0;
+  document.querySelector('.reader-content').scrollTop = 0;
 }
 
 function prevChapter() {
