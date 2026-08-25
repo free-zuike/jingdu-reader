@@ -51,12 +51,8 @@ async function initEpubReader(bookId, meta) {
 
     document.getElementById('loadingText').textContent = '正在加载书籍...';
 
-    // 直接使用 raw URL 创建 epub.js 实例（后端 catch-all 路由处理内部资源）
-    const token = getToken();
-    book = ePub({
-      bookPath: `/api/books/${bookId}/raw`,
-      restore: false
-    });
+    // 直接使用 raw URL 创建 epub.js 实例
+    book = ePub(`/api/books/${bookId}/raw`);
     rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',
