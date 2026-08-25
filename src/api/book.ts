@@ -138,6 +138,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   if (!c.env.ENCRYPTION_KEY) {
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_encryption_key' } });
   }
+  let errMsg = 'unknown';
   try {
     const { WebDAVService } = await import('../services/webdav.service');
     const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
@@ -150,8 +151,9 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       });
     }
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'cover_not_found' } });
-  } catch {
-    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'exception' } });
+  } catch (e: any) {
+    errMsg = e?.message?.substring(0, 100) || 'exception';
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': errMsg } });
   }
 });
 book.get('/:id/raw', async (c) => {
