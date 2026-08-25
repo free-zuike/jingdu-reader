@@ -341,15 +341,15 @@ export class BookService {
         const poName = poFile.name.replace('.po', '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
         let score = 0;
 
-        // 完整书名匹配（最高优先级）
         if (poName === bookTitle) {
           score = 100;
         }
-        // 书名作为前缀匹配
         else if (poName.startsWith(bookTitle) || bookTitle.startsWith(poName)) {
           score = 50;
         }
-        // 检查书名中的每个关键词
+        else if (poName.includes(bookTitle) || bookTitle.includes(poName)) {
+          score = 30;
+        }
         else {
           const titleParts = bookTitle.split(/\s+/).filter(p => p.length >= 2);
           let matchedParts = 0;
@@ -357,11 +357,10 @@ export class BookService {
             if (poName.includes(part)) matchedParts++;
           }
           if (titleParts.length > 0) {
-            score = (matchedParts / titleParts.length) * 40;
+            score = (matchedParts / titleParts.length) * 30;
           }
-          // 作者匹配加成
           if (bookAuthor && bookAuthor.length >= 2 && poName.includes(bookAuthor)) {
-            score += 20;
+            score += 15;
           }
         }
 
@@ -370,7 +369,7 @@ export class BookService {
         }
       }
 
-      if (!bestMatch || bestMatch.score < 30) return null;
+      if (!bestMatch || bestMatch.score < 15) return null;
 
       console.log(`[Moon+] 从进度文件读取: ${bestMatch.file.name} (score: ${bestMatch.score})`);
       const poResult = await webdavService.getMoonPlusProgressFile(userId, bestMatch.file.path);
@@ -475,6 +474,10 @@ export class BookService {
           else if (poName.startsWith(bookTitle) || bookTitle.startsWith(poName)) {
             score = 50;
           }
+          // 书名包含在 .po 文件名中（宽松匹配）
+          else if (poName.includes(bookTitle) || bookTitle.includes(poName)) {
+            score = 30;
+          }
           // 检查书名中的每个关键词
           else {
             const titleParts = bookTitle.split(/\s+/).filter(p => p.length >= 2);
@@ -483,11 +486,11 @@ export class BookService {
               if (poName.includes(part)) matchedParts++;
             }
             if (titleParts.length > 0) {
-              score = (matchedParts / titleParts.length) * 40;
+              score = (matchedParts / titleParts.length) * 30;
             }
             // 作者匹配加成
             if (bookAuthor && bookAuthor.length >= 2 && poName.includes(bookAuthor)) {
-              score += 20;
+              score += 15;
             }
           }
 
@@ -496,7 +499,7 @@ export class BookService {
           }
         }
 
-        if (bestMatch && bestMatch.score >= 30) {
+        if (bestMatch && bestMatch.score >= 15) {
           poPath = bestMatch.file.path;
           console.log(`[Moon+] 匹配到进度文件: ${bestMatch.file.name} (score: ${bestMatch.score})`);
         }
