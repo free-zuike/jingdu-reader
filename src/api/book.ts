@@ -162,18 +162,32 @@ book.get('/:id/raw', authMiddleware, async (c) => {
     return new Response(raw, {
       headers: {
         'Content-Type': mime,
-        'Content-Disposition': `inline; filename="${bookData.title}.${bookData.format}"`,
         'Cache-Control': 'public, max-age=86400'
       }
     });
   }
 
-  // 缓存不存在，触发后台下载并缓存，稍后重试
-  const bookService = new BookService(db, c.env.CACHE);
+  // 缓存不存在，从 WebDAV 同步下载（EPUB 解析才超时，文件下载是 I/O 不超时）
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  c.executionCtx.waitUntil(bookService.downloadAndCacheBook(userId, bookId, webdavService));
+  const fileResult = await webdavService.getFile(userId, bookData.webdav_path);
+  if (!fileResult.success) {
+    return c.json({ success: false, error: '文件获取失败' }, 502);
+  }
 
-  return c.json({ processing: true, message: '文件正在下载，请稍后重试' }, 202);
+  const content = (fileResult.data as { content: ArrayBuffer }).content;
+  const rawBytes = new Uint8Array(content);
+  // 异步缓存到 KV（不等待）
+  c.executionCtx.waitUntil(
+    c.env.CACHE.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 })
+  );
+
+  const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
+  return new Response(content, {
+    headers: {
+      'Content-Type': mime,
+      'Cache-Control': 'public, max-age=86400'
+    }
+  });
 });
 
 // 获取阅读进度（优先从 Moon+ 读取）
