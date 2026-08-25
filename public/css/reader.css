@@ -110,6 +110,20 @@
   min-height: 100vh;
 }
 
+/* epub.js 阅读器模式下，去掉 padding 让渲染区全尺寸 */
+.reader-content.epub-mode {
+  padding: 0;
+  overflow: hidden;
+  min-height: 100vh;
+}
+#epubViewer {
+  width: 100%;
+  height: calc(100vh - 180px);
+  margin-top: 56px;
+  margin-bottom: 76px;
+  position: relative;
+}
+
 .content-wrapper {
   max-width: 43em;
   margin: 0 auto;

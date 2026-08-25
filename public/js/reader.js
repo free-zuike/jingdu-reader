@@ -44,9 +44,10 @@ async function initEpubReader(bookId, meta) {
       return;
     }
 
-    // 设置容器高度
+    // 设置容器高度和 epub-mode 样式
+    const content = document.getElementById('readerContent');
+    content.classList.add('epub-mode');
     const viewer = document.getElementById('epubViewer');
-    viewer.style.height = (window.innerHeight - 180) + 'px';
 
     document.getElementById('loadingText').textContent = '正在加载书籍...';
 
@@ -82,7 +83,10 @@ async function initEpubReader(bookId, meta) {
       }
     }
 
+    // 等待书籍加载完成再渲染
+    await book.ready;
     await rendition.display(startCfi);
+    console.log('epub.js 渲染完成');
 
     // 渲染目录
     renderToc();
