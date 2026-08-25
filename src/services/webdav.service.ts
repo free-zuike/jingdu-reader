@@ -515,13 +515,19 @@ export class WebDAVService {
 
       // 清理书名和作者，与封面文件名匹配
       const clean = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
-      const bookKey = clean(bookTitle);
 
-      // 找匹配的封面文件（优先匹配书名，支持 .jpg/.png/.webp）
+      // 提取核心书名（取第一个括号/空格前的内容，忽略版本标签）
+      const coreTitle = (bookTitle.split(/[（(]/)[0] || bookTitle).trim();
+      const bookKey = clean(bookTitle);
+      const coreKey = clean(coreTitle);
+
+      // 找匹配的封面文件
       const coverFiles = files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
       for (const f of coverFiles) {
         const name = clean(f.name.replace(/\.[^.]+$/, ''));
-        if (name.includes(bookKey) || bookKey.includes(name)) {
+        // 先尝试完整匹配，再尝试核心书名匹配
+        if (name.includes(bookKey) || bookKey.includes(name) ||
+            name.includes(coreKey) || coreKey.includes(name)) {
           // 下载封面
           const fileUrl = this.buildFileUrl(config.server_url, f.path);
           const imgResp = await fetch(fileUrl, {
