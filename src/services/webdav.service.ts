@@ -189,8 +189,8 @@ export class WebDAVService {
     }
   }
 
-  // 列出WebDAV目录中的文件
-  async listFiles(userId: string, path?: string): Promise<ApiResponse> {
+  // 列出WebDAV目录中的文件（支持递归子目录）
+  async listFiles(userId: string, path?: string, recursive = true): Promise<ApiResponse> {
     try {
       const config = await this.db.getWebDAVConfigByUserId(userId);
       if (!config) {
@@ -248,19 +248,35 @@ export class WebDAVService {
 
       const files = this.parseWebDAVResponse(xmlText, targetPath);
 
-      // 支持的电子书格式（大小写不敏感）
+      // 支持的电子书格式
       const supportedFormats = ['epub', 'txt', 'pdf', 'mobi', 'azw3', 'azw', 'docx', 'doc', 'rtf', 'fb2', 'html', 'htm', 'cbr', 'cbz', 'djvu'];
 
       const bookFiles = files.filter(file => {
+        if (file.isDirectory) return false;
         const ext = file.name.toLowerCase().split('.').pop() || '';
         return supportedFormats.includes(ext.toLowerCase());
       });
+
+      let totalFiles = files.length;
+
+      // 递归遍历子目录
+      if (recursive) {
+        const subdirs = files.filter(f => f.isDirectory && f.name !== '.' && f.name !== '..');
+        for (const dir of subdirs) {
+          const subResult = await this.listFiles(userId, dir.path, true);
+          if (subResult.success && subResult.data) {
+            const subData = subResult.data as { files: any[]; totalFiles: number };
+            bookFiles.push(...subData.files);
+            totalFiles += subData.totalFiles || 0;
+          }
+        }
+      }
 
       return {
         success: true,
         data: {
           files: bookFiles,
-          totalFiles: files.length,
+          totalFiles,
           matchedFiles: bookFiles.length,
           path: targetPath
         }
@@ -389,15 +405,23 @@ export class WebDAVService {
         continue;
       }
 
-      if (isCollection) continue;
-
-      files.push({
-        path: href,
-        name: name,
-        size: contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0,
-        lastModified: lastModifiedMatch ? lastModifiedMatch[1] : '',
-        isDirectory: isCollection
-      });
+      if (isCollection) {
+        files.push({
+          path: href,
+          name: name,
+          size: 0,
+          lastModified: '',
+          isDirectory: true
+        });
+      } else {
+        files.push({
+          path: href,
+          name: name,
+          size: contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0,
+          lastModified: lastModifiedMatch ? lastModifiedMatch[1] : '',
+          isDirectory: false
+        });
+      }
     }
 
     return files;
