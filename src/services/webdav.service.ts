@@ -505,6 +505,40 @@ export class WebDAVService {
       });
       if (directResp.ok) return directResp.arrayBuffer();
 
+      // 直连没找到，尝试用核心书名匹配（去掉括号内容）
+      const coreTitle = bookTitle.replace(/[（(][^）)]*[）)]/g, '').trim();
+      if (coreTitle && coreTitle !== bookTitle) {
+        const coreKey = coreTitle.replace(/[^\w\u4e00-\u9fff]/g, '');
+        // 列出封面目录（只做一次，后续走缓存）
+        const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
+        const resp = await fetch(fullUrl, {
+          method: 'PROPFIND',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+            'Content-Type': 'text/xml; charset=utf-8',
+            'Depth': '1'
+          },
+          body: `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>`
+        });
+        if (resp.status === 207) {
+          const xml = await resp.text();
+          const files = this.parseWebDAVResponse(xml, coverDir);
+          const clean = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
+          const coreKeyClean = clean(coreTitle);
+          for (const f of files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name))) {
+            const name = clean(f.name.replace(/\.[^.]+$/, ''));
+            if (name.includes(coreKeyClean) || coreKeyClean.includes(name)) {
+              const fileUrl = this.buildFileUrl(config.server_url, f.path);
+              const img = await fetch(fileUrl, {
+                headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
+              });
+              if (img.ok) return img.arrayBuffer();
+            }
+          }
+        }
+      }
+
       return null;
     } catch {
       return null;
