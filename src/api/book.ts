@@ -143,15 +143,16 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   return new Response(null, { status: 204 });
 });
 
-// 获取阅读进度
+// 获取阅读进度（优先从 Moon+ 读取）
 book.get('/:id/progress', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getProgress(userId, bookId);
+  const result = await bookService.getProgress(userId, bookId, webdavService);
 
   return c.json(result);
 });

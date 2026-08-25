@@ -372,9 +372,35 @@ export class BookService {
     }
   }
 
-  // 获取阅读进度（仅从KV读取，不主动从Moon+读取）
-  async getProgress(userId: string, bookId: string): Promise<ApiResponse> {
+  // 获取阅读进度（优先从 Moon+ 读取，回退到本地 KV）
+  async getProgress(userId: string, bookId: string, webdavService?: WebDAVService): Promise<ApiResponse> {
     try {
+      // 先尝试从 Moon+ 读取进度
+      if (webdavService) {
+        try {
+          const book = await this.db.getBookById(bookId);
+          if (book && book.user_id === userId) {
+            const moonProgress = await this.readMoonProgress(userId, book, webdavService);
+            if (moonProgress) {
+              // 解析 Moon+ 定位格式（如 0#1234），把行号作为 position
+              const pos = parseInt(moonProgress.location.split('#')[1] || moonProgress.location, 10) || 0;
+              const progress = {
+                bookId,
+                currentPosition: pos,
+                totalLength: 0,
+                lastReadAt: new Date().toISOString(),
+                fromMoon: true,
+                percentage: moonProgress.percentage
+              };
+              return { success: true, data: progress };
+            }
+          }
+        } catch {
+          // Moon+ 读取失败，回退到 KV
+        }
+      }
+
+      // 回退到本地 KV
       const progressKey = `progress:${userId}:${bookId}`;
       const progressData = await this.cache.get(progressKey);
       if (progressData) {
