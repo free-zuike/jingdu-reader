@@ -65,7 +65,7 @@ export class EmailService {
           secure: config.port === 465,
           startTls: config.port !== 465,
           credentials: { username: config.username, password: config.password },
-          authType: ['plain', 'login'],
+          authType: ['login', 'plain'],
           responseTimeoutMs: 10000,
           socketTimeoutMs: 10000,
         },
@@ -79,7 +79,7 @@ export class EmailService {
       );
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error?.message || '连接失败' };
+      return { success: false, error: this.friendlyError(error) };
     }
   }
 
@@ -132,7 +132,7 @@ export class EmailService {
           secure: settings.port === 465,
           startTls: settings.port !== 465,
           credentials: { username: settings.username, password: settings.password },
-          authType: ['plain', 'login'],
+          authType: ['login', 'plain'],
         },
         {
           from: { name: settings.senderName, email: settings.senderEmail },
@@ -148,5 +148,24 @@ export class EmailService {
       console.error('[Email] 发送失败:', error);
       return false;
     }
+  }
+
+  // 将 SMTP 异常转换为人类可读的提示
+  private friendlyError(error: any): string {
+    const msg = error?.message || String(error);
+    if (msg.includes('535') || msg.includes('Authentication') || msg.includes('authentication')) {
+      return '登录失败：请确认使用 SMTP 授权码（不是登录密码），并已在邮箱设置中开启 SMTP 服务。QQ邮箱需在「设置→账户→开启SMTP服务」获取16位授权码；163邮箱使用客户端授权密码。';
+    }
+    if (msg.includes('ECONNREFUSED') || msg.includes('EHOSTUNREACH') || msg.includes('ENOTFOUND')) {
+      return '无法连接 SMTP 服务器：请检查服务器地址和端口是否正确。';
+    }
+    if (msg.includes('ETIMEDOUT') || msg.includes('timeout')) {
+      return '连接超时：请确认端口正确（QQ邮箱465/587，163邮箱465/994）。';
+    }
+    if (msg.includes('TLS') || msg.includes('SSL')) {
+      return 'TLS 加密失败：端口465使用SSL，端口587使用STARTTLS，请检查端口与加密方式是否匹配。';
+    }
+    if (msg.length > 200) return msg.substring(0, 200);
+    return msg;
   }
 }
