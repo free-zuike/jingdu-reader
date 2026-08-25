@@ -39,10 +39,20 @@ async function initReader(bookId) {
 // EPUB 阅读器（epub.js）
 async function initEpubReader(bookId, meta) {
   const token = getToken();
-  const rawUrl = `/api/books/${bookId}/raw`;
 
   try {
-    book = ePub(rawUrl, { ignores: ['pdf', 'mobi', 'prc'] });
+    // 先下载原始文件为 ArrayBuffer，避免 epub.js 路径解析问题
+    const rawResponse = await fetch(`/api/books/${bookId}/raw`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!rawResponse.ok) {
+      document.getElementById('loadingText').innerHTML = '<p>书籍文件获取失败，请返回书架重试</p>';
+      return;
+    }
+    const rawBuffer = await rawResponse.arrayBuffer();
+
+    // 用 ArrayBuffer 初始化 epub.js（不依赖 URL 路径解析）
+    book = ePub(rawBuffer);
     rendition = book.renderTo('epubViewer', {
       width: '100%',
       height: '100%',
