@@ -135,6 +135,9 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   }
 
   // 缓存不存在，尝试从 Moon+ Cover 目录拉取
+  if (!c.env.ENCRYPTION_KEY) {
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_encryption_key' } });
+  }
   try {
     const { WebDAVService } = await import('../services/webdav.service');
     const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
