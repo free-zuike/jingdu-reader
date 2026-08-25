@@ -179,6 +179,27 @@ user.post('/smtp-config/test', authMiddleware, async (c) => {
 
   const { EmailService } = await import('../services/email.service');
   const emailService = new EmailService(c.env);
+
+  // 密码为空时，读取已保存的配置（解密密码）进行测试
+  if (!password) {
+    const db = new Database(c.env.DB);
+    const saved = await db.getSmtpConfig(userId);
+    if (!saved) {
+      return c.json({ success: false, error: '尚未保存 SMTP 配置，请先填写密码并保存' });
+    }
+    const { decrypt } = await import('../utils/crypto');
+    const savedPassword = await decrypt(saved.password_encrypted, c.env.ENCRYPTION_KEY);
+    const result = await emailService.testConnection({
+      host: saved.host,
+      port: saved.port,
+      username: saved.username,
+      password: savedPassword,
+      senderEmail: saved.sender_email,
+      senderName: saved.sender_name,
+    }, c.get('email'));
+    return c.json(result);
+  }
+
   const result = await emailService.testConnection({
     host,
     port: port || 587,

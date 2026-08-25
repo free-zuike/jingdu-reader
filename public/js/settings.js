@@ -374,7 +374,8 @@ async function handleTestSmtp() {
   btn.textContent = '测试中...';
 
   try {
-    const result = await testSmtpConnection({ host, port, username, password: password || 'dummy', senderEmail, senderName });
+    // 密码为空时传空字符串，由后端读取已保存的配置进行测试（避免误用 dummy）
+    const result = await testSmtpConnection({ host, port, username, password, senderEmail, senderName });
     if (result.success) {
       showToast('测试邮件发送成功！请检查收件箱', 'success');
     } else {

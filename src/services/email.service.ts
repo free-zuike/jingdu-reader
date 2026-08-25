@@ -65,7 +65,7 @@ export class EmailService {
           secure: config.port === 465,
           startTls: config.port !== 465,
           credentials: { username: config.username, password: config.password },
-          authType: ['login', 'plain'],
+          authType: ['plain', 'login'],
           responseTimeoutMs: 10000,
           socketTimeoutMs: 10000,
         },
@@ -132,7 +132,7 @@ export class EmailService {
           secure: settings.port === 465,
           startTls: settings.port !== 465,
           credentials: { username: settings.username, password: settings.password },
-          authType: ['login', 'plain'],
+          authType: ['plain', 'login'],
         },
         {
           from: { name: settings.senderName, email: settings.senderEmail },
