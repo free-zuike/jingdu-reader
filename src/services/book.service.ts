@@ -1,6 +1,6 @@
 // 书籍服务
 
-import type { KVNamespace } from '@cloudflare/workers-types';
+import type { KVNamespace, ExecutionContext } from '@cloudflare/workers-types';
 import { Database } from '../utils/db';
 import { WebDAVService } from './webdav.service';
 import { generateUUID } from '../utils/crypto';
@@ -244,11 +244,12 @@ export class BookService {
     }
   }
 
-  // 获取书籍内容（惰性解析：没有则按需从WebDAV下载提取）
+  // 获取书籍内容（惰性解析：缓存不存在时后台异步解析，前端轮询重试）
   async getBookContent(
     userId: string,
     bookId: string,
-    webdavService?: WebDAVService
+    webdavService?: WebDAVService,
+    ctx?: ExecutionContext
   ): Promise<ApiResponse> {
     try {
       const book = await this.db.getBookById(bookId);
@@ -276,6 +277,7 @@ export class BookService {
         return { success: false, error: '书籍内容尚未缓存，请重新同步' };
       }
 
+      // TXT 解析轻量，直接同步完成
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(rawData as ArrayBuffer);
         const chapters = this.detectTxtChapters(text);
@@ -284,25 +286,39 @@ export class BookService {
         return { success: true, data: { text, chapters, title: book.title, author: book.author } };
       }
 
-      const fileData = rawData as ArrayBuffer;
-
-      // 提取封面并更新元数据（复用 cacheCoverFromRaw）
-      await this.cacheCoverFromRaw(bookId, fileData, book);
-      // 读取更新后的元数据
-      const updatedBook = await this.db.getBookById(bookId);
-      const title = (updatedBook?.title || book.title || '');
-      const author = (updatedBook?.author || book.author || '');
-
-      const content = await extractEpubContent(fileData);
-      const contentJson = JSON.stringify(content);
-      const targetSize = contentJson.length < 25 * 1024 * 1024 ? contentJson.length : 5 * 1024 * 1024;
-      const finalContent = contentJson.length < 25 * 1024 * 1024 ? content : { text: content.text.substring(0, 5 * 1024 * 1024), chapters: content.chapters, truncated: true };
-      await this.cache.put(cacheKey, JSON.stringify(finalContent), { expirationTtl: 30 * 24 * 60 * 60 });
-
-      await this.db.markBookSynced(bookId);
-      return { success: true, data: { text: content.text, chapters: content.chapters, title, author } };
+      // EPUB 解析较慢，后台异步解析（避免 503），前端轮询
+      if (ctx) {
+        ctx.waitUntil(this.buildEpubCache(book, rawData as ArrayBuffer, cacheKey));
+      }
+      // 立即返回，稍后重试
+      return { success: true, data: { processing: true, message: '书籍正在解析中，请稍后重试' } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取书籍内容失败' };
+    }
+  }
+
+  // 后台构建 EPUB 内容缓存
+  private async buildEpubCache(book: Book, fileData: ArrayBuffer, cacheKey: string): Promise<void> {
+    try {
+      const { extractEpubContent } = await import('../utils/epub');
+
+      // 提取封面
+      await this.cacheCoverFromRaw(book.id, fileData, book);
+
+      // 解析内容
+      const content = await extractEpubContent(fileData);
+      const contentJson = JSON.stringify(content);
+      // KV 限制 25MB，超过则截断
+      const finalContent = contentJson.length < 25 * 1024 * 1024 ? content : {
+        text: content.text.substring(0, 5 * 1024 * 1024),
+        chapters: content.chapters,
+        truncated: true
+      };
+      await this.cache.put(cacheKey, JSON.stringify(finalContent), { expirationTtl: 30 * 24 * 60 * 60 });
+      await this.db.markBookSynced(book.id);
+      console.log(`[Cache] EPUB 缓存完成: ${book.id}`);
+    } catch (error) {
+      console.error('[Cache] EPUB 解析失败:', error);
     }
   }
 

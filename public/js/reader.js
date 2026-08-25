@@ -28,6 +28,18 @@ async function initReader(bookId) {
   // 加载书籍内容
   const contentResult = await getBookContent(bookId);
   if (contentResult.success) {
+    // 异步解析中（EPUB 在后台解析，稍后重试）
+    if (contentResult.data && contentResult.data.processing) {
+      document.getElementById('bookText').innerHTML = `
+        <div class="loading-text">
+          <p>📖 正在解析书籍内容...</p>
+          <p style="font-size:0.85rem;color:var(--r-ink-soft);margin-top:8px;">首次加载需要几秒，请稍候</p>
+        </div>
+      `;
+      // 3 秒后自动重试
+      setTimeout(() => initReader(bookId), 3000);
+      return;
+    }
     bookContent = contentResult.data.text;
     chapters = contentResult.data.chapters || [];
     

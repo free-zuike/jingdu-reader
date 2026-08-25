@@ -79,7 +79,7 @@ book.get('/:id', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 获取书籍内容（惰性解析：没有则按需从WebDAV下载提取）
+// 获取书籍内容（缓存不存在时后台异步解析）
 book.get('/:id/content', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -88,7 +88,7 @@ book.get('/:id/content', authMiddleware, async (c) => {
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getBookContent(userId, bookId, webdavService);
+  const result = await bookService.getBookContent(userId, bookId, webdavService, c.executionCtx as any);
 
   if (!result.success) {
     return c.json(result, 404);
