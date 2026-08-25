@@ -61,8 +61,10 @@ async function initEpubReader(bookId, meta) {
     const viewer = document.getElementById('epubViewer');
     viewer.style.height = (window.innerHeight - 180) + 'px';
 
-    // 用 ArrayBuffer 初始化 epub.js
-    book = ePub(rawBuffer);
+    // 用 Blob URL 初始化 epub.js（ArrayBuffer 在老版本中不可靠）
+    const blob = new Blob([rawBuffer], { type: 'application/epub+zip' });
+    const blobUrl = URL.createObjectURL(blob);
+    book = ePub(blobUrl);
     rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',
