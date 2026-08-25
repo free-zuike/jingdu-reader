@@ -97,7 +97,7 @@ book.get('/:id/content', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 获取书籍封面（从KV缓存读取）
+// 获取书籍封面（从KV缓存读取，缓存不存在时从 Moon+ Cover 目录拉取）
 book.get('/:id/cover', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -123,27 +123,33 @@ book.get('/:id/cover', authMiddleware, async (c) => {
             bytes[i] = binaryStr.charCodeAt(i);
           }
           return new Response(bytes, {
-            headers: {
-              'Content-Type': parsed.mimeType,
-              'Cache-Control': 'public, max-age=86400'
-            }
+            headers: { 'Content-Type': parsed.mimeType, 'Cache-Control': 'public, max-age=86400' }
           });
         }
       } catch {}
     }
     const bytes = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
     return new Response(bytes, {
-      headers: {
-        'Content-Type': 'image/jpeg',
-        'Cache-Control': 'public, max-age=86400'
-      }
+      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }
     });
   }
 
+  // 缓存不存在，尝试从 Moon+ Cover 目录拉取
+  try {
+    const { WebDAVService } = await import('../services/webdav.service');
+    const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+    const coverData = await webdavService.getMoonPlusCover(userId, bookData.title, bookData.author || '');
+    if (coverData) {
+      const base64Data = btoa(String.fromCharCode(...new Uint8Array(coverData)));
+      await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+      return new Response(coverData, {
+        headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }
+      });
+    }
+  } catch {}
+
   return new Response(null, { status: 204 });
 });
-
-// 获取原始书籍文件（不用 authMiddleware，epub.js 无法传 Authorization header）
 book.get('/:id/raw', async (c) => {
   const bookId = c.req.param('id');
   const token = c.req.query('token');
