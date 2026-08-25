@@ -51,17 +51,11 @@ async function initEpubReader(bookId, meta) {
 
     document.getElementById('loadingText').textContent = '正在加载书籍...';
 
-    // 先下载 raw 文件为 ArrayBuffer（绕过路径解析问题）
-    const rawResp = await fetch(`/api/books/${bookId}/raw`);
-    if (!rawResp.ok) {
-      document.getElementById('loadingText').innerHTML = '<p>书籍文件下载失败</p>';
-      return;
-    }
-    const rawBuf = await rawResp.arrayBuffer();
+    // 直接使用 raw URL 创建 epub.js 实例（带 token 参数，若未缓存则触发下载）
     document.getElementById('loadingText').textContent = '正在加载书籍...';
-
-    // 用 ArrayBuffer 创建 epub.js 实例（不依赖 URL 路径）
-    book = ePub(rawBuf);
+    const token = getToken();
+    const rawUrl = token ? `/api/books/${bookId}/raw?token=${token}` : `/api/books/${bookId}/raw`;
+    book = ePub(rawUrl);
     rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',
