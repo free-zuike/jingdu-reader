@@ -168,22 +168,12 @@ book.get('/:id/raw', authMiddleware, async (c) => {
     });
   }
 
-  // 缓存不存在，从 WebDAV 下载
+  // 缓存不存在，触发后台下载并缓存，稍后重试
+  const bookService = new BookService(db, c.env.CACHE);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const fileResult = await webdavService.getFile(userId, bookData.webdav_path);
-  if (!fileResult.success) {
-    return c.json({ success: false, error: '文件获取失败' }, 404);
-  }
+  c.executionCtx.waitUntil(bookService.downloadAndCacheBook(userId, bookId, webdavService));
 
-  const content = (fileResult.data as { content: ArrayBuffer }).content;
-  const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
-  return new Response(content, {
-    headers: {
-      'Content-Type': mime,
-      'Content-Disposition': `inline; filename="${bookData.title}.${bookData.format}"`,
-      'Cache-Control': 'public, max-age=86400'
-    }
-  });
+  return c.json({ processing: true, message: '文件正在下载，请稍后重试' }, 202);
 });
 
 // 获取阅读进度（优先从 Moon+ 读取）

@@ -45,6 +45,12 @@ async function initEpubReader(bookId, meta) {
     const rawResponse = await fetch(`/api/books/${bookId}/raw`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
+    if (rawResponse.status === 202) {
+      // 文件正在下载中，3 秒后重试
+      document.getElementById('loadingText').innerHTML = '<p>📖 正在下载书籍...</p>';
+      setTimeout(() => initEpubReader(bookId, meta), 3000);
+      return;
+    }
     if (!rawResponse.ok) {
       document.getElementById('loadingText').innerHTML = '<p>书籍文件获取失败，请返回书架重试</p>';
       return;
