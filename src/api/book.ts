@@ -143,15 +143,14 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   return new Response(null, { status: 204 });
 });
 
-// 获取原始书籍文件（epub.js 前端渲染用）
-book.get('/:id/raw', authMiddleware, async (c) => {
-  const userId = c.get('userId');
+// 获取原始书籍文件（不用 authMiddleware，epub.js 无法传 Authorization header）
+book.get('/:id/raw', async (c) => {
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
   const bookData = await db.getBookById(bookId);
 
-  if (!bookData || bookData.user_id !== userId) {
+  if (!bookData) {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
@@ -167,27 +166,8 @@ book.get('/:id/raw', authMiddleware, async (c) => {
     });
   }
 
-  // 缓存不存在，从 WebDAV 同步下载（EPUB 解析才超时，文件下载是 I/O 不超时）
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const fileResult = await webdavService.getFile(userId, bookData.webdav_path);
-  if (!fileResult.success) {
-    return c.json({ success: false, error: '文件获取失败' }, 502);
-  }
-
-  const content = (fileResult.data as { content: ArrayBuffer }).content;
-  const rawBytes = new Uint8Array(content);
-  // 异步缓存到 KV（不等待）
-  c.executionCtx.waitUntil(
-    c.env.CACHE.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 })
-  );
-
-  const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
-  return new Response(content, {
-    headers: {
-      'Content-Type': mime,
-      'Cache-Control': 'public, max-age=86400'
-    }
-  });
+  // 缓存不存在，返回 404（文件需通过阅读触发缓存）
+  return c.json({ success: false, error: '文件尚未缓存，请先打开阅读' }, 404);
 });
 
 // 获取阅读进度（优先从 Moon+ 读取）
@@ -248,15 +228,14 @@ book.delete('/:id', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// EPUB 内部资源路由（epub.js 请求 META-INF/container.xml 等资源）
-book.get('/:id/:resource{.*}', authMiddleware, async (c) => {
-  const userId = c.get('userId');
+// EPUB 内部资源路由（epub.js 请求 META-INF/container.xml 等资源，无需 auth）
+book.get('/:id/:resource{.*}', async (c) => {
   const bookId = c.req.param('id');
   const resourcePath = c.req.param('resource');
 
   const db = new Database(c.env.DB);
   const bookData = await db.getBookById(bookId);
-  if (!bookData || bookData.user_id !== userId) {
+  if (!bookData) {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 

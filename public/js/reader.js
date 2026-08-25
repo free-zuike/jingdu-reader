@@ -38,20 +38,7 @@ async function initReader(bookId) {
 
 // EPUB 阅读器（epub.js）
 async function initEpubReader(bookId, meta) {
-  const token = getToken();
-
   try {
-    // 先下载原始文件为 ArrayBuffer，避免 epub.js 路径解析问题
-    const rawResponse = await fetch(`/api/books/${bookId}/raw`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!rawResponse.ok) {
-      const err = await rawResponse.text().catch(() => '');
-      document.getElementById('loadingText').innerHTML = `<p>书籍加载失败 (${rawResponse.status})</p>`;
-      return;
-    }
-    const rawBuffer = await rawResponse.arrayBuffer();
-
     if (typeof ePub === 'undefined') {
       document.getElementById('loadingText').innerHTML = '<p>epub.js 库加载失败，请刷新页面重试</p>';
       return;
@@ -61,10 +48,14 @@ async function initEpubReader(bookId, meta) {
     const viewer = document.getElementById('epubViewer');
     viewer.style.height = (window.innerHeight - 180) + 'px';
 
-    // 用 Blob URL 初始化 epub.js（ArrayBuffer 在老版本中不可靠）
-    const blob = new Blob([rawBuffer], { type: 'application/epub+zip' });
-    const blobUrl = URL.createObjectURL(blob);
-    book = ePub(blobUrl);
+    document.getElementById('loadingText').textContent = '正在加载书籍...';
+
+    // 直接使用 raw URL 创建 epub.js 实例（后端 catch-all 路由处理内部资源）
+    const token = getToken();
+    book = ePub({
+      bookPath: `/api/books/${bookId}/raw`,
+      restore: false
+    });
     rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',

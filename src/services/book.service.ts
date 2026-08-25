@@ -55,12 +55,15 @@ export class BookService {
             });
             added++;
 
-            // 同步时立即提取封面（EPUB 格式需下载文件提取，不缓存 raw 内容）
+            // 同步时立即提取封面并缓存 raw 文件（EPUB 格式）
             if (file.name.toLowerCase().endsWith('.epub')) {
               try {
                 const fileResult = await webdavService.getFile(userId, file.path);
                 if (fileResult.success) {
                   const fileData = (fileResult.data as { content: ArrayBuffer }).content;
+                  // 缓存 raw 文件（epub.js 前端渲染需要）
+                  await this.cache.put(`raw:${bookId}`, new Uint8Array(fileData), { expirationTtl: 30 * 24 * 60 * 60 });
+                  // 提取封面
                   await this.cacheCoverFromRaw(bookId, fileData, { format: 'epub' });
                 }
               } catch {
