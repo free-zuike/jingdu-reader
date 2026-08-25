@@ -47,14 +47,23 @@ async function initEpubReader(bookId, meta) {
     });
     if (!rawResponse.ok) {
       const err = await rawResponse.text().catch(() => '');
-      document.getElementById('loadingText').innerHTML = `<p>书籍加载失败 (${rawResponse.status})${err ? '：' + err.substring(0, 80) : '，请返回书架重试'}</p>`;
+      document.getElementById('loadingText').innerHTML = `<p>书籍加载失败 (${rawResponse.status})</p>`;
       return;
     }
     const rawBuffer = await rawResponse.arrayBuffer();
 
-    // 用 ArrayBuffer 初始化 epub.js（不依赖 URL 路径解析）
+    if (typeof ePub === 'undefined') {
+      document.getElementById('loadingText').innerHTML = '<p>epub.js 库加载失败，请刷新页面重试</p>';
+      return;
+    }
+
+    // 设置容器高度
+    const viewer = document.getElementById('epubViewer');
+    viewer.style.height = (window.innerHeight - 180) + 'px';
+
+    // 用 ArrayBuffer 初始化 epub.js
     book = ePub(rawBuffer);
-    rendition = book.renderTo('epubViewer', {
+    rendition = book.renderTo(viewer, {
       width: '100%',
       height: '100%',
       spread: 'none',
@@ -125,7 +134,7 @@ async function initEpubReader(bookId, meta) {
 
   } catch (e) {
     console.error('epub.js 加载失败:', e);
-    document.getElementById('loadingText').innerHTML = '<p>书籍加载失败，请返回书架重试</p>';
+    document.getElementById('loadingText').innerHTML = `<p>书籍加载失败：${e.message || e}</p>`;
   }
 }
 
