@@ -22,14 +22,9 @@ async function initReader(bookId) {
   document.getElementById('bookTitle').textContent = bookResult.data.title;
 
   const format = (bookResult.data.format || '').toLowerCase();
-  isEpub = format === 'epub';
 
-  if (isEpub) {
-    await initEpubReader(bookId, bookResult.data);
-  } else {
-    // TXT 格式走纯文本模式
-    await initTextReader(bookId);
-  }
+  // 所有格式走纯文本模式（epub.js 解析有问题，弃用）
+  await initTextReader(bookId);
 
   initEventListeners();
   loadSettings();
