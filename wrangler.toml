@@ -20,10 +20,11 @@ binding = "CACHE"
 binding = "DB"
 database_name = "jingdu-db"
 
-# 本地开发默认值（生产环境密钥通过 wrangler secret put 设置）
+# 注意：
+# - JWT_SECRET / ENCRYPTION_KEY 不在 vars 中声明（避免与 wrangler secret put 的 secret 同名冲突）
+#   本地开发使用 .dev.vars 文件，生产环境由 CI 通过 wrangler secret put 设置
+# - SMTP 配置优先通过 Web 设置页面保存到 D1 数据库，以下为回退值
 [vars]
-JWT_SECRET = "local-dev-jwt-secret-key-change-in-production"
-ENCRYPTION_KEY = "local-dev-encryption-key-32char"
 SMTP_HOST = ""
 SMTP_PORT = "587"
 SMTP_USER = ""
