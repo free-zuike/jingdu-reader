@@ -203,13 +203,10 @@ function stripHtml(html: string): string {
       inTag = false;
       const tag = current.toLowerCase();
       if (tag === '<br' || tag === '<br/' || tag === '<br />' ||
-          tag.startsWith('<p') || tag.startsWith('</p') ||
-          tag.startsWith('<div') || tag.startsWith('</div') ||
-          tag.startsWith('<h1') || tag.startsWith('</h1') ||
-          tag.startsWith('<h2') || tag.startsWith('</h2') ||
-          tag.startsWith('<h3') || tag.startsWith('</h3') ||
-          tag.startsWith('<li') || tag.startsWith('</li') ||
-          tag.startsWith('<tr') || tag.startsWith('</tr')) {
+          tag.startsWith('</p') || tag.startsWith('</div') ||
+          tag.startsWith('</h1') || tag.startsWith('</h2') || tag.startsWith('</h3') ||
+          tag.startsWith('</li') || tag.startsWith('</tr') ||
+          tag.startsWith('</td') || tag.startsWith('</blockquote')) {
         parts.push('\n');
       }
       current = '';
