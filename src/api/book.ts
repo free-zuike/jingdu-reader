@@ -146,6 +146,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
 // 获取原始书籍文件（不用 authMiddleware，epub.js 无法传 Authorization header）
 book.get('/:id/raw', async (c) => {
   const bookId = c.req.param('id');
+  const token = c.req.query('token');
 
   const db = new Database(c.env.DB);
   const bookData = await db.getBookById(bookId);
@@ -159,15 +160,35 @@ book.get('/:id/raw', async (c) => {
   if (raw) {
     const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
     return new Response(raw, {
-      headers: {
-        'Content-Type': mime,
-        'Cache-Control': 'public, max-age=86400'
-      }
+      headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
     });
   }
 
-  // 缓存不存在，返回 404（文件需通过阅读触发缓存）
-  return c.json({ success: false, error: '文件尚未缓存，请先打开阅读' }, 404);
+  // 缓存不存在，有 token 则从 WebDAV 下载并缓存
+  if (token) {
+    try {
+      const { verifyToken } = await import('../utils/crypto');
+      const user = await verifyToken(token, c.env.JWT_SECRET);
+      if (user && user.userId === bookData.user_id) {
+        const { WebDAVService } = await import('../services/webdav.service');
+        const webdav = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+        const fileResult = await webdav.getFile(user.userId, bookData.webdav_path);
+        if (fileResult.success) {
+          const content = (fileResult.data as { content: ArrayBuffer }).content;
+          // 同步缓存（必须等待，否则 epub.js 请求内部资源时缓存未就绪）
+          await c.env.CACHE.put(`raw:${bookId}`, new Uint8Array(content), { expirationTtl: 30 * 24 * 60 * 60 });
+          const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
+          return new Response(content, {
+            headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
+          });
+        }
+      }
+    } catch {
+      // token 验证失败，返回 404
+    }
+  }
+
+  return c.json({ success: false, error: '文件尚未缓存' }, 404);
 });
 
 // 获取阅读进度（优先从 Moon+ 读取）
