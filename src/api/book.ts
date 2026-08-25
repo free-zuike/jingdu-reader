@@ -271,7 +271,11 @@ book.get('/:id/:resource{.*}', async (c) => {
     const { extractEpubResource } = await import('../utils/epub');
     const result = await extractEpubResource(raw, resourcePath);
     if (!result) {
-      return c.json({ success: false, error: '资源不存在' }, 404);
+      // 资源不存在时返回空内容而非 404（epub.js 把 404 当致命错误导致 No Section Found）
+      const mime = guessMimeType(resourcePath);
+      return new Response('', {
+        headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
+      });
     }
     const mime = guessMimeType(resourcePath);
     return new Response(result, {
