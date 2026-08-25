@@ -506,7 +506,10 @@ export class BookService {
       }
 
       if (!poPath) {
-        poPath = webdavService.buildMoonPlusPoPath(book.title, book.author || '', book.format);
+        // 获取 WebDAV base_path 用于构建路径
+        const webdavConfig = await this.db.getWebDAVConfigByUserId(userId);
+        const basePath = webdavConfig?.base_path || '/Apps/Books';
+        poPath = webdavService.buildMoonPlusPoPath(book.title, book.author || '', book.format, basePath);
         console.log(`[Moon+] 未匹配到进度文件，创建新文件: ${poPath}`);
       }
 

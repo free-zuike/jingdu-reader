@@ -442,7 +442,9 @@ export class WebDAVService {
         return { success: false, error: '密码解密失败' };
       }
 
-      const cachePath = '/Moon+/Cache';
+      // Moon+ 缓存目录在 base_path 下的 .Moon+/Cache/（注意点号前缀）
+      const basePath = config.base_path.replace(/\/$/, '');
+      const cachePath = `${basePath}/.Moon+/Cache`;
       const fullUrl = `${config.server_url.replace(/\/$/, '')}${cachePath}`;
 
       const response = await fetch(fullUrl, {
@@ -576,8 +578,8 @@ export class WebDAVService {
   }
 
   // 构建Moon+ .po文件路径
-  buildMoonPlusPoPath(bookTitle: string, bookAuthor: string, fileExt: string): string {
-    const cacheDir = '/Moon+/Cache';
+  buildMoonPlusPoPath(bookTitle: string, bookAuthor: string, fileExt: string, basePath = '/Apps/Books'): string {
+    const cacheDir = `${basePath.replace(/\/$/, '')}/.Moon+/Cache`;
     const title = bookTitle.replace(/[/\\:*?"<>|]/g, '_');
     const author = bookAuthor ? ` - ${bookAuthor.replace(/[/\\:*?"<>|]/g, '_')}` : '';
     return `${cacheDir}/${title}${author}.${fileExt}.po`;
