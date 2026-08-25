@@ -4,6 +4,7 @@ import { Database } from '../utils/db';
 import { BookService } from '../services/book.service';
 import { WebDAVService } from '../services/webdav.service';
 import { authMiddleware } from '../middleware/auth';
+import { decrypt } from '../utils/crypto';
 
 const book = new Hono<{ Bindings: Env }>();
 
@@ -139,7 +140,6 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_key' } });
   }
   try {
-    const { decrypt } = await import('../utils/crypto');
     const wdConfig = await db.getWebDAVConfigByUserId(userId);
     if (!wdConfig) return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_webdav' } });
     const password = await decrypt(wdConfig.password_encrypted, c.env.ENCRYPTION_KEY);
