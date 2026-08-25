@@ -482,6 +482,60 @@ export class WebDAVService {
     }
   }
 
+  // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
+  async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string): Promise<ArrayBuffer | null> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return null;
+
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const coverDir = `${basePath}/.Moon+/Cover`;
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
+
+      // 列出封面目录
+      const response = await fetch(fullUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/xml; charset=utf-8',
+          'Depth': '1',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop><D:displayname/><D:getcontentlength/><D:getlastmodified/></D:prop>
+</D:propfind>`
+      });
+
+      if (response.status !== 207) return null;
+
+      const xmlText = await response.text();
+      const files = this.parseWebDAVResponse(xmlText, coverDir);
+
+      // 清理书名和作者，与封面文件名匹配
+      const clean = (s: string) => s.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '').trim();
+      const bookKey = clean(bookTitle);
+
+      // 找匹配的封面文件（优先匹配书名，支持 .jpg/.png/.webp）
+      const coverFiles = files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name));
+      for (const f of coverFiles) {
+        const name = clean(f.name.replace(/\.[^.]+$/, ''));
+        if (name.includes(bookKey) || bookKey.includes(name)) {
+          // 下载封面
+          const fileUrl = this.buildFileUrl(config.server_url, f.path);
+          const imgResp = await fetch(fileUrl, {
+            headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`) }
+          });
+          if (imgResp.ok) return imgResp.arrayBuffer();
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   // 获取Moon+进度文件内容
   async getMoonPlusProgressFile(userId: string, poFilePath: string): Promise<ApiResponse> {
     try {

@@ -61,14 +61,26 @@ export class BookService {
                 const fileResult = await webdavService.getFile(userId, file.path);
                 if (fileResult.success) {
                   const fileData = (fileResult.data as { content: ArrayBuffer }).content;
-                  // 缓存 raw 文件（epub.js 前端渲染需要）
+                  // 缓存 raw 文件
                   await this.cache.put(`raw:${bookId}`, new Uint8Array(fileData), { expirationTtl: 30 * 24 * 60 * 60 });
-                  // 提取封面
+                  // 提取封面（EPUB 内嵌）
                   await this.cacheCoverFromRaw(bookId, fileData, { format: 'epub' });
                 }
               } catch {
                 // 封面提取失败不影响同步
               }
+            }
+
+            // 尝试从 Moon+ Cover 目录获取封面（所有格式）
+            try {
+              const coverData = await webdavService.getMoonPlusCover(userId, title, author);
+              if (coverData) {
+                const mimeType = 'image/jpeg';
+                const base64Data = btoa(String.fromCharCode(...new Uint8Array(coverData)));
+                await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+              }
+            } catch {
+              // Cover 目录获取失败不影响同步
             }
           } catch (e: any) {
             errors.push(`${file.name}: ${e?.message || '导入失败'}`);
