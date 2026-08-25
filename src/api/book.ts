@@ -134,26 +134,42 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     });
   }
 
-  // 缓存不存在，尝试从 Moon+ Cover 目录拉取
+  // 缓存不存在，尝试从 Moon+ Cover 目录拉取（直接 fetch，绕过 WebDAVService）
   if (!c.env.ENCRYPTION_KEY) {
-    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_encryption_key' } });
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_key' } });
   }
-  let errMsg = 'unknown';
   try {
-    const { WebDAVService } = await import('../services/webdav.service');
-    const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-    const coverData = await webdavService.getMoonPlusCover(userId, bookData.title, bookData.author || '', bookData.webdav_path);
-    if (coverData) {
-      const base64Data = btoa(String.fromCharCode(...new Uint8Array(coverData)));
-      await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
-      return new Response(coverData, {
-        headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }
-      });
+    const { decrypt } = await import('../utils/crypto');
+    const wdConfig = await db.getWebDAVConfigByUserId(userId);
+    if (!wdConfig) return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_webdav' } });
+    const password = await decrypt(wdConfig.password_encrypted, c.env.ENCRYPTION_KEY);
+    const basePath = wdConfig.base_path.replace(/\/$/, '');
+    const baseUrl = wdConfig.server_url.replace(/\/$/, '');
+    const fileName = (bookData.webdav_path || '').split('/').pop() || '';
+    const baseName = fileName.replace(/\.[^.]+$/, '');
+    const coverUrl = `${baseUrl}${basePath}/.Moon+/Cover/${baseName}.epub_2.png`;
+    const auth = 'Basic ' + btoa(`${wdConfig.username}:${password}`);
+    const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
+    if (resp.ok) {
+      const buf = await resp.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
+      return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
     }
-    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'cover_not_found' } });
+    // 尝试 URL 编码
+    const encUrl = encodeURI(coverUrl);
+    if (encUrl !== coverUrl) {
+      const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
+      if (resp2.ok) {
+        const buf = await resp2.arrayBuffer();
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
+        return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
+      }
+    }
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'not_found' } });
   } catch (e: any) {
-    errMsg = e?.message?.substring(0, 100) || 'exception';
-    return new Response(null, { status: 204, headers: { 'X-Cover-Error': errMsg } });
+    return new Response(null, { status: 204, headers: { 'X-Cover-Error': e?.message?.substring(0, 100) || 'err' } });
   }
 });
 book.get('/:id/raw', async (c) => {
