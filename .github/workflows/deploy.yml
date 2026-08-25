@@ -40,17 +40,6 @@ jobs:
       - name: Deploy Worker (自动创建 D1/KV)
         run: npx wrangler deploy
 
-      - name: Set secrets
-        run: |
-          # 优先使用 GitHub Secrets 中配置的密钥，否则自动生成
-          JWT_SECRET="${{ secrets.JWT_SECRET }}"
-          if [ -z "$JWT_SECRET" ]; then JWT_SECRET=$(openssl rand -base64 32); fi
-          ENCRYPTION_KEY="${{ secrets.ENCRYPTION_KEY }}"
-          if [ -z "$ENCRYPTION_KEY" ]; then ENCRYPTION_KEY=$(openssl rand -base64 32); fi
-
-          echo "$JWT_SECRET" | npx wrangler secret put JWT_SECRET
-          echo "$ENCRYPTION_KEY" | npx wrangler secret put ENCRYPTION_KEY
-
       - name: Initialize D1 Database
         run: |
           echo "初始化数据库表..."
