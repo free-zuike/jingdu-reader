@@ -95,12 +95,38 @@ export class BookService {
         const text = new TextDecoder().decode(fileData);
         const chapters = this.detectTxtChapters(text);
         await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+      } else {
+        // EPUB 等格式：提取封面并缓存（无需等用户打开阅读）
+        await this.cacheCoverFromRaw(bookId, fileData, book);
       }
 
       await this.db.markBookSynced(bookId);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error?.message || '缓存失败' };
+    }
+  }
+
+  // 从原始文件数据中提取封面并缓存
+  private async cacheCoverFromRaw(bookId: string, fileData: ArrayBuffer, book?: { format?: string }): Promise<void> {
+    if (book && book.format === 'txt') return;
+    try {
+      const { extractEpubMetadata } = await import('../utils/epub');
+      const meta = await extractEpubMetadata(fileData);
+      if (meta.coverBase64) {
+        const mimeMatch = meta.coverBase64.match(/^data:([^;]+);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const base64Data = meta.coverBase64.split(',')[1];
+        await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+      }
+      if (meta.title || meta.author) {
+        const updates: { title?: string; author?: string } = {};
+        if (meta.title) updates.title = meta.title;
+        if (meta.author) updates.author = meta.author;
+        await this.db.updateBookMeta(bookId, updates);
+      }
+    } catch {
+      // 封面提取失败不阻塞
     }
   }
 
@@ -112,7 +138,18 @@ export class BookService {
 
       for (const book of books) {
         const coverKey = `cover:${book.id}`;
-        const cachedCover = await this.cache.get(coverKey);
+        let cachedCover = await this.cache.get(coverKey);
+
+        // 惰性提取封面：raw 已缓存（之前阅读过）但封面缺失时，自动补上
+        if (!cachedCover && book.format !== 'txt') {
+          try {
+            const rawData = await this.cache.get(`raw:${book.id}`, 'arrayBuffer');
+            if (rawData) {
+              await this.cacheCoverFromRaw(book.id, rawData, book);
+              cachedCover = await this.cache.get(coverKey);
+            }
+          } catch {}
+        }
 
         // 获取阅读进度
         const progressKey = `progress:${userId}:${book.id}`;
@@ -244,21 +281,12 @@ export class BookService {
 
       const fileData = rawData as ArrayBuffer;
 
-      let title = book.title;
-      let author = book.author || '';
-
-      try {
-        const meta = await extractEpubMetadata(fileData);
-        if (meta.title) title = meta.title;
-        if (meta.author) author = meta.author;
-
-        if (meta.coverBase64) {
-          const mimeMatch = meta.coverBase64.match(/^data:([^;]+);/);
-          const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-          const base64Data = meta.coverBase64.split(',')[1];
-          await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
-        }
-      } catch {}
+      // 提取封面并更新元数据（复用 cacheCoverFromRaw）
+      await this.cacheCoverFromRaw(bookId, fileData, book);
+      // 读取更新后的元数据
+      const updatedBook = await this.db.getBookById(bookId);
+      const title = (updatedBook?.title || book.title || '');
+      const author = (updatedBook?.author || book.author || '');
 
       const content = await extractEpubContent(fileData);
       const contentJson = JSON.stringify(content);
