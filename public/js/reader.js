@@ -106,11 +106,16 @@ function openToc() {
   renderToc(); // 重新渲染以更新当前章节高亮
   document.getElementById('tocSidebar').classList.add('show');
   document.getElementById('overlay').classList.add('show');
-  // 等渲染完成后滚动到当前章节
+  // 等侧栏滑入动画完成后再定位到当前章节（scrollIntoView 对 fixed 容器不生效，手动计算 scrollTop）
   setTimeout(() => {
     const el = document.getElementById(`toc-${currentChapterIndex}`);
-    if (el) el.scrollIntoView({ block: 'center' });
-  }, 60);
+    const list = document.getElementById('tocList');
+    if (el && list) {
+      const listRect = list.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      list.scrollTop += elRect.top - listRect.top - list.clientHeight / 2 + elRect.height / 2;
+    }
+  }, 300);
 }
 
 // TXT 章节跳转
