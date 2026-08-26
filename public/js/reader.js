@@ -104,21 +104,27 @@ function renderToc() {
 // 打开目录并定位到当前章节
 function openToc() {
   renderToc(); // 重新渲染以更新当前章节高亮
-  document.getElementById('tocSidebar').classList.add('show');
+  const sidebar = document.getElementById('tocSidebar');
+  sidebar.classList.add('show');
   document.getElementById('overlay').classList.add('show');
-  // 多次尝试，等滑入动画和渲染稳定后把当前章节滚动到目录中部
-  centerTocItem();
-  setTimeout(centerTocItem, 150);
-  setTimeout(centerTocItem, 400);
-  setTimeout(centerTocItem, 800);
+  // 等滑入动画结束后定位，任何时机都尽量把当前章节带到可见区域
+  sidebar.addEventListener('transitionend', centerTocItem, { once: true });
+  requestAnimationFrame(centerTocItem);
+  setTimeout(centerTocItem, 250);
+  setTimeout(centerTocItem, 600);
 }
 
 function centerTocItem() {
   const el = document.getElementById(`toc-${currentChapterIndex}`);
+  if (!el) return;
+  // 方式1：scrollIntoView 滚动最近的可滚动容器（.toc-list）
+  try { el.scrollIntoView({ block: 'center' }); } catch {}
+  // 方式2：手动设置 .toc-list 的 scrollTop（offsetParent 一致时 offsetTop 差值即列表内偏移）
   const list = document.getElementById('tocList');
-  if (!el || !list) return;
-  // offsetParent 一致时（toc-sidebar 为 fixed），两者 offsetTop 差值即元素在列表内的偏移
-  list.scrollTop = Math.max(0, el.offsetTop - list.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2);
+  if (list) {
+    const target = el.offsetTop - list.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2;
+    if (isFinite(target)) list.scrollTop = Math.max(0, target);
+  }
 }
 
 // TXT 章节跳转

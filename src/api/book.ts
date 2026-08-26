@@ -323,6 +323,24 @@ book.put('/:id/progress', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 重新解析书籍内容（清除 KV 缓存，下次打开时重新下载解析）
+book.post('/:id/reparse', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+
+  await c.env.CACHE.delete(`book:${bookId}`);
+  await c.env.CACHE.delete(`raw:${bookId}`);
+  await c.env.CACHE.delete(`cover:${bookId}`);
+  await db.markBookSynced(bookId);
+  return c.json({ success: true, message: '已清除缓存，下次打开将重新解析' });
+});
+
 // 删除书籍（从本地库移除，不删除WebDAV上的原文件）
 book.delete('/:id', authMiddleware, async (c) => {
   const userId = c.get('userId');
