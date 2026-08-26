@@ -45,13 +45,19 @@ async function initTextReader(bookId) {
     chapters = contentResult.data.chapters || [];
     totalLength = bookContent.length;
 
-    // 如果有 Moon+ 章节号，用它定位到对应章节
-    if (progressResult.success && progressResult.data && progressResult.data.moonChapter !== undefined) {
-      const mc = progressResult.data.moonChapter;
-      if (mc >= 0 && mc < chapters.length) {
-        currentChapterIndex = mc;
-        currentPosition = chapters[mc].startIndex; // 同步 position，scrollToPosition 不会跳转
-      }
+    // 用百分比估算阅读位置（跨平台最可靠，兼容旧数据 chapter=0 的情况）
+    const pct = progressResult.data && progressResult.data.percentage;
+    if (pct && pct > 0 && totalLength > 0) {
+      currentPosition = Math.floor(totalLength * pct / 100);
+    }
+
+    // Moon+ 章节号仅在有效（>0）时用于精确定位，忽略无效的 chapter=0
+    if (progressResult.success && progressResult.data
+        && progressResult.data.moonChapter !== undefined
+        && progressResult.data.moonChapter > 0
+        && progressResult.data.moonChapter < chapters.length) {
+      currentChapterIndex = progressResult.data.moonChapter;
+      currentPosition = chapters[currentChapterIndex].startIndex;
     }
 
     // 渲染文本
