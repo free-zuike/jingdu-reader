@@ -514,6 +514,27 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ 分类/书籍数据文件（books.sorts / books.sync）
+  async getMoonPlusDataFile(userId: string, fileName: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return { success: false, error: 'WebDAV配置不存在' };
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/${fileName}`;
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${filePath}`;
+      const resp = await fetch(fullUrl, {
+        method: 'GET',
+        headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`), 'User-Agent': 'JingDu-Reader/1.0' }
+      });
+      if (!resp.ok) return { success: false, error: `状态码: ${resp.status}` };
+      const text = await resp.text();
+      return { success: true, data: { name: fileName, content: text } };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '读取失败' };
+    }
+  }
+
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
   // bookFileName 是书籍的原始文件名（如 乡村教师.epub），用于直接构造封面路径
   async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string, bookFileName?: string): Promise<ArrayBuffer | null> {

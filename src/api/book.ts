@@ -29,6 +29,16 @@ book.get('/moonplus/structure', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：读取 Moon+ 数据文件内容（books.sorts / books.sync）
+book.get('/moonplus/file/:name', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.getMoonPlusDataFile(userId, name);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');
