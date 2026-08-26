@@ -75,12 +75,7 @@ export class BookService {
             try {
               const coverData = await webdavService.getMoonPlusCover(userId, title, author, file.path);
               if (coverData) {
-                const mimeType = 'image/jpeg';
-                const bytes = new Uint8Array(coverData);
-                let binary = '';
-                for (let j = 0; j < bytes.length; j += 8192) binary += String.fromCharCode(...bytes.slice(j, j + 8192));
-                const base64Data = btoa(binary);
-                await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+                await this.cache.put(`cover:${bookId}`, new Uint8Array(coverData), { expirationTtl: 30 * 24 * 60 * 60 });
               }
             } catch {
               // Cover 目录获取失败不影响同步
@@ -145,10 +140,11 @@ export class BookService {
       const { extractEpubMetadata } = await import('../utils/epub');
       const meta = await extractEpubMetadata(fileData);
       if (meta.coverBase64) {
-        const mimeMatch = meta.coverBase64.match(/^data:([^;]+);/);
-        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
         const base64Data = meta.coverBase64.split(',')[1];
-        await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
+        const binaryStr = atob(base64Data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
       }
       if (meta.title || meta.author) {
         const updates: { title?: string; author?: string } = {};

@@ -6,17 +6,6 @@ import { WebDAVService } from '../services/webdav.service';
 import { authMiddleware } from '../middleware/auth';
 import { decrypt } from '../utils/crypto';
 
-// 将 ArrayBuffer/Uint8Array 转为 base64（分块转换避免 spread operator 参数栈溢出）
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.slice(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
 const book = new Hono<{ Bindings: Env }>();
 
 // 获取书籍列表
@@ -122,31 +111,29 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   }
 
   const cacheKey = `cover:${bookId}`;
-  const cachedCover = await c.env.CACHE.get(cacheKey);
-
-  if (cachedCover) {
-    if (typeof cachedCover === 'string' && cachedCover.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(cachedCover);
-        if (parsed.mimeType && parsed.data) {
-          const binaryStr = atob(parsed.data);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-          return new Response(bytes, {
-            headers: { 'Content-Type': parsed.mimeType, 'Cache-Control': 'public, max-age=86400' }
-          });
-        }
-      } catch {}
-    }
-    const bytes = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
-    return new Response(bytes, {
-      headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' }
+  // 优先读原始二进制缓存（arrayBuffer），兼容旧版 JSON base64 格式
+  const raw = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
+  if (raw) {
+    return new Response(raw, {
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }
     });
   }
+  const cachedStr = await c.env.CACHE.get(cacheKey);
+  if (cachedStr && typeof cachedStr === 'string' && cachedStr.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(cachedStr);
+      if (parsed.mimeType && parsed.data) {
+        const binaryStr = atob(parsed.data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        return new Response(bytes, {
+          headers: { 'Content-Type': parsed.mimeType, 'Cache-Control': 'public, max-age=86400' }
+        });
+      }
+    } catch {}
+  }
 
-  // 缓存不存在，尝试从 Moon+ Cover 目录拉取（直接 fetch，绕过 WebDAVService）
+  // 缓存不存在，尝试从 Moon+ Cover 目录拉取
   if (!c.env.ENCRYPTION_KEY) {
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_key' } });
   }
@@ -163,10 +150,9 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
-      // 异步缓存到 KV，不阻塞响应（首次请求立即返回图片）
-      const b64 = arrayBufferToBase64(buf);
-      c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
-      return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
+      // 原始二进制缓存到 KV（不转 base64，避免大图开销），异步不阻塞
+      c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
+      return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
     }
     // 尝试 URL 编码
     const encUrl = encodeURI(coverUrl);
@@ -174,9 +160,8 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
-        const b64 = arrayBufferToBase64(buf);
-        c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
-        return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
+        c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
+        return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
       }
     }
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'not_found' } });
