@@ -107,23 +107,31 @@ function openToc() {
   const sidebar = document.getElementById('tocSidebar');
   sidebar.classList.add('show');
   document.getElementById('overlay').classList.add('show');
-  // 等滑入动画结束后定位，任何时机都尽量把当前章节带到可见区域
+  // 滑入动画结束后 + 多个时机都尽量把当前章节带到可见区域
   sidebar.addEventListener('transitionend', centerTocItem, { once: true });
-  requestAnimationFrame(centerTocItem);
-  setTimeout(centerTocItem, 250);
-  setTimeout(centerTocItem, 600);
+  requestAnimationFrame(() => requestAnimationFrame(centerTocItem));
+  setTimeout(centerTocItem, 200);
+  setTimeout(centerTocItem, 500);
+  setTimeout(centerTocItem, 1000);
 }
 
 function centerTocItem() {
-  const el = document.getElementById(`toc-${currentChapterIndex}`);
+  const list = document.getElementById('tocList');
+  if (!list) return;
+  const items = list.querySelectorAll('.toc-item');
+  const el = items[currentChapterIndex];
+  console.log('[toc]', 'idx:', currentChapterIndex, 'items:', items.length, 'hasEl:', !!el,
+    'scrollH:', list.scrollHeight, 'clientH:', list.clientHeight, 'scrollTop:', list.scrollTop);
   if (!el) return;
   // 方式1：scrollIntoView 滚动最近的可滚动容器（.toc-list）
-  try { el.scrollIntoView({ block: 'center' }); } catch {}
+  try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch {}
   // 方式2：手动设置 .toc-list 的 scrollTop（offsetParent 一致时 offsetTop 差值即列表内偏移）
-  const list = document.getElementById('tocList');
-  if (list) {
+  if (el.offsetParent) {
     const target = el.offsetTop - list.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2;
-    if (isFinite(target)) list.scrollTop = Math.max(0, target);
+    if (isFinite(target)) {
+      list.scrollTop = Math.max(0, target);
+      console.log('[toc] set scrollTop:', list.scrollTop);
+    }
   }
 }
 
