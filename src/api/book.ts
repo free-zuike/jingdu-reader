@@ -114,7 +114,14 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   }
 
   const cacheKey = `cover:${bookId}`;
-  // 先尝试读原始二进制缓存（新格式），检查魔数避免误把旧 JSON 字符串当图片
+
+  // 1. 检查 Cache API（边缘缓存，速度最快，适合大图）
+  const cache = caches.default;
+  const cacheReq = new Request(`https://cover-cache/${cacheKey}`);
+  const cachedResp = await cache.match(cacheReq);
+  if (cachedResp) return cachedResp;
+
+  // 2. 检查 KV 缓存（原始二进制格式）
   const raw = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
   if (raw && raw.byteLength > 0) {
     const magic = new Uint8Array(raw, 0, 2);
@@ -124,7 +131,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       });
     }
   }
-  // 兼容旧版 JSON base64 格式
+  // 3. 兼容旧版 JSON base64 格式
   const cachedStr = await c.env.CACHE.get(cacheKey);
   if (cachedStr && typeof cachedStr === 'string' && cachedStr.startsWith('{')) {
     try {
@@ -157,8 +164,11 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
-      // 原始二进制缓存到 KV（不转 base64，避免大图开销），异步不阻塞
+      // KV 缓存（异步，不阻塞响应）
       c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
+      // Cache API 缓存到边缘节点（异步）
+      const headers = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers })));
       return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
     }
     // 尝试 URL 编码
@@ -168,6 +178,8 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
         c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
+        const headers = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+        c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers })));
         return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
       }
     }
