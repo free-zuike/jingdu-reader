@@ -186,9 +186,9 @@ function scrollToPosition(pos) {
   }
 }
 
-// 格式化文本（TXT 用）
+// 格式化文本（按换行分段；EPUB 提取的段落间是单个 \n，TXT 每行一段）
 function formatText(text) {
-  const paragraphs = text.split(/\n{2,}/);
+  const paragraphs = text.split(/\n+/);
   return paragraphs.filter(p => p.trim()).map(p => `<p>${escapeHtml(p.trim())}</p>`).join('');
 }
 
