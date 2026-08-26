@@ -315,27 +315,42 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
         const text = stripHtml(html);
 
         if (text.length > 5) {
-          let title = `章节 ${chapters.length + 1}`;
-          // 按优先级检测 h1/h2/h3 作为章节标题
-          const tagPriority = ['h1', 'h2', 'h3'];
-          for (const tag of tagPriority) {
-            const tagStart = html.indexOf(`<${tag}`);
-            if (tagStart !== -1) {
-              const tagEnd = html.indexOf('>', tagStart);
-              const tagClose = html.indexOf(`</${tag}>`, tagEnd);
-              if (tagClose !== -1) {
-                const titleRaw = html.substring(tagEnd + 1, tagClose).replace(/<[^>]+>/g, '').trim();
-                if (titleRaw.length > 0 && titleRaw.length < 120) {
-                  title = titleRaw;
-                  break;
-                }
-              }
-            }
+          const fileStart = currentOffset;
+
+          // 提取 XHTML 中所有 h1-h6 标题（选集类 EPUB 每篇一个标题标签）
+          const hTitles: string[] = [];
+          const hRe = /<(h[1-6])(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi;
+          let hm: RegExpExecArray | null;
+          while ((hm = hRe.exec(html)) !== null) {
+            const t = hm[2].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+            if (t && t.length < 120) hTitles.push(t);
           }
 
-          chapters.push({ title, startIndex: currentOffset });
+          if (hTitles.length >= 2) {
+            // 按标题在纯文本中的位置把该文件切成多章
+            let segStart = 0;
+            let searchFrom = 0;
+            let bufTitle = hTitles[0];
+            for (let ti = 1; ti < hTitles.length; ti++) {
+              const idx = text.indexOf(hTitles[ti], searchFrom);
+              if (idx === -1) continue;
+              if (text.substring(segStart, idx).trim().length > 0) {
+                chapters.push({ title: bufTitle, startIndex: fileStart + segStart });
+              }
+              bufTitle = hTitles[ti];
+              segStart = idx;
+              searchFrom = idx + hTitles[ti].length;
+            }
+            if (text.substring(segStart).trim().length > 0) {
+              chapters.push({ title: bufTitle, startIndex: fileStart + segStart });
+            }
+          } else {
+            // 无标题或单标题：整段一章
+            const title = hTitles[0] || `章节 ${chapters.length + 1}`;
+            chapters.push({ title, startIndex: fileStart });
+          }
           fullTexts.push(text);
-          currentOffset += text.length + 2;
+          currentOffset = fileStart + text.length + 2;
         }
       } catch {}
     }
