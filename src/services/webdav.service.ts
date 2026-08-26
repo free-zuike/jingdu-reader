@@ -529,10 +529,22 @@ export class WebDAVService {
       });
       if (!resp.ok) return { success: false, error: `状态码: ${resp.status}` };
       const buf = await resp.arrayBuffer();
+      const head = new Uint8Array(buf, 0, 2);
       // 如果是 ZIP（books.sorts），解压并解析书架数据
-      if (buf.byteLength > 2 && new Uint8Array(buf)[0] === 0x50 && new Uint8Array(buf)[1] === 0x4b) {
+      if (buf.byteLength > 2 && head[0] === 0x50 && head[1] === 0x4b) {
         const entries = await this.decompressZip(buf);
         return { success: true, data: { name: fileName, isZip: true, entries } };
+      }
+      // 如果是 zlib 压缩（books.sync），解压查看内容
+      if (buf.byteLength > 2 && head[0] === 0x78) {
+        try {
+          const ds = new DecompressionStream('deflate');
+          const stream = new Blob([buf]).stream().pipeThrough(ds);
+          const text = await new Response(stream).text();
+          return { success: true, data: { name: fileName, isZlib: true, content: text } };
+        } catch (e: any) {
+          return { success: true, data: { name: fileName, isZlib: true, content: `(解压失败: ${e?.message})` } };
+        }
       }
       const text = new TextDecoder().decode(buf);
       return { success: true, data: { name: fileName, content: text } };
