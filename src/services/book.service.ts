@@ -76,7 +76,10 @@ export class BookService {
               const coverData = await webdavService.getMoonPlusCover(userId, title, author);
               if (coverData) {
                 const mimeType = 'image/jpeg';
-                const base64Data = btoa(String.fromCharCode(...new Uint8Array(coverData)));
+                const bytes = new Uint8Array(coverData);
+                let binary = '';
+                for (let j = 0; j < bytes.length; j += 8192) binary += String.fromCharCode(...bytes.slice(j, j + 8192));
+                const base64Data = btoa(binary);
                 await this.cache.put(`cover:${bookId}`, JSON.stringify({ mimeType, data: base64Data }), { expirationTtl: 30 * 24 * 60 * 60 });
               }
             } catch {

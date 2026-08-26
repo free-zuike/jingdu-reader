@@ -6,6 +6,17 @@ import { WebDAVService } from '../services/webdav.service';
 import { authMiddleware } from '../middleware/auth';
 import { decrypt } from '../utils/crypto';
 
+// 将 ArrayBuffer/Uint8Array 转为 base64（分块转换避免 spread operator 参数栈溢出）
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 const book = new Hono<{ Bindings: Env }>();
 
 // 获取书籍列表
@@ -152,7 +163,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const b64 = arrayBufferToBase64(buf);
       await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
       return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
     }
@@ -162,7 +173,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const b64 = arrayBufferToBase64(buf);
         await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
         return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
       }
