@@ -106,16 +106,19 @@ function openToc() {
   renderToc(); // 重新渲染以更新当前章节高亮
   document.getElementById('tocSidebar').classList.add('show');
   document.getElementById('overlay').classList.add('show');
-  // 等侧栏滑入动画完成后再定位到当前章节（scrollIntoView 对 fixed 容器不生效，手动计算 scrollTop）
-  setTimeout(() => {
-    const el = document.getElementById(`toc-${currentChapterIndex}`);
-    const list = document.getElementById('tocList');
-    if (el && list) {
-      const listRect = list.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      list.scrollTop += elRect.top - listRect.top - list.clientHeight / 2 + elRect.height / 2;
-    }
-  }, 300);
+  // 多次尝试，等滑入动画和渲染稳定后把当前章节滚动到目录中部
+  centerTocItem();
+  setTimeout(centerTocItem, 150);
+  setTimeout(centerTocItem, 400);
+  setTimeout(centerTocItem, 800);
+}
+
+function centerTocItem() {
+  const el = document.getElementById(`toc-${currentChapterIndex}`);
+  const list = document.getElementById('tocList');
+  if (!el || !list) return;
+  // offsetParent 一致时（toc-sidebar 为 fixed），两者 offsetTop 差值即元素在列表内的偏移
+  list.scrollTop = Math.max(0, el.offsetTop - list.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2);
 }
 
 // TXT 章节跳转
