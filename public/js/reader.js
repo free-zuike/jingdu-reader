@@ -137,6 +137,8 @@ function centerTocItem() {
 
 // TXT 章节跳转
 let currentChapterIndex = 0;
+let currentPage = 0;            // 当前页（章内偏移，按 PAGE_SIZE 分页）
+const PAGE_SIZE = 2500;         // 每页字符数
 let bookContent = '';
 let chapters = [];
 let currentPosition = 0;
@@ -144,6 +146,7 @@ let totalLength = 0;
 
 function jumpToChapter(index) {
   currentChapterIndex = index;
+  currentPage = 0;
   renderTextContent();
   closeToc();
   window.scrollTo(0, 0);
@@ -151,24 +154,40 @@ function jumpToChapter(index) {
   debounceSaveProgress();
 }
 
+function chapterPageCount(chIdx) {
+  const start = chapters[chIdx].startIndex;
+  const end = chapters[chIdx + 1] ? chapters[chIdx + 1].startIndex : bookContent.length;
+  return Math.max(1, Math.ceil((end - start) / PAGE_SIZE));
+}
+
 function prevChapter() {
-  if (currentChapterIndex > 0) {
+  if (currentPage > 0) {
+    currentPage--;
+  } else if (currentChapterIndex > 0) {
     currentChapterIndex--;
-    renderTextContent();
-    window.scrollTo(0, 0);
-    keepChromeVisible();
-    debounceSaveProgress();
+    currentPage = chapterPageCount(currentChapterIndex) - 1;
+  } else {
+    return;
   }
+  renderTextContent();
+  window.scrollTo(0, 0);
+  keepChromeVisible();
+  debounceSaveProgress();
 }
 
 function nextChapter() {
-  if (currentChapterIndex < chapters.length - 1) {
+  if (currentPage < chapterPageCount(currentChapterIndex) - 1) {
+    currentPage++;
+  } else if (currentChapterIndex < chapters.length - 1) {
     currentChapterIndex++;
-    renderTextContent();
-    window.scrollTo(0, 0);
-    keepChromeVisible();
-    debounceSaveProgress();
+    currentPage = 0;
+  } else {
+    return;
   }
+  renderTextContent();
+  window.scrollTo(0, 0);
+  keepChromeVisible();
+  debounceSaveProgress();
 }
 
 // 保持顶栏/底栏可见并重置自动隐藏计时器（翻页后可直接连续点击）
@@ -182,14 +201,13 @@ function renderTextContent() {
   const textContainer = document.getElementById('bookText');
   const currentChapter = chapters[currentChapterIndex];
   const nextChapter = chapters[currentChapterIndex + 1];
-  let chapterContent;
-  if (nextChapter) {
-    chapterContent = bookContent.substring(currentChapter.startIndex, nextChapter.startIndex);
-  } else {
-    chapterContent = bookContent.substring(currentChapter.startIndex);
-  }
+  const chStart = currentChapter.startIndex;
+  const chEnd = nextChapter ? nextChapter.startIndex : bookContent.length;
+  const pageStart = chStart + currentPage * PAGE_SIZE;
+  const pageEnd = Math.min(chEnd, pageStart + PAGE_SIZE);
+  const pageText = bookContent.substring(pageStart, pageEnd);
   document.getElementById('chapterTitle').textContent = currentChapter.title;
-  textContainer.innerHTML = formatText(chapterContent);
+  textContainer.innerHTML = formatText(pageText);
   updateNavButtons();
   updateProgressBar();
 }
@@ -204,7 +222,13 @@ function updateNavButtons() {
 function scrollToPosition(pos) {
   for (let i = 0; i < chapters.length; i++) {
     const next = chapters[i + 1];
-    if (!next || pos < next.startIndex) { currentChapterIndex = i; renderTextContent(); break; }
+    if (!next || pos < next.startIndex) {
+      currentChapterIndex = i;
+      const offsetInCh = Math.max(0, pos - chapters[i].startIndex);
+      currentPage = Math.min(chapterPageCount(i) - 1, Math.floor(offsetInCh / PAGE_SIZE));
+      renderTextContent();
+      break;
+    }
   }
 }
 
@@ -226,7 +250,8 @@ function updateProgressBar() {
   const info = document.getElementById('pageInfo');
   let progress = 0;
   if (chapters.length > 0 && totalLength > 0) {
-    progress = (chapters[currentChapterIndex].startIndex / totalLength) * 100;
+    const pos = chapters[currentChapterIndex].startIndex + currentPage * PAGE_SIZE;
+    progress = (pos / totalLength) * 100;
   } else {
     // 滚动发生在 window 上（.reader-content 随内容增长）
     const doc = document.documentElement;
@@ -249,7 +274,7 @@ function debounceSaveProgress() {
 async function saveProgress() {
   if (!currentBookId) return;
   try {
-    const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex : 0;
+    const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex + currentPage * PAGE_SIZE : 0;
     await updateReadingProgress(currentBookId, pos, totalLength, undefined, undefined, currentChapterIndex);
   } catch (e) { console.error('保存进度失败:', e); }
 }
