@@ -357,33 +357,53 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 
     const text = fullTexts.join('\n\n');
 
-    // 单文件 EPUB（整本书合并）：用严格的章节标题模式切分，避免把正文里的"第"字误判为章节
+    // 单文件 EPUB（整本书合并）章节识别
     if (chapters.length <= 1 && text.length > 50) {
-      chapters.length = 0;
-      const patterns: RegExp[] = [
-        /^第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节卷集部篇]/m,
-        /^Chapter\s+[0-9IVXLCDM]+/m,
-        /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言|代词|卷首语)$/m,
-        /^【[^】]+】/m,
-        /^[一二三四五六七八九十]+[\、\.]\s*\S+/m
-      ];
       const lines = text.split('\n');
-      let offset = 0;
+      const lineOffsets: number[] = [];
+      let acc = 0;
+      for (const ln of lines) { lineOffsets.push(acc); acc += ln.length + 1; }
+      const found: Array<{ title: string; startIndex: number }> = [];
+
+      // 1) 严格章节标题模式（第X章 / Chapter X / 序·楔子·番外 / 【】等）
+      const patterns: RegExp[] = [
+        /^第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节卷集部篇]/,
+        /^Chapter\s+[0-9IVXLCDM]+/,
+        /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言|代词|卷首语)$/,
+        /^【[^】]+】/,
+        /^[一二三四五六七八九十]+[\、\.]\s*\S+/
+      ];
       for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        if (trimmed.length > 0 && trimmed.length <= 40) {
-          for (const pat of patterns) {
-            if (pat.test(trimmed)) {
-              chapters.push({ title: trimmed, startIndex: offset });
-              break;
-            }
+        const t = lines[i].trim();
+        if (t.length > 0 && t.length <= 40) {
+          for (const pat of patterns) if (pat.test(t)) { found.push({ title: t, startIndex: lineOffsets[i] }); break; }
+        }
+      }
+
+      // 2) 选集篇名识别：短标题行(≤8字) + 前为空行(或开头) + 后接长正文段(≥30字)
+      if (found.length < 2) {
+        found.length = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const t = lines[i].trim();
+          if (!t || t.length > 8) continue;
+          const prevIsBlank = i === 0 || !lines[i - 1].trim();
+          if (!prevIsBlank) continue;
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j++;
+          if (j < lines.length && lines[j].trim().length >= 30) {
+            found.push({ title: t, startIndex: lineOffsets[i] });
+            i = j; // 跳到正文行之后，避免把正文里的短行误判为篇名
           }
         }
-        offset += lines[i].length + 1;
+      }
+
+      // 识别到合理数量的章节才切分，否则整本单章（避免误判）
+      if (found.length >= 2 && found.length <= 80) {
+        chapters.push(...found);
       }
     }
 
-    // 仍识别不到明确章节（如短篇合集无标题），整本作为单章，保证正文完整不乱
+    // 仍识别不到明确章节，整本作为单章，保证正文完整不乱
     if (chapters.length <= 1 && text.length > 0) {
       chapters.length = 0;
       chapters.push({ title: '正文', startIndex: 0 });
