@@ -313,9 +313,10 @@ book.put('/:id/progress', authMiddleware, async (c) => {
 
   if (result.success) {
     try {
-      await bookService.syncMoonProgressToWebDAV(userId, bookId, webdavService, position, totalLength, currentChapter);
+      const syncResult = await bookService.syncMoonProgressToWebDAV(userId, bookId, webdavService, position, totalLength, currentChapter);
+      return c.json({ ...result, data: { ...(result.data as object || {}), moonSync: syncResult } });
     } catch (e) {
-      console.log('[progress] 同步到Moon+失败:', e);
+      return c.json({ ...result, data: { ...(result.data as object || {}), moonSync: { success: false, error: String(e) } } });
     }
   }
 

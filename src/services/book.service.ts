@@ -533,7 +533,7 @@ export class BookService {
     }
   }
 
-  // 同步阅读进度到Moon+（智能匹配文件）
+  // 同步阅读进度到Moon+（智能匹配文件），返回调试信息
   async syncMoonProgressToWebDAV(
     userId: string,
     bookId: string,
@@ -541,10 +541,10 @@ export class BookService {
     currentPosition: number,
     totalLength: number,
     currentChapter?: number
-  ): Promise<void> {
+  ): Promise<{ success: boolean; path?: string; content?: string; error?: string; title?: string; matched?: string }> {
     try {
       const book = await this.db.getBookById(bookId);
-      if (!book) return;
+      if (!book) return { success: false, error: '书籍不存在' };
 
       // 章节号：优先用前端传入的当前章节索引
       const chapter = (currentChapter !== undefined && currentChapter >= 0) ? currentChapter : 0;
@@ -553,6 +553,7 @@ export class BookService {
       const content = webdavService.buildMoonPlusPoContent('jingdu-web', chapter, `0#0`, percentage);
 
       let poPath: string | null = null;
+      let matchedName: string | undefined;
 
       const cacheResult = await webdavService.listMoonPlusCache(userId);
       const cacheData = cacheResult.data as { files: any[]; path?: string } | undefined;
@@ -600,6 +601,7 @@ export class BookService {
 
         if (bestMatch && bestMatch.score >= 15) {
           poPath = bestMatch.file.path;
+          matchedName = bestMatch.file.name;
           console.log(`[Moon+] 匹配到进度文件: ${bestMatch.file.name} (score: ${bestMatch.score})`);
         }
       }
@@ -612,10 +614,15 @@ export class BookService {
         console.log(`[Moon+] 未匹配到进度文件，创建新文件: ${poPath}`);
       }
 
-      await webdavService.writeMoonPlusProgressFile(userId, poPath, content);
+      const writeResult = await webdavService.writeMoonPlusProgressFile(userId, poPath, content);
+      if (!writeResult.success) {
+        return { success: false, path: poPath, content, error: writeResult.error || '写入失败', title: book.title, matched: matchedName };
+      }
       console.log(`[Moon+] 进度已写入: ${poPath} (${percentage}%)`);
-    } catch (e) {
+      return { success: true, path: poPath, content, title: book.title, matched: matchedName };
+    } catch (e: any) {
       console.log('[Moon+] 写入进度失败:', e);
+      return { success: false, error: e?.message || '写入异常', title: bookId };
     }
   }
 
