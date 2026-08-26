@@ -163,8 +163,9 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
+      // 异步缓存到 KV，不阻塞响应（首次请求立即返回图片）
       const b64 = arrayBufferToBase64(buf);
-      await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
+      c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
       return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
     }
     // 尝试 URL 编码
@@ -174,7 +175,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
         const b64 = arrayBufferToBase64(buf);
-        await c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 });
+        c.env.CACHE.put(cacheKey, JSON.stringify({ mimeType: 'image/jpeg', data: b64 }), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
         return new Response(buf, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
       }
     }

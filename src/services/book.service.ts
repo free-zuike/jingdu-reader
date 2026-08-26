@@ -73,7 +73,7 @@ export class BookService {
 
             // 尝试从 Moon+ Cover 目录获取封面（所有格式）
             try {
-              const coverData = await webdavService.getMoonPlusCover(userId, title, author);
+              const coverData = await webdavService.getMoonPlusCover(userId, title, author, file.path);
               if (coverData) {
                 const mimeType = 'image/jpeg';
                 const bytes = new Uint8Array(coverData);
