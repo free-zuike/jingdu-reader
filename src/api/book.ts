@@ -79,6 +79,21 @@ book.post('/sync', authMiddleware, async (c) => {
   });
 });
 
+// 诊断：读取 Moon+ .po 进度文件原始内容（确认格式）
+// 参数: fileName 如 乡村教师 (刘慈欣) (Z-Library).epub
+book.get('/moonplus/po/:name', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const fileName = c.req.param('name');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const cfg = await db.getWebDAVConfigByUserId(userId);
+  if (!cfg) return c.json({ success: false, error: 'no config' });
+  const basePath = (cfg.base_path || '').replace(/\/$/, '');
+  const poPath = `${basePath}/.Moon+/Cache/${fileName}.po`;
+  const result = await webdavService.getMoonPlusProgressFile(userId, poPath);
+  return c.json(result);
+});
+
 // 查询同步进度
 book.get('/sync/status', authMiddleware, async (c) => {
   const userId = c.get('userId');
