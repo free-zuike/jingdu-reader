@@ -40,6 +40,9 @@ book.post('/sync', authMiddleware, async (c) => {
   // 同步书籍（下载、解析、缓存），进度写入KV
   const result = await bookService.syncBooks(userId, files, webdavService);
 
+  // 后台预缓存所有书的 Moon+ 封面（不阻塞同步响应）
+  c.executionCtx.waitUntil(bookService.precacheMoonCovers(userId, webdavService));
+
   return c.json({
     ...result,
     data: {

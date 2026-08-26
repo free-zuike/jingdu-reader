@@ -96,6 +96,28 @@ export class BookService {
     }
   }
 
+  // 后台预缓存所有书的 Moon+ 封面（不阻塞同步响应）
+  async precacheMoonCovers(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const books = await this.db.getBooksByUserId(userId);
+      for (const book of books) {
+        const cacheKey = `cover:${book.id}`;
+        const cached = await this.cache.get(cacheKey, 'arrayBuffer');
+        if (cached) continue; // 已有缓存跳过
+        try {
+          const coverData = await webdavService.getMoonPlusCover(userId, book.title, book.author || '', book.webdav_path);
+          if (coverData) {
+            await this.cache.put(cacheKey, new Uint8Array(coverData), { expirationTtl: 30 * 24 * 60 * 60 });
+          }
+        } catch {
+          // 单个封面失败不影响后续
+        }
+      }
+    } catch {
+      // 预缓存整体失败不处理
+    }
+  }
+
   // 按需下载并缓存单本书籍
   async downloadAndCacheBook(
     userId: string,
