@@ -528,11 +528,54 @@ export class WebDAVService {
         headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`), 'User-Agent': 'JingDu-Reader/1.0' }
       });
       if (!resp.ok) return { success: false, error: `状态码: ${resp.status}` };
-      const text = await resp.text();
+      const buf = await resp.arrayBuffer();
+      // 如果是 ZIP（books.sorts），解压并解析书架数据
+      if (buf.byteLength > 2 && new Uint8Array(buf)[0] === 0x50 && new Uint8Array(buf)[1] === 0x4b) {
+        const entries = await this.decompressZip(buf);
+        return { success: true, data: { name: fileName, isZip: true, entries } };
+      }
+      const text = new TextDecoder().decode(buf);
       return { success: true, data: { name: fileName, content: text } };
     } catch (error: any) {
       return { success: false, error: error?.message || '读取失败' };
     }
+  }
+
+  // 解析并解压 ZIP 文件（用于 books.sorts）
+  private async decompressZip(zipBytes: ArrayBuffer): Promise<Record<string, string>> {
+    const u8 = new Uint8Array(zipBytes);
+    const entries: Record<string, string> = {};
+    let offset = 0;
+    const localSig = [0x50, 0x4b, 0x03, 0x04];
+    while (offset + 4 <= u8.length) {
+      // 查找本地文件头
+      if (u8[offset] === localSig[0] && u8[offset + 1] === localSig[1] &&
+          u8[offset + 2] === localSig[2] && u8[offset + 3] === localSig[3]) {
+        const method = u8[offset + 8] | (u8[offset + 9] << 8);
+        const compSize = u8[offset + 18] | (u8[offset + 19] << 8) | (u8[offset + 20] << 16) | (u8[offset + 21] << 24);
+        const nameLen = u8[offset + 26] | (u8[offset + 27] << 8);
+        const extraLen = u8[offset + 28] | (u8[offset + 29] << 8);
+        const nameBytes = u8.slice(offset + 30, offset + 30 + nameLen);
+        const name = new TextDecoder().decode(nameBytes);
+        const dataStart = offset + 30 + nameLen + extraLen;
+        const compData = u8.slice(dataStart, dataStart + compSize);
+        try {
+          if (method === 0) {
+            entries[name] = new TextDecoder().decode(compData);
+          } else if (method === 8) {
+            const ds = new DecompressionStream('deflate-raw');
+            const stream = new Blob([compData]).stream().pipeThrough(ds);
+            entries[name] = await new Response(stream).text();
+          }
+        } catch {
+          entries[name] = '(解压失败)';
+        }
+        offset = dataStart + compSize;
+      } else {
+        offset++;
+      }
+    }
+    return entries;
   }
 
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
