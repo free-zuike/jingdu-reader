@@ -17,12 +17,6 @@ book.get('/', authMiddleware, async (c) => {
 
   const result = await bookService.getBooks(userId);
 
-  // 后台预缓存缺失的封面（不阻塞书架响应）
-  if (c.env.ENCRYPTION_KEY) {
-    const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-    c.executionCtx.waitUntil(bookService.precacheMoonCovers(userId, webdavService));
-  }
-
   return c.json(result);
 });
 
