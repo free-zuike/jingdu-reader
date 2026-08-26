@@ -342,32 +342,36 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
 
     const text = fullTexts.join('\n\n');
 
+    // 单文件 EPUB（整本书合并）：用严格的章节标题模式切分，避免把正文里的"第"字误判为章节
     if (chapters.length <= 1 && text.length > 50) {
       chapters.length = 0;
-      const markers = ['第', 'Chapter', 'chapter', '序言', '前言', '楔子', '尾声', '后记', '番外', '目录'];
-      let lastPos = 0;
-      let count = 0;
-      for (let i = 0; i < text.length && count < 200; i++) {
-        for (const m of markers) {
-          if (text.substring(i, i + m.length) === m) {
-            const end = Math.min(i + 80, text.length);
-            const chunk = text.substring(i, end).split(/[\n\r]/)[0].trim();
-            if (chunk.length > 2 && chunk.length < 80) {
-              chapters.push({ title: chunk, startIndex: i });
-              count++;
+      const patterns: RegExp[] = [
+        /^第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节卷集部篇]/m,
+        /^Chapter\s+[0-9IVXLCDM]+/m,
+        /^(序言|前言|楔子|引子|尾声|后记|番外|序|跋|引言|代词|卷首语)$/m,
+        /^【[^】]+】/m,
+        /^[一二三四五六七八九十]+[\、\.]\s*\S+/m
+      ];
+      const lines = text.split('\n');
+      let offset = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.length > 0 && trimmed.length <= 40) {
+          for (const pat of patterns) {
+            if (pat.test(trimmed)) {
+              chapters.push({ title: trimmed, startIndex: offset });
+              break;
             }
-            break;
           }
         }
+        offset += lines[i].length + 1;
       }
     }
 
-    if (chapters.length === 0 && text.length > 0) {
-      const pageSize = 4000;
-      const totalPages = Math.ceil(text.length / pageSize);
-      for (let i = 0; i < totalPages; i++) {
-        chapters.push({ title: `第${i + 1}页`, startIndex: i * pageSize });
-      }
+    // 仍识别不到明确章节（如短篇合集无标题），整本作为单章，保证正文完整不乱
+    if (chapters.length <= 1 && text.length > 0) {
+      chapters.length = 0;
+      chapters.push({ title: '正文', startIndex: 0 });
     }
 
     return { text, chapters };
