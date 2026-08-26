@@ -97,8 +97,20 @@ function renderToc() {
     return;
   }
   tocList.innerHTML = chapters.map((ch, i) => `
-    <div class="toc-item" onclick="jumpToChapter(${i})">${escapeHtml(ch.title)}</div>
+    <div class="toc-item${i === currentChapterIndex ? ' active' : ''}" id="toc-${i}" onclick="jumpToChapter(${i})">${escapeHtml(ch.title)}</div>
   `).join('');
+}
+
+// 打开目录并定位到当前章节
+function openToc() {
+  renderToc(); // 重新渲染以更新当前章节高亮
+  document.getElementById('tocSidebar').classList.add('show');
+  document.getElementById('overlay').classList.add('show');
+  // 等渲染完成后滚动到当前章节
+  setTimeout(() => {
+    const el = document.getElementById(`toc-${currentChapterIndex}`);
+    if (el) el.scrollIntoView({ block: 'center' });
+  }, 60);
 }
 
 // TXT 章节跳转
@@ -112,17 +124,36 @@ function jumpToChapter(index) {
   currentChapterIndex = index;
   renderTextContent();
   closeToc();
-  document.querySelector('.reader-content').scrollTop = 0;
   window.scrollTo(0, 0);
+  keepChromeVisible();
   debounceSaveProgress();
 }
 
 function prevChapter() {
-  if (currentChapterIndex > 0) { currentChapterIndex--; renderTextContent(); debounceSaveProgress(); }
+  if (currentChapterIndex > 0) {
+    currentChapterIndex--;
+    renderTextContent();
+    window.scrollTo(0, 0);
+    keepChromeVisible();
+    debounceSaveProgress();
+  }
 }
 
 function nextChapter() {
-  if (currentChapterIndex < chapters.length - 1) { currentChapterIndex++; renderTextContent(); debounceSaveProgress(); }
+  if (currentChapterIndex < chapters.length - 1) {
+    currentChapterIndex++;
+    renderTextContent();
+    window.scrollTo(0, 0);
+    keepChromeVisible();
+    debounceSaveProgress();
+  }
+}
+
+// 保持顶栏/底栏可见并重置自动隐藏计时器（翻页后可直接连续点击）
+function keepChromeVisible() {
+  document.getElementById('readerHeader').classList.remove('hidden');
+  document.getElementById('readerFooter').classList.remove('hidden');
+  startAutoHide();
 }
 
 function renderTextContent() {
