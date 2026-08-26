@@ -72,10 +72,12 @@ async function initTextReader(bookId) {
 
     document.getElementById('prevBtn').addEventListener('click', prevChapter);
     document.getElementById('nextBtn').addEventListener('click', nextChapter);
-    document.querySelector('.reader-content').addEventListener('scroll', throttle(() => {
+    // 滚动实际发生在 window（.reader-content 是 min-height:100vh + overflow-y:auto，
+    // 内容变长时它随内容增长，滚动不回巢自身），监听 window 才能捕获
+    window.addEventListener('scroll', throttle(() => {
       updateProgressBar();
       debounceSaveProgress();
-    }, 1000));
+    }, 1000), { passive: true });
 
     // 点击阅读区切换顶栏/底栏
     document.querySelector('.reader-content').addEventListener('click', (e) => {
@@ -111,14 +113,16 @@ function jumpToChapter(index) {
   renderTextContent();
   closeToc();
   document.querySelector('.reader-content').scrollTop = 0;
+  window.scrollTo(0, 0);
+  debounceSaveProgress();
 }
 
 function prevChapter() {
-  if (currentChapterIndex > 0) { currentChapterIndex--; renderTextContent(); }
+  if (currentChapterIndex > 0) { currentChapterIndex--; renderTextContent(); debounceSaveProgress(); }
 }
 
 function nextChapter() {
-  if (currentChapterIndex < chapters.length - 1) { currentChapterIndex++; renderTextContent(); }
+  if (currentChapterIndex < chapters.length - 1) { currentChapterIndex++; renderTextContent(); debounceSaveProgress(); }
 }
 
 function renderTextContent() {
@@ -171,9 +175,11 @@ function updateProgressBar() {
   if (chapters.length > 0 && totalLength > 0) {
     progress = (chapters[currentChapterIndex].startIndex / totalLength) * 100;
   } else {
-    const el = document.querySelector('.reader-content');
-    if (el) {
-      progress = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+    // 滚动发生在 window 上（.reader-content 随内容增长）
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - window.innerHeight;
+    if (max > 0) {
+      progress = (window.scrollY / max) * 100;
     }
   }
   progress = Math.min(100, Math.max(0, progress));
