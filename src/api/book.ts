@@ -117,7 +117,8 @@ book.get('/:id/cover', authMiddleware, async (c) => {
 
   // 1. 检查 Cache API（边缘缓存，速度最快，适合大图）
   const cache = caches.default;
-  const cacheReq = new Request(`https://cover-cache/${cacheKey}`);
+  const origin = new URL(c.req.url).origin;
+  const cacheReq = new Request(`${origin}/_cover/${bookId}`);
   const cachedResp = await cache.match(cacheReq);
   if (cachedResp) return cachedResp;
 
@@ -164,11 +165,13 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
-      // KV 缓存（异步，不阻塞响应）
-      c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
-      // Cache API 缓存到边缘节点（异步）
-      const headers = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
-      c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers })));
+      // KV 缓存（必须在 waitUntil 中执行，否则响应返回后 Worker 被终止）
+      c.executionCtx.waitUntil(
+        c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 })
+      );
+      // Cache API 边缘缓存
+      const cacheHeaders = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers: cacheHeaders })));
       return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
     }
     // 尝试 URL 编码
@@ -177,9 +180,11 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
-        c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
-        const headers = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
-        c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers })));
+        c.executionCtx.waitUntil(
+          c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 })
+        );
+        const cacheHeaders = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+        c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers: cacheHeaders })));
         return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
       }
     }
