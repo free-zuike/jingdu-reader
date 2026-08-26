@@ -553,6 +553,35 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ 书籍元数据（books.sync，zlib 压缩的 JSON 数组）
+  // 返回: Map<filename, { category, favorite, series, rate }>
+  async getMoonPlusBookMeta(userId: string): Promise<Map<string, { category: string; favorite: boolean; series: string; rate: string }>> {
+    const result = await this.getMoonPlusDataFile(userId, 'books.sync');
+    if (!result.success || !result.data) return new Map();
+    const data = result.data as { isZlib?: boolean; content?: string };
+    if (!data.isZlib || !data.content) return new Map();
+
+    const map = new Map<string, { category: string; favorite: boolean; series: string; rate: string }>();
+    try {
+      const arr = JSON.parse(data.content);
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (item && item.filename) {
+            map.set(item.filename, {
+              category: (typeof item.category === 'string' ? item.category : '').trim(),
+              favorite: item.favorite === '1' || item.favorite === true,
+              series: (typeof item.groupName === 'string' ? item.groupName : '').trim(),
+              rate: (typeof item.rate === 'string' ? item.rate : '').trim()
+            });
+          }
+        }
+      }
+    } catch {
+      // 解析失败，返回空 map
+    }
+    return map;
+  }
+
   // 解析并解压 ZIP 文件（用于 books.sorts）—— 使用中央目录获取真实大小
   private async decompressZip(zipBytes: ArrayBuffer): Promise<Record<string, string>> {
     const u8 = new Uint8Array(zipBytes);

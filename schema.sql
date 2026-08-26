@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS books (
   last_modified TEXT,
   synced INTEGER DEFAULT 0,
   cached_at TEXT DEFAULT (datetime('now')),
+  category TEXT,
+  favorite INTEGER DEFAULT 0,
+  series TEXT,
+  rate TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

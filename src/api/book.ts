@@ -11,11 +11,14 @@ const book = new Hono<{ Bindings: Env }>();
 // 获取书籍列表
 book.get('/', authMiddleware, async (c) => {
   const userId = c.get('userId');
+  const sort = c.req.query('sort') || 'recent';
+  const filter = c.req.query('filter') || 'all';
+  const category = c.req.query('category') || '';
   
   const db = new Database(c.env.DB);
   const bookService = new BookService(db, c.env.CACHE);
 
-  const result = await bookService.getBooks(userId);
+  const result = await bookService.getBooks(userId, sort, filter, category);
 
   return c.json(result);
 });
@@ -47,6 +50,9 @@ book.post('/sync', authMiddleware, async (c) => {
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
   const bookService = new BookService(db, c.env.CACHE);
 
+  // 确保 books 表有 Moon+ 元数据列（迁移）
+  await db.ensureMoonMetaColumns();
+
   // 获取WebDAV文件列表
   const filesResult = await webdavService.listFiles(userId);
 
@@ -59,8 +65,9 @@ book.post('/sync', authMiddleware, async (c) => {
   // 同步书籍（下载、解析、缓存），进度写入KV
   const result = await bookService.syncBooks(userId, files, webdavService);
 
-  // 后台预缓存所有书的 Moon+ 封面（不阻塞同步响应）
+  // 后台预缓存所有书的 Moon+ 封面 + 同步 Moon+ 元数据（不阻塞同步响应）
   c.executionCtx.waitUntil(bookService.precacheMoonCovers(userId, webdavService));
+  c.executionCtx.waitUntil(bookService.syncMoonPlusMeta(userId, webdavService));
 
   return c.json({
     ...result,

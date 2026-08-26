@@ -67,6 +67,10 @@ export interface Book {
   last_modified?: string;
   synced?: number;
   cached_at: string;
+  category?: string;
+  favorite?: number;
+  series?: string;
+  rate?: string;
 }
 
 export interface BookListItem {
@@ -77,6 +81,13 @@ export interface BookListItem {
   format: 'epub' | 'txt' | 'pdf' | 'mobi' | 'azw3' | 'docx' | 'doc' | 'rtf' | 'fb2' | 'html' | 'cbr' | 'cbz' | 'djvu';
   lastReadAt?: string;
   progress?: number;
+  category?: string;
+  favorite?: boolean;
+  series?: string;
+  rate?: string;
+  cachedAt?: string;
+  dir?: string;
+  readStatus?: 'unread' | 'reading' | 'read';
 }
 
 export interface BookContent {

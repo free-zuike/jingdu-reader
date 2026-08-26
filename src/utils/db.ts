@@ -125,8 +125,8 @@ export class Database {
   // 书籍相关操作
   async createBook(book: Book): Promise<void> {
     await this.db.prepare(
-      `INSERT INTO books (id, user_id, webdav_path, title, author, cover_url, format, file_size, last_modified, cached_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO books (id, user_id, webdav_path, title, author, cover_url, format, file_size, last_modified, cached_at, category, favorite, series, rate) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       book.id,
       book.user_id,
@@ -137,8 +137,47 @@ export class Database {
       book.format,
       book.file_size || null,
       book.last_modified || null,
-      book.cached_at
+      book.cached_at,
+      book.category || null,
+      book.favorite || 0,
+      book.series || null,
+      book.rate || null
     ).run();
+  }
+
+  // 更新书籍 Moon+ 元数据（分类/珍藏/系列/评分）
+  async updateBookMoonMeta(id: string, meta: { category?: string | null; favorite?: boolean | null; series?: string | null; rate?: string | null }): Promise<void> {
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (meta.category !== undefined) { fields.push('category = ?'); values.push(meta.category); }
+    if (meta.favorite !== undefined) { fields.push('favorite = ?'); values.push(meta.favorite ? 1 : 0); }
+    if (meta.series !== undefined) { fields.push('series = ?'); values.push(meta.series); }
+    if (meta.rate !== undefined) { fields.push('rate = ?'); values.push(meta.rate); }
+
+    if (fields.length === 0) return;
+    values.push(id);
+    await this.db.prepare(
+      `UPDATE books SET ${fields.join(', ')} WHERE id = ?`
+    ).bind(...values).run();
+  }
+
+  // 确保 books 表有 Moon+ 元数据列（迁移用）
+  async ensureMoonMetaColumns(): Promise<void> {
+    try {
+      const cols = await this.db.prepare('PRAGMA table_info(books)').all<{ name: string }>();
+      const names = new Set((cols.results || []).map(c => c.name));
+      const missing: string[] = [];
+      if (!names.has('category')) missing.push('category TEXT');
+      if (!names.has('favorite')) missing.push('favorite INTEGER DEFAULT 0');
+      if (!names.has('series')) missing.push('series TEXT');
+      if (!names.has('rate')) missing.push('rate TEXT');
+      for (const def of missing) {
+        await this.db.prepare(`ALTER TABLE books ADD COLUMN ${def}`).run();
+      }
+    } catch {
+      // 列可能已存在，忽略
+    }
   }
 
   async getBooksByUserId(userId: string): Promise<Book[]> {

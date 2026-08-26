@@ -122,6 +122,24 @@ export class BookService {
     }
   }
 
+  // 同步 Moon+ 书籍元数据（标签/珍藏/系列/评分）到数据库
+  async syncMoonPlusMeta(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const metaMap = await webdavService.getMoonPlusBookMeta(userId);
+      if (metaMap.size === 0) return;
+      const books = await this.db.getBooksByUserId(userId);
+      for (const book of books) {
+        // 用文件名匹配（webdav_path 最后一段）
+        const fileName = (book.webdav_path || '').split('/').pop() || '';
+        const meta = metaMap.get(fileName);
+        if (!meta) continue;
+        await this.db.updateBookMoonMeta(book.id, meta);
+      }
+    } catch {
+      // 元数据同步失败不影响主流程
+    }
+  }
+
   // 按需下载并缓存单本书籍
   async downloadAndCacheBook(
     userId: string,
@@ -183,8 +201,8 @@ export class BookService {
     }
   }
 
-  // 获取书籍列表
-  async getBooks(userId: string): Promise<ApiResponse> {
+  // 获取书籍列表（支持排序 sort: title/author/import/dir/recent，过滤 filter: unread/reading/read + category）
+  async getBooks(userId: string, sort = 'recent', filter = 'all', category = ''): Promise<ApiResponse> {
     try {
       const books = await this.db.getBooksByUserId(userId);
       const bookList: BookListItem[] = [];
@@ -212,6 +230,13 @@ export class BookService {
           } catch {}
         }
 
+        // 存储目录（webdav_path 的目录部分）
+        const pathParts = (book.webdav_path || '').split('/').filter(s => s);
+        const dir = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+
+        // 阅读状态：unread / reading / read
+        const readStatus = !progress || progress === 0 ? 'unread' : (progress >= 100 ? 'read' : 'reading');
+
         bookList.push({
           id: book.id,
           title: book.title,
@@ -219,19 +244,50 @@ export class BookService {
           cover: `/api/books/${book.id}/cover`,
           format: book.format,
           progress,
-          lastReadAt
+          lastReadAt,
+          category: book.category || '',
+          favorite: !!book.favorite,
+          series: book.series || '',
+          rate: book.rate || '',
+          dir,
+          readStatus,
+          cachedAt: book.cached_at
         });
       }
 
-      // 按最近阅读时间排序（有阅读记录的排前面）
-      bookList.sort((a, b) => {
-        if (!a.lastReadAt && !b.lastReadAt) return 0;
-        if (!a.lastReadAt) return 1;
-        if (!b.lastReadAt) return -1;
-        return new Date(b.lastReadAt).getTime() - new Date(a.lastReadAt).getTime();
-      });
+      // 过滤
+      let filtered = bookList;
+      if (filter === 'unread') filtered = bookList.filter(b => b.readStatus === 'unread');
+      else if (filter === 'reading') filtered = bookList.filter(b => b.readStatus === 'reading');
+      else if (filter === 'read') filtered = bookList.filter(b => b.readStatus === 'read');
+      if (category) filtered = filtered.filter(b => (b.category || '').includes(category) || (b.series || '').includes(category) || (b.author || '').includes(category) || (b.dir || '').includes(category));
 
-      return { success: true, data: { books: bookList } };
+      // 排序
+      const sorted = [...filtered];
+      switch (sort) {
+        case 'title':
+          sorted.sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+          break;
+        case 'author':
+          sorted.sort((a, b) => (a.author || '').localeCompare(b.author || '', 'zh') || a.title.localeCompare(b.title, 'zh'));
+          break;
+        case 'import':
+          sorted.sort((a, b) => (b.cachedAt || '').localeCompare(a.cachedAt || ''));
+          break;
+        case 'dir':
+          sorted.sort((a, b) => (a.dir || '').localeCompare(b.dir || '', 'zh'));
+          break;
+        case 'recent':
+        default:
+          sorted.sort((a, b) => {
+            if (!a.lastReadAt && !b.lastReadAt) return 0;
+            if (!a.lastReadAt) return 1;
+            if (!b.lastReadAt) return -1;
+            return new Date(b.lastReadAt).getTime() - new Date(a.lastReadAt).getTime();
+          });
+      }
+
+      return { success: true, data: { books: sorted } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取书籍列表失败' };
     }
