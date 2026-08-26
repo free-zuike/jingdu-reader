@@ -100,10 +100,10 @@ export class BookService {
   async precacheMoonCovers(userId: string, webdavService: WebDAVService): Promise<void> {
     try {
       const books = await this.db.getBooksByUserId(userId);
-      for (const book of books) {
+      const tasks = books.map(async (book) => {
         const cacheKey = `cover:${book.id}`;
         const cached = await this.cache.get(cacheKey, 'arrayBuffer');
-        if (cached) continue; // 已有缓存跳过
+        if (cached) return;
         try {
           const coverData = await webdavService.getMoonPlusCover(userId, book.title, book.author || '', book.webdav_path);
           if (coverData) {
@@ -112,6 +112,10 @@ export class BookService {
         } catch {
           // 单个封面失败不影响后续
         }
+      });
+      // 并发执行，限制同时 3 个请求避免 WebDAV 限流
+      for (let i = 0; i < tasks.length; i += 3) {
+        await Promise.all(tasks.slice(i, i + 3));
       }
     } catch {
       // 预缓存整体失败不处理
