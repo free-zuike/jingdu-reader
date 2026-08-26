@@ -404,6 +404,164 @@
 .books-list .book-author { flex: 1; }
 .books-list .book-meta { margin-top: 0; padding-top: 0; }
 
+/* ---------- 分类标签栏 ---------- */
+
+.category-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--sp-md);
+  padding-bottom: var(--sp-sm);
+  border-bottom: 1px solid var(--line-soft);
+}
+.cat-btn {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  color: var(--soft);
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  transition: all var(--t-fast);
+  letter-spacing: 0.04em;
+}
+.cat-btn:hover { color: var(--ink); border-color: var(--gold); }
+.cat-btn.active { background: var(--seal); color: var(--paper-white); border-color: var(--seal); }
+
+/* 分类子项栏 */
+.subcategory-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--sp-md);
+}
+.subcat-btn {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--soft);
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  transition: all var(--t-fast);
+}
+.subcat-btn:hover { color: var(--ink); border-color: var(--gold); }
+.subcat-btn.active { background: var(--ink); color: var(--paper-white); }
+
+/* ---------- 工具栏 ---------- */
+
+.books-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-lg);
+  gap: var(--sp-md);
+  flex-wrap: wrap;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--soft);
+  font-size: 0.82rem;
+}
+.filter-group label { opacity: 0.8; }
+.filter-group select {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 书籍标签（分类标签第一项） */
+.book-tags {
+  font-size: 0.72rem;
+  color: var(--gold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 单本布局 ---------- */
+
+.books-single { display: block; }
+.single-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-lg);
+  padding: var(--sp-lg) 0;
+}
+.single-nav {
+  width: 44px;
+  height: 44px;
+  font-size: 1.6rem;
+  color: var(--soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  transition: all var(--t-fast);
+  cursor: pointer;
+}
+.single-nav:hover { color: var(--ink); border-color: var(--gold); }
+.single-card {
+  width: 240px;
+  background: var(--light-paper);
+  border: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  overflow: hidden;
+  box-shadow: var(--shadow-lift);
+}
+.single-card:hover { transform: translateY(-3px); border-color: var(--gold); }
+.single-cover {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(160deg, var(--paper-white) 0%, var(--page-deep) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line-soft);
+}
+.single-cover::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 8px;
+  background: linear-gradient(to right, rgba(43,39,36,0.10), transparent);
+}
+.single-info {
+  padding: var(--sp-md);
+  text-align: center;
+}
+.single-title {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.single-author { font-size: 0.85rem; color: var(--soft); margin-bottom: 6px; }
+.single-tags { font-size: 0.75rem; color: var(--gold); margin-bottom: 6px; }
+.single-progress { font-size: 0.8rem; color: var(--seal); font-weight: 600; }
+.single-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: var(--sp-sm);
+}
+.single-dots .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: all var(--t-fast);
+}
+.single-dots .dot.active { background: var(--seal); transform: scale(1.3); }
+
 /* ---------- 同步遮罩 ---------- */
 
 .loading-overlay {

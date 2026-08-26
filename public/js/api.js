@@ -150,8 +150,13 @@ async function testSmtpConnection(config) {
 }
 
 // 书籍相关API
-async function getBooks() {
-  return request('/api/books');
+async function getBooks(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.sort) qs.set('sort', params.sort);
+  if (params.filter) qs.set('filter', params.filter);
+  if (params.category) qs.set('category', params.category);
+  const q = qs.toString();
+  return request(`/api/books${q ? '?' + q : ''}`);
 }
 
 async function syncBooks() {

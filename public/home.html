@@ -56,14 +56,47 @@
 
     <!-- 书籍列表 -->
     <div class="books-container" id="booksContainer">
-      <div class="books-header">
-        <h1>我的书架</h1>
+      <!-- 分类标签栏 -->
+      <div class="category-bar" id="categoryBar">
+        <button class="cat-btn active" data-cat="all">全部书籍</button>
+        <button class="cat-btn" data-cat="favorite">我的珍藏</button>
+        <button class="cat-btn" data-cat="series">书籍系列</button>
+        <button class="cat-btn" data-cat="author">书籍作者</button>
+        <button class="cat-btn" data-cat="tag">书籍标签</button>
+        <button class="cat-btn" data-cat="dir">存储目录</button>
+        <button class="cat-btn" data-cat="rate">我的评分</button>
+      </div>
+
+      <div class="books-toolbar">
+        <div class="filter-group">
+          <label>阅读</label>
+          <select id="filterSelect">
+            <option value="all">全部</option>
+            <option value="unread">未读</option>
+            <option value="reading">正在阅读</option>
+            <option value="read">已读</option>
+          </select>
+          <label>排序</label>
+          <select id="sortSelect">
+            <option value="recent">最近阅读</option>
+            <option value="title">书名</option>
+            <option value="author">作者</option>
+            <option value="import">导入时间</option>
+            <option value="dir">存储目录</option>
+          </select>
+        </div>
         <div class="view-toggle">
-          <button class="view-btn active" data-view="grid">⊞ 网格</button>
-          <button class="view-btn" data-view="list">☰ 列表</button>
+          <button class="view-btn active" data-view="grid" title="三本一行">⊞ 网格</button>
+          <button class="view-btn" data-view="list" title="列表">☰ 列表</button>
+          <button class="view-btn" data-view="single" title="单本滑动">◫ 单本</button>
         </div>
       </div>
-      
+
+      <!-- 分类子项（作者/标签/系列/目录/评分展开后的条目） -->
+      <div class="subcategory-bar" id="subcategoryBar" style="display:none;">
+        <button class="subcat-btn active" data-subcat="">全部</button>
+      </div>
+
       <div class="books-grid" id="booksGrid">
         <!-- 书籍卡片将在这里动态生成 -->
       </div>
@@ -126,13 +159,38 @@
       document.getElementById('syncBtn').addEventListener('click', handleSync);
       document.getElementById('emptySyncBtn')?.addEventListener('click', handleSync);
       
+      // 分类标签
+      document.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentCategory = btn.dataset.cat;
+          currentSubcat = '';
+          renderSubcats();
+          renderShelf();
+        });
+      });
+      
+      // 阅读过滤
+      document.getElementById('filterSelect').addEventListener('change', (e) => {
+        currentFilter = e.target.value;
+        renderShelf();
+      });
+      
+      // 排序
+      document.getElementById('sortSelect').addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        renderShelf();
+      });
+      
       // 视图切换
       document.querySelectorAll('.view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
-          const view = btn.dataset.view;
-          document.getElementById('booksGrid').className = view === 'grid' ? 'books-grid' : 'books-list';
+          currentLayout = btn.dataset.view;
+          singleIndex = 0;
+          renderShelf();
         });
       });
       
