@@ -111,13 +111,17 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   }
 
   const cacheKey = `cover:${bookId}`;
-  // 优先读原始二进制缓存（arrayBuffer），兼容旧版 JSON base64 格式
+  // 先尝试读原始二进制缓存（新格式），检查魔数避免误把旧 JSON 字符串当图片
   const raw = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
-  if (raw) {
-    return new Response(raw, {
-      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }
-    });
+  if (raw && raw.byteLength > 0) {
+    const magic = new Uint8Array(raw, 0, 2);
+    if ((magic[0] === 0x89 && magic[1] === 0x50) || (magic[0] === 0xFF && magic[1] === 0xD8)) {
+      return new Response(raw, {
+        headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }
+      });
+    }
   }
+  // 兼容旧版 JSON base64 格式
   const cachedStr = await c.env.CACHE.get(cacheKey);
   if (cachedStr && typeof cachedStr === 'string' && cachedStr.startsWith('{')) {
     try {
