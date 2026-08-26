@@ -188,10 +188,10 @@ async function getReadingProgress(bookId) {
   return request(`/api/books/${bookId}/progress`);
 }
 
-async function updateReadingProgress(bookId, position, totalLength, currentCfi, percentage) {
+async function updateReadingProgress(bookId, position, totalLength, currentCfi, percentage, currentChapter) {
   return request(`/api/books/${bookId}/progress`, {
     method: 'PUT',
-    body: JSON.stringify({ position, totalLength, currentCfi, percentage })
+    body: JSON.stringify({ position, totalLength, currentCfi, percentage, currentChapter })
   });
 }
 

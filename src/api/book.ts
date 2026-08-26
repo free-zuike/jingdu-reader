@@ -248,7 +248,7 @@ book.get('/:id/progress', authMiddleware, async (c) => {
 book.put('/:id/progress', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
-  const { position, totalLength, currentCfi, percentage } = await c.req.json();
+  const { position, totalLength, currentCfi, percentage, currentChapter } = await c.req.json();
 
   if (typeof position !== 'number' || typeof totalLength !== 'number') {
     return c.json({ success: false, error: '请提供有效的阅读进度' }, 400);
@@ -262,7 +262,7 @@ book.put('/:id/progress', authMiddleware, async (c) => {
 
   if (result.success) {
     try {
-      await bookService.syncMoonProgressToWebDAV(userId, bookId, webdavService, position, totalLength);
+      await bookService.syncMoonProgressToWebDAV(userId, bookId, webdavService, position, totalLength, currentChapter);
     } catch (e) {
       console.log('[progress] 同步到Moon+失败:', e);
     }

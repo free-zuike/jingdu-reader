@@ -407,17 +407,18 @@ export class BookService {
           if (book && book.user_id === userId) {
             const moonProgress = await this.readMoonProgress(userId, book, webdavService);
             if (moonProgress) {
-              // Moon+ 进度格式：chapter@location:percentage%
-              // 把章节号作为 position（前端根据章节号定位到正确章节）
+              // 保存到本地 KV，让书架列表也能显示 Moon+ 进度
+              const progressKey = `progress:${userId}:${bookId}`;
               const progress = {
                 bookId,
-                currentPosition: moonProgress.chapter * 10000, // 用章节号编码为位置
-                totalLength: 0,
+                currentPosition: moonProgress.percentage, // 百分比，书架列表按 currentPosition/totalLength 计算
+                totalLength: 100,
                 lastReadAt: new Date().toISOString(),
                 fromMoon: true,
                 percentage: moonProgress.percentage,
                 moonChapter: moonProgress.chapter
               };
+              this.cache.put(progressKey, JSON.stringify(progress), { expirationTtl: 365 * 24 * 60 * 60 }).catch(() => {});
               return { success: true, data: progress };
             }
           }
@@ -460,14 +461,16 @@ export class BookService {
     bookId: string,
     webdavService: WebDAVService,
     currentPosition: number,
-    totalLength: number
+    totalLength: number,
+    currentChapter?: number
   ): Promise<void> {
     try {
       const book = await this.db.getBookById(bookId);
       if (!book) return;
 
+      const chapter = (currentChapter !== undefined && currentChapter >= 0) ? currentChapter : 0;
       const percentage = totalLength > 0 ? Math.round((currentPosition / totalLength) * 1000) / 10 : 0;
-      const content = webdavService.buildMoonPlusPoContent('jingdu-web', 0, `0#${currentPosition}`, percentage);
+      const content = webdavService.buildMoonPlusPoContent('jingdu-web', chapter, `0#${currentPosition}`, percentage);
 
       let poPath: string | null = null;
 

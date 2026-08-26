@@ -50,6 +50,7 @@ async function initTextReader(bookId) {
       const mc = progressResult.data.moonChapter;
       if (mc >= 0 && mc < chapters.length) {
         currentChapterIndex = mc;
+        currentPosition = chapters[mc].startIndex; // 同步 position，scrollToPosition 不会跳转
       }
     }
 
@@ -184,7 +185,7 @@ async function saveProgress() {
   if (!currentBookId) return;
   try {
     const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex : 0;
-    await updateReadingProgress(currentBookId, pos, totalLength);
+    await updateReadingProgress(currentBookId, pos, totalLength, undefined, undefined, currentChapterIndex);
   } catch (e) { console.error('保存进度失败:', e); }
 }
 
