@@ -20,6 +20,15 @@ book.get('/', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：列出 Moon+ 目录结构（找出分类/备份数据库位置）
+book.get('/moonplus/structure', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.listMoonPlusStructure(userId);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');

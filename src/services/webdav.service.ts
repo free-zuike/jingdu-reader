@@ -482,6 +482,38 @@ export class WebDAVService {
     }
   }
 
+  // 列出 Moon+ 目录结构（诊断用，找出备份/分类数据库位置）
+  async listMoonPlusStructure(userId: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) {
+        return { success: false, error: 'WebDAV配置不存在' };
+      }
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const moonPlusPath = `${basePath}/.Moon+`;
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${moonPlusPath}`;
+
+      const resp = await fetch(fullUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/xml; charset=utf-8',
+          'Depth': 'infinity',
+          'User-Agent': 'JingDu-Reader/1.0'
+        }
+      });
+      if (resp.status !== 207) {
+        return { success: false, error: `状态码: ${resp.status}` };
+      }
+      const xmlText = await resp.text();
+      const files = this.parseWebDAVResponse(xmlText, moonPlusPath);
+      return { success: true, data: files };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '列出失败' };
+    }
+  }
+
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
   // bookFileName 是书籍的原始文件名（如 乡村教师.epub），用于直接构造封面路径
   async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string, bookFileName?: string): Promise<ArrayBuffer | null> {
