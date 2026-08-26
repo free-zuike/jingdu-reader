@@ -483,6 +483,10 @@
   white-space: nowrap;
 }
 
+/* 评分星级 */
+.book-stars { font-size: 0.75rem; color: var(--gold); letter-spacing: 0.08em; }
+.single-stars { font-size: 1rem; color: var(--gold); letter-spacing: 0.1em; margin-bottom: 6px; }
+
 /* ---------- 单本布局 ---------- */
 
 .books-single { display: block; }

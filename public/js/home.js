@@ -53,7 +53,7 @@ function renderShelf() {
   } else if (currentCategory === 'dir') {
     books = currentSubcat ? books.filter(b => b.dir === currentSubcat) : books.filter(b => b.dir);
   } else if (currentCategory === 'rate') {
-    books = currentSubcat ? books.filter(b => b.rate === currentSubcat) : books.filter(b => b.rate);
+    books = currentSubcat ? books.filter(b => String(b.rate) === currentSubcat) : books.filter(b => { const n = parseInt(b.rate, 10); return n >= 1 && n <= 5; });
   }
 
   // 阅读过滤
@@ -111,7 +111,14 @@ function sortBooks(books) {
   return arr;
 }
 
-// 构建分类子项列表
+// 星星显示
+function stars(n) {
+  const num = parseInt(n, 10);
+  if (!num || num < 1 || num > 5) return '';
+  return '★'.repeat(num);
+}
+
+// 构建分类子项列表（返回 {key, label, count}）
 function buildSubcats() {
   let map = {};
   if (currentCategory === 'series') {
@@ -127,9 +134,16 @@ function buildSubcats() {
   } else if (currentCategory === 'dir') {
     allBooks.forEach(b => { if (b.dir) map[b.dir] = (map[b.dir] || 0) + 1; });
   } else if (currentCategory === 'rate') {
-    allBooks.forEach(b => { if (b.rate && b.rate !== '0') map[b.rate + ' 分'] = (map[b.rate + ' 分'] || 0) + 1; });
+    allBooks.forEach(b => {
+      const n = parseInt(b.rate, 10);
+      if (n >= 1 && n <= 5) map[String(n)] = (map[String(n)] || 0) + 1;
+    });
   }
-  return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  return Object.entries(map).map(([key, count]) => ({
+    key,
+    label: currentCategory === 'rate' ? stars(key) : key,
+    count
+  })).sort((a, b) => b.count - a.count);
 }
 
 // 更新分类子项栏
@@ -144,8 +158,8 @@ function renderSubcats() {
   const subs = buildSubcats();
   bar.style.display = 'block';
   let html = `<button class="subcat-btn${!currentSubcat ? ' active' : ''}" data-subcat="">全部</button>`;
-  subs.forEach(([name]) => {
-    html += `<button class="subcat-btn${currentSubcat === name ? ' active' : ''}" data-subcat="${escapeAttr(name)}">${escapeHtml(name)}</button>`;
+  subs.forEach(s => {
+    html += `<button class="subcat-btn${currentSubcat === s.key ? ' active' : ''}" data-subcat="${escapeAttr(s.key)}">${escapeHtml(s.label)} (${s.count})</button>`;
   });
   bar.innerHTML = html;
   bar.querySelectorAll('.subcat-btn').forEach(btn => {
@@ -170,6 +184,7 @@ function renderSingle(books) {
           <h3 class="single-title">${escapeHtml(book.title)}</h3>
           <p class="single-author">${escapeHtml(book.author) || '未知作者'}</p>
           ${book.category ? `<p class="single-tags">${escapeHtml(book.category.split(/[;\n；]/)[0])}</p>` : ''}
+          ${book.rate && parseInt(book.rate, 10) >= 1 && parseInt(book.rate, 10) <= 5 ? `<p class="single-stars">${stars(book.rate)}</p>` : ''}
           <p class="single-progress">${book.progress > 0 ? book.progress + '%' : '未读'}</p>
         </div>
       </div>
@@ -241,6 +256,7 @@ function createBookCard(book, layout) {
       <h3 class="book-title" title="${escapeAttr(book.title)}">${escapeHtml(book.title)}</h3>
       <p class="book-author" title="${escapeAttr(book.author || '')}">${escapeHtml(book.author) || '未知作者'}</p>
       ${book.category ? `<p class="book-tags">${escapeHtml(book.category.split(/[;\n；]/)[0])}</p>` : ''}
+      ${book.rate && parseInt(book.rate, 10) >= 1 && parseInt(book.rate, 10) <= 5 ? `<p class="book-stars">${stars(book.rate)}</p>` : ''}
       <div class="book-meta">
         ${progress > 0 ? `
           <div class="book-progress">
