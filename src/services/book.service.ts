@@ -546,9 +546,11 @@ export class BookService {
       const book = await this.db.getBookById(bookId);
       if (!book) return;
 
+      // 章节号：优先用前端传入的当前章节索引
       const chapter = (currentChapter !== undefined && currentChapter >= 0) ? currentChapter : 0;
       const percentage = totalLength > 0 ? Math.round((currentPosition / totalLength) * 1000) / 10 : 0;
-      const content = webdavService.buildMoonPlusPoContent('jingdu-web', chapter, `0#${currentPosition}`, percentage);
+      // Moon+ 格式: {deviceId}*{chapter}@{0#位置}:{百分比}%。位置用章节内偏移（网页按章节保存，起点为 0）
+      const content = webdavService.buildMoonPlusPoContent('jingdu-web', chapter, `0#0`, percentage);
 
       let poPath: string | null = null;
 
