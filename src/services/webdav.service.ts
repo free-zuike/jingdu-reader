@@ -541,39 +541,55 @@ export class WebDAVService {
     }
   }
 
-  // 解析并解压 ZIP 文件（用于 books.sorts）
+  // 解析并解压 ZIP 文件（用于 books.sorts）—— 使用中央目录获取真实大小
   private async decompressZip(zipBytes: ArrayBuffer): Promise<Record<string, string>> {
     const u8 = new Uint8Array(zipBytes);
     const entries: Record<string, string> = {};
-    let offset = 0;
-    const localSig = [0x50, 0x4b, 0x03, 0x04];
-    while (offset + 4 <= u8.length) {
-      // 查找本地文件头
-      if (u8[offset] === localSig[0] && u8[offset + 1] === localSig[1] &&
-          u8[offset + 2] === localSig[2] && u8[offset + 3] === localSig[3]) {
-        const method = u8[offset + 8] | (u8[offset + 9] << 8);
-        const compSize = u8[offset + 18] | (u8[offset + 19] << 8) | (u8[offset + 20] << 16) | (u8[offset + 21] << 24);
-        const nameLen = u8[offset + 26] | (u8[offset + 27] << 8);
-        const extraLen = u8[offset + 28] | (u8[offset + 29] << 8);
-        const nameBytes = u8.slice(offset + 30, offset + 30 + nameLen);
-        const name = new TextDecoder().decode(nameBytes);
-        const dataStart = offset + 30 + nameLen + extraLen;
-        const compData = u8.slice(dataStart, dataStart + compSize);
-        try {
-          if (method === 0) {
-            entries[name] = new TextDecoder().decode(compData);
-          } else if (method === 8) {
-            const ds = new DecompressionStream('deflate-raw');
-            const stream = new Blob([compData]).stream().pipeThrough(ds);
-            entries[name] = await new Response(stream).text();
-          }
-        } catch {
-          entries[name] = '(解压失败)';
-        }
-        offset = dataStart + compSize;
-      } else {
-        offset++;
+
+    // 1. 从文件末尾查找 EOCD 记录（PK\x05\x06）
+    let eocdOffset = -1;
+    for (let i = u8.length - 22; i >= 0 && eocdOffset === -1; i--) {
+      if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) {
+        eocdOffset = i;
       }
+    }
+    if (eocdOffset === -1) return { error: '未找到 EOCD' };
+
+    const centralDirOffset = u8[eocdOffset + 16] | (u8[eocdOffset + 17] << 8) | (u8[eocdOffset + 18] << 16) | (u8[eocdOffset + 19] << 24);
+
+    // 2. 解析中央目录条目（PK\x01\x02）
+    let offset = centralDirOffset;
+    while (offset + 46 <= u8.length) {
+      if (!(u8[offset] === 0x50 && u8[offset + 1] === 0x4b && u8[offset + 2] === 0x01 && u8[offset + 3] === 0x02)) break;
+      const method = u8[offset + 10] | (u8[offset + 11] << 8);
+      const compSize = u8[offset + 20] | (u8[offset + 21] << 8) | (u8[offset + 22] << 16) | (u8[offset + 23] << 24);
+      const nameLen = u8[offset + 28] | (u8[offset + 29] << 8);
+      const extraLen = u8[offset + 30] | (u8[offset + 31] << 8);
+      const commentLen = u8[offset + 32] | (u8[offset + 33] << 8);
+      const localOffset = u8[offset + 42] | (u8[offset + 43] << 8) | (u8[offset + 44] << 16) | (u8[offset + 45] << 24);
+      const name = new TextDecoder().decode(u8.slice(offset + 46, offset + 46 + nameLen));
+
+      // 3. 从本地文件头读取数据起始位置
+      const localNameLen = u8[localOffset + 26] | (u8[localOffset + 27] << 8);
+      const localExtraLen = u8[localOffset + 28] | (u8[localOffset + 29] << 8);
+      const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+      const compData = u8.slice(dataStart, dataStart + compSize);
+
+      try {
+        if (method === 0) {
+          entries[name] = new TextDecoder().decode(compData);
+        } else if (method === 8) {
+          const ds = new DecompressionStream('deflate-raw');
+          const stream = new Blob([compData]).stream().pipeThrough(ds);
+          entries[name] = await new Response(stream).text();
+        } else {
+          entries[name] = `(不支持的压缩方式: ${method})`;
+        }
+      } catch (e: any) {
+        entries[name] = `(解压失败: ${e?.message || ''})`;
+      }
+
+      offset += 46 + nameLen + extraLen + commentLen;
     }
     return entries;
   }
