@@ -395,6 +395,44 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
   }
 }
 
+// 诊断：输出 EPUB 结构（spine 文件数、每个文件的 h 标题与文本开头）
+export async function inspectEpub(fileData: ArrayBuffer) {
+  try {
+    const entries = parseZipEntries(fileData);
+    if (!entries.length) return { error: '无法解析 ZIP' };
+    const container = entries.find(e => e.name === 'META-INF/container.xml');
+    const containerXml = container ? new TextDecoder().decode(await readZipEntry(fileData, container)) : '';
+    const opfPath = findTagAttr(containerXml, 'rootfile', 'full-path');
+    const opfEntry = opfPath ? entries.find(e => e.name === opfPath) : undefined;
+    const opfXml = opfEntry ? new TextDecoder().decode(await readZipEntry(fileData, opfEntry)) : '';
+    const manifest = getManifestFromOpf(opfXml);
+    const spine = getSpineFromOpf(opfXml);
+    const opfDir = opfPath && opfPath.lastIndexOf('/') > 0 ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+
+    const files = [];
+    for (const idref of spine.slice(0, 25)) {
+      const href = manifest.get(idref);
+      if (!href) continue;
+      const contentPath = href.startsWith('/') ? href.substring(1) : opfDir + href;
+      const contentEntry = entries.find(e => e.name === contentPath || e.name === decodeURIComponent(contentPath));
+      if (!contentEntry) continue;
+      const html = new TextDecoder().decode(await readZipEntry(fileData, contentEntry));
+      const hTitles: string[] = [];
+      const hRe = /<(h[1-6])(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = hRe.exec(html)) !== null) {
+        const t = m[2].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+        if (t && t.length < 120) hTitles.push(t);
+      }
+      const text = stripHtml(html);
+      files.push({ name: contentPath, hCount: hTitles.length, hTitles, textPreview: text.substring(0, 150) });
+    }
+    return { spineCount: spine.length, files };
+  } catch (e: any) {
+    return { error: e?.message || String(e) };
+  }
+}
+
 export async function extractEpubMetadata(fileData: ArrayBuffer): Promise<EpubMetadata> {
   try {
     const entries = parseZipEntries(fileData);

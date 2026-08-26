@@ -323,6 +323,30 @@ book.put('/:id/progress', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：查看 EPUB 结构（spine 文件数、h 标题），用于定位章节切分问题
+book.get('/:id/epub-structure', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+
+  let raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  if (!raw) {
+    const webdav = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+    const r = await webdav.getFile(userId, bookData.webdav_path);
+    if (r.success) raw = (r.data as { content: ArrayBuffer }).content;
+  }
+  if (!raw) return c.json({ success: false, error: '无法获取文件' });
+
+  const { inspectEpub } = await import('../utils/epub');
+  const info = await inspectEpub(raw);
+  return c.json({ success: true, data: info });
+});
+
 // 重新解析书籍内容（清除 KV 缓存，下次打开时重新下载解析）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
