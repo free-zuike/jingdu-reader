@@ -101,18 +101,21 @@ function renderToc() {
   `).join('');
 }
 
-// 打开目录并定位到当前章节
+// 打开目录并定位到当前章节（只定位一次，之后可自由滑动浏览，不会被反复拉回）
+let tocCentered = false;
 function openToc() {
   renderToc(); // 重新渲染以更新当前章节高亮
-  const sidebar = document.getElementById('tocSidebar');
-  sidebar.classList.add('show');
+  document.getElementById('tocSidebar').classList.add('show');
   document.getElementById('overlay').classList.add('show');
-  // 滑入动画结束后 + 多个时机都尽量把当前章节带到可见区域
-  sidebar.addEventListener('transitionend', centerTocItem, { once: true });
-  requestAnimationFrame(() => requestAnimationFrame(centerTocItem));
-  setTimeout(centerTocItem, 200);
-  setTimeout(centerTocItem, 500);
-  setTimeout(centerTocItem, 1000);
+  tocCentered = false;
+  // 等滑入动画基本完成后只定位一次当前章节
+  setTimeout(centerTocItemOnce, 350);
+}
+
+function centerTocItemOnce() {
+  if (tocCentered) return;
+  tocCentered = true;
+  centerTocItem();
 }
 
 function centerTocItem() {
@@ -120,18 +123,13 @@ function centerTocItem() {
   if (!list) return;
   const items = list.querySelectorAll('.toc-item');
   const el = items[currentChapterIndex];
-  console.log('[toc]', 'idx:', currentChapterIndex, 'items:', items.length, 'hasEl:', !!el,
-    'scrollH:', list.scrollHeight, 'clientH:', list.clientHeight, 'scrollTop:', list.scrollTop);
   if (!el) return;
   // 方式1：scrollIntoView 滚动最近的可滚动容器（.toc-list）
   try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch {}
   // 方式2：手动设置 .toc-list 的 scrollTop（offsetParent 一致时 offsetTop 差值即列表内偏移）
   if (el.offsetParent) {
     const target = el.offsetTop - list.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2;
-    if (isFinite(target)) {
-      list.scrollTop = Math.max(0, target);
-      console.log('[toc] set scrollTop:', list.scrollTop);
-    }
+    if (isFinite(target)) list.scrollTop = Math.max(0, target);
   }
 }
 
