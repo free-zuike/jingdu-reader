@@ -147,17 +147,21 @@ async function loadChapter(index) {
     renderTextContent();
     return;
   }
-  const loadEl = document.getElementById('loadingText');
-  loadEl.style.display = 'block';
-  loadEl.innerHTML = '<p>📖 正在加载章节...</p>';
-  const r = await getChapter(currentBookId, index);
-  loadEl.style.display = 'none';
-  if (r.success && r.data.text !== undefined) {
-    currentChapterText = r.data.text;
-    chapterCache[index] = r.data.text;
-    renderTextContent();
-  } else {
-    loadEl.innerHTML = '<p>章节加载失败</p>';
+  // 用 #bookText 容器显示加载提示（#loadingText 在首次渲染后被移除，不能再依赖）
+  const container = document.getElementById('bookText');
+  container.innerHTML = '<p class="loading-inline">📖 正在加载章节...</p>';
+  try {
+    const r = await getChapter(currentBookId, index);
+    if (r.success && r.data.text !== undefined) {
+      currentChapterText = r.data.text;
+      chapterCache[index] = r.data.text;
+      renderTextContent();
+    } else {
+      container.innerHTML = '<p>章节加载失败</p>';
+    }
+  } catch (e) {
+    container.innerHTML = '<p>章节加载失败</p>';
+    console.error('加载章节失败:', e);
   }
 }
 
