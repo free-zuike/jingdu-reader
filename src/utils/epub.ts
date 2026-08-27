@@ -288,11 +288,10 @@ function getSpineFromOpf(opfXml: string): string[] {
   return items;
 }
 
-// 轻量 HTML 净化：去掉脚本/样式/事件属性/危险标签，保留正文排版与内联样式
+// 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版与内联样式（含 <style> 背景图）
 function sanitizeHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<link[^>]*>/gi, '')
     .replace(/<meta[^>]*>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')

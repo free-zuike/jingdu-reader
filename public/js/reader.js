@@ -182,6 +182,7 @@ function centerTocItem() {
 // TXT 章节跳转（按需加载：一次只加载一章的完整文本，整章显示可滚动）
 let currentChapterIndex = 0;
 let currentChapterText = '';
+let currentChapterHtml = '';   // 单章 EPUB 的净化 HTML（原排版渲染），空则回退纯文本
 let chapterCache = {};          // index -> 章节文本缓存
 let chapters = [];
 let totalLength = 0;
@@ -243,6 +244,7 @@ async function loadChapter(index) {
     const r = await getChapter(currentBookId, index);
     if (r.success && r.data.text !== undefined) {
       currentChapterText = r.data.text;
+      currentChapterHtml = r.data.html || '';
       chapterCache[index] = r.data.text;
       renderTextContent();
     } else {
@@ -289,11 +291,32 @@ function keepChromeVisible() {
 
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
-  // 整章完整显示（可滚动），不按 2500 字分页
-  textContainer.innerHTML = formatText(currentChapterText);
+  if (currentChapterHtml) {
+    textContainer.innerHTML = htmlWithUrls(currentChapterHtml);
+  } else {
+    textContainer.innerHTML = formatText(currentChapterText);
+  }
   updateNavButtons();
   updateProgressBar();
   updateBookmarkBtn();
+}
+
+// 把 EPUB HTML 里的相对路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版
+function htmlWithUrls(html) {
+  let out = html;
+  if (currentBookId) {
+    out = out.replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src) => {
+      if (/^(data:|https?:)/i.test(src)) return m;
+      const enc = src.split('/').map(encodeURIComponent).join('/');
+      return m.replace(src, `/api/books/${currentBookId}/${enc}`);
+    });
+    out = out.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
+      if (/^(data:|https?:|\/)/i.test(u)) return m;
+      const enc = u.split('/').map(encodeURIComponent).join('/');
+      return `url('/api/books/${currentBookId}/${enc}')`;
+    });
+  }
+  return out;
 }
 
 function updateNavButtons() {

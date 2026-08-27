@@ -494,7 +494,7 @@ export class BookService {
       const start = chapters[index].startIndex;
       const end = chapters[index + 1] ? chapters[index + 1].startIndex : content.text.length;
       const text = content.text.substring(start, end);
-      return { success: true, data: { index, startIndex: start, endIndex: end, text } };
+      return { success: true, data: { index, startIndex: start, endIndex: end, text, html: chapters[index].html || '' } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取章节失败' };
     }
