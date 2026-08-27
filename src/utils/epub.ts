@@ -9,7 +9,7 @@ export interface EpubMetadata {
 
 export interface EpubContent {
   text: string;
-  chapters: Array<{ title: string; startIndex: number }>;
+  chapters: Array<{ title: string; startIndex: number; volume?: string }>;
 }
 
 interface ZipEntry {
@@ -288,6 +288,39 @@ function getSpineFromOpf(opfXml: string): string[] {
   return items;
 }
 
+// 解析 EPUB TOC（toc.ncx 或 nav 文档）→ Map<章节src, 所属卷名>
+async function readNavVolumes(fileData: ArrayBuffer, entries: ZipEntry[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const ncx = entries.find(e => /\.ncx$/i.test(e.name));
+    const navHtml = entries.find(e => /nav\.x?html?$/i.test(e.name));
+    const entry = ncx || navHtml;
+    if (!entry) return map;
+    const xml = new TextDecoder().decode(await readZipEntry(fileData, entry));
+    const titles: string[] = [];
+    const srcs: string[] = [];
+    let m: RegExpExecArray | null;
+    const textRe = /<text[^>]*>([\s\S]*?)<\/text>/g;
+    while ((m = textRe.exec(xml)) !== null) titles.push(m[1].trim());
+    const contRe = /<content[^>]*src\s*=\s*["']([^"']+)["']\s*\/?>/g;
+    while ((m = contRe.exec(xml)) !== null) srcs.push(m[1]);
+    if (!srcs.length) {
+      // nav.html 回退：<a href="...">文本</a>
+      const aRe = /<a[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/g;
+      while ((m = aRe.exec(xml)) !== null) { srcs.push(m[1]); titles.push(m[2].replace(/<[^>]+>/g, '').trim()); }
+    }
+    const n = Math.min(titles.length, srcs.length);
+    let curVol = '';
+    for (let i = 0; i < n; i++) {
+      const t = titles[i];
+      const isVol = t.length > 0 && t.length <= 12 && (/卷/.test(t) || /^part\s*\d+/i.test(t) || /^vol/i.test(t));
+      if (isVol) curVol = t;
+      if (srcs[i]) map.set(srcs[i].replace(/^\.\//, ''), curVol);
+    }
+  } catch { /* TOC 缺失则无卷 */ }
+  return map;
+}
+
 export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubContent> {
   try {
     const entries = parseZipEntries(fileData);
@@ -311,8 +344,11 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
     const manifest = getManifestFromOpf(opfXml);
     const spine = getSpineFromOpf(opfXml);
 
+    // ---- 解析 EPUB TOC(nav) 卷层级：src → 卷名 ----
+    const volumeBySrc = await readNavVolumes(fileData, entries);
+
     const fullTexts: string[] = [];
-    const chapters: Array<{ title: string; startIndex: number }> = [];
+    const chapters: Array<{ title: string; startIndex: number; volume?: string }> = [];
     let currentOffset = 0;
 
     for (const idref of spine) {
@@ -342,6 +378,13 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
         if (text.length > 5) {
           const fileStart = currentOffset;
 
+          // 由 TOC 判断该文件所属卷
+          const rel = contentPath.startsWith(opfDir) ? contentPath.substring(opfDir.length) : contentPath;
+          let vol: string | undefined;
+          for (const [s, v] of volumeBySrc) {
+            if (rel === s || rel.endsWith('/' + s) || s.endsWith('/' + rel)) { vol = v; break; }
+          }
+
           // 提取 XHTML 中所有 h1-h6 标题（选集类 EPUB 每篇一个标题标签）
           const hTitles: string[] = [];
           const hRe = /<(h[1-6])(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi;
@@ -360,19 +403,19 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
               const idx = text.indexOf(hTitles[ti], searchFrom);
               if (idx === -1) continue;
               if (text.substring(segStart, idx).trim().length > 0) {
-                chapters.push({ title: bufTitle, startIndex: fileStart + segStart });
+                chapters.push({ title: bufTitle, startIndex: fileStart + segStart, volume: vol });
               }
               bufTitle = hTitles[ti];
               segStart = idx;
               searchFrom = idx + hTitles[ti].length;
             }
             if (text.substring(segStart).trim().length > 0) {
-              chapters.push({ title: bufTitle, startIndex: fileStart + segStart });
+              chapters.push({ title: bufTitle, startIndex: fileStart + segStart, volume: vol });
             }
           } else {
             // 无标题或单标题：整段一章
             const title = hTitles[0] || `章节 ${chapters.length + 1}`;
-            chapters.push({ title, startIndex: fileStart });
+            chapters.push({ title, startIndex: fileStart, volume: vol });
           }
           fullTexts.push(text);
           currentOffset = fileStart + text.length + 2;
