@@ -290,31 +290,31 @@ function getSpineFromOpf(opfXml: string): string[] {
 
 // 把章节 HTML 里 img src / url() 背景图路径解析为 EPUB ZIP 根路径（带前导 /），
 // 处理 ../ 与 ./ 及 / 绝对路径；http(s)/data: 外链保持不变
+// 覆盖：<img src>、SVG <image xlink:href>、<link href>、CSS url()
 function resolveHtmlPaths(html: string, chapterDir: string): string {
+  function resolveAttr(m: string, val: string): string {
+    if (/^(data:|https?:)/i.test(val)) return m;
+    const resolved = resolveImgPath(chapterDir, val);
+    if (resolved) return m.replace(val, '/' + resolved);
+    return m;
+  }
   return html
-    .replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src: string) => {
-      if (/^(data:|https?:)/i.test(src)) return m;
-      const resolved = resolveImgPath(chapterDir, src);
-      if (resolved) return m.replace(src, '/' + resolved);
-      return m;
-    })
-    .replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u: string) => {
-      if (/^(data:|https?:)/i.test(u)) return m;
-      const resolved = resolveImgPath(chapterDir, u);
-      if (resolved) return m.replace(u, '/' + resolved);
-      return m;
-    });
+    .replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src) => resolveAttr(m, src))
+    .replace(/<image[^>]*xlink:href=["']([^"']+)["']/gi, (m, href) => resolveAttr(m, href))
+    .replace(/<link[^>]*href=["']([^"']+)["']/gi, (m, href) => resolveAttr(m, href))
+    .replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => resolveAttr(m, u));
 }
 
 // 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版样式（head 中的 <style> 也被保留，
 // 保证原排版的段落样式与背景图不丢失）
 function sanitizeHtml(html: string): string {
   // 先抽出 <style>，head 移除后回填，保住排版样式与背景图
+  // 保留下 <link rel="stylesheet">（外部 CSS 引用），只删非样式 <link>（如 favicon、字体等）
   const styles: string[] = [];
   const out = html
     .replace(/<style[\s\S]*?<\/style>/gi, (m) => { styles.push(m); return ''; })
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<link[^>]*>/gi, '')
+    .replace(/<link(?![^>]*rel=["']stylesheet["'])[^>]*>/gi, '')
     .replace(/<meta[^>]*>/gi, '')
     .replace(/<title[\s\S]*?<\/title>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')

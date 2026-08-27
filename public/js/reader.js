@@ -309,39 +309,53 @@ function getBookId() {
   return currentBookId || new URLSearchParams(window.location.search).get('id') || '';
 }
 
-// 把 EPUB HTML 里的资源路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版。
+// 把 EPUB HTML 里的资源路径（<img src> / 背景图 url / SVG <image> / <link>）转为资源路由 URL。
 // 后端已把相对/../路径解析为 ZIP 根路径（前导 / 表示根）；此处去掉前导 / 并加 id 前缀。
 // 用临时 div 操作 DOM（而非正则），避免换行/属性顺序等边缘情况匹配失败。
 function htmlWithUrls(html) {
   const bid = getBookId();
   if (!bid) return html;
+  function rewriteUrl(url) {
+    if (!url || /^(data:|https?:)/i.test(url)) return url;
+    const p = url.replace(/^\//, '');
+    const enc = p.split('/').map(encodeURIComponent).join('/');
+    return `/api/books/${bid}/${enc}`;
+  }
   const div = document.createElement('div');
   div.innerHTML = html;
   // 重写 <img> src
   div.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src');
-    if (src && !/^(data:|https?:)/i.test(src)) {
-      const p = src.replace(/^\//, '');
-      const enc = p.split('/').map(encodeURIComponent).join('/');
-      img.setAttribute('src', `/api/books/${bid}/${enc}`);
+    const r = rewriteUrl(src);
+    if (r !== src) img.setAttribute('src', r);
+  });
+  // 重写 SVG <image> xlink:href（SVG 命名空间）
+  div.querySelectorAll('image').forEach(img => {
+    const href = img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    const r = rewriteUrl(href);
+    if (r !== href) {
+      img.setAttribute('href', r);
+      img.setAttributeNS('http://www.w3.org/1999/xlink', 'href', r);
     }
+  });
+  // 重写 <link> href（外部 CSS 引用）
+  div.querySelectorAll('link').forEach(link => {
+    const href = link.getAttribute('href');
+    const r = rewriteUrl(href);
+    if (r !== href) link.setAttribute('href', r);
   });
   // 重写内联 style 中的 background-image: url()
   div.querySelectorAll('[style]').forEach(el => {
     el.setAttribute('style', el.getAttribute('style').replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
-      if (/^(data:|https?:)/i.test(u)) return m;
-      const p = u.replace(/^\//, '');
-      const enc = p.split('/').map(encodeURIComponent).join('/');
-      return `url('/api/books/${bid}/${enc}')`;
+      const r = rewriteUrl(u);
+      return r !== u ? `url('${r}')` : m;
     }));
   });
   // 重写 <style> 块中的 url()
   div.querySelectorAll('style').forEach(style => {
     style.textContent = style.textContent.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
-      if (/^(data:|https?:)/i.test(u)) return m;
-      const p = u.replace(/^\//, '');
-      const enc = p.split('/').map(encodeURIComponent).join('/');
-      return `url('/api/books/${bid}/${enc}')`;
+      const r = rewriteUrl(u);
+      return r !== u ? `url('${r}')` : m;
     });
   });
   return div.innerHTML;
