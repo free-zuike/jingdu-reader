@@ -522,7 +522,7 @@ export class WebDAVService {
       const password = await decrypt(config.password_encrypted, this.encryptionKey);
       const basePath = config.base_path.replace(/\/$/, '');
       const filePath = `${basePath}/.Moon+/${fileName}`;
-      const fullUrl = `${config.server_url.replace(/\/$/, '')}${filePath}`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
       const resp = await fetch(fullUrl, {
         method: 'GET',
         headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`), 'User-Agent': 'JingDu-Reader/1.0' }
