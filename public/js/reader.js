@@ -446,6 +446,8 @@ function initEventListeners() {
   document.getElementById('bookmarkBtn').addEventListener('click', toggleBookmark);
   const syncPrefsBtn = document.getElementById('syncPrefsBtn');
   if (syncPrefsBtn) syncPrefsBtn.addEventListener('click', loadMoonPrefs);
+  const reparseBtn = document.getElementById('reparseBtn');
+  if (reparseBtn) reparseBtn.addEventListener('click', reparseCurrentBook);
   document.getElementById('closeToc').addEventListener('click', closeToc);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
@@ -551,6 +553,34 @@ async function loadMoonPrefs() {
   } catch (e) {
     console.error('同步偏好失败:', e);
     showReaderToast('同步 App 偏好失败');
+  }
+}
+
+// 重新解析本书（清缓存+后台重新解析；完成后自动重进阅读器）
+async function reparseCurrentBook() {
+  if (!currentBookId) return;
+  if (!confirm('重新解析本书？将清除缓存并重新下载解析，耗时视书籍大小而定。')) return;
+  closeSettings();
+  showReaderToast('正在重新解析，请稍候...');
+  try {
+    const r = await reparseBook(currentBookId);
+    if (!r.success) { showReaderToast('重新解析失败：' + (r.error || '未知错误')); return; }
+    // 解析在队列中异步执行，轮询等待缓存就绪后重载
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      const c = await getBookContent(currentBookId);
+      if (c.success && c.data && !c.data.processing && (c.data.chapters || []).length) {
+        clearInterval(poll);
+        window.location.reload();
+      } else if (tries > 60) {
+        clearInterval(poll);
+        showReaderToast('解析超时，请稍后手动刷新');
+      }
+    }, 3000);
+  } catch (e) {
+    console.error('重新解析失败:', e);
+    showReaderToast('重新解析失败');
   }
 }
 

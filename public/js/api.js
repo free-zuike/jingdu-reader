@@ -238,3 +238,10 @@ async function deleteBook(bookId) {
     method: 'DELETE'
   });
 }
+
+// 重新解析书籍（清缓存 + 后台重新下载解析，EPUB 排版/图片改动后调用）
+async function reparseBook(bookId) {
+  return request(`/api/books/${bookId}/reparse`, {
+    method: 'POST'
+  });
+}
