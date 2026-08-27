@@ -339,8 +339,7 @@ function loadSettings() {
   }).catch(() => {});
 }
 
-// 目录/设置面板
-function openToc() { document.getElementById('tocSidebar').classList.add('show'); document.getElementById('overlay').classList.add('show'); }
+// 目录/设置面板（openToc 定义在文件上方，带 TOC 定位与诊断日志）
 function closeToc() { document.getElementById('tocSidebar').classList.remove('show'); document.getElementById('overlay').classList.remove('show'); }
 function openSettings() { document.getElementById('settingsPanel').classList.add('show'); document.getElementById('overlay').classList.add('show'); }
 function closeSettings() { document.getElementById('settingsPanel').classList.remove('show'); document.getElementById('overlay').classList.remove('show'); }
