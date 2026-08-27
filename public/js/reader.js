@@ -223,6 +223,11 @@ function formatText(text) {
     const imgMatch = p.match(/^!\[IMG\](.+)$/);
     if (imgMatch) {
       const src = imgMatch[1].trim();
+      if (!currentBookId) {
+        console.warn('[img] currentBookId 为空，跳过图片:', src);
+        html += '<p class="chapter-image"><em>（图片加载）</em></p>';
+        continue;
+      }
       // 图片通过 EPUB 资源路由从 raw 提取（路径分段编码）
       const enc = src.split('/').map(encodeURIComponent).join('/');
       html += `<p class="chapter-image"><img src="/api/books/${currentBookId}/${enc}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></p>`;
