@@ -534,8 +534,13 @@ export class WebDAVService {
       let headHex = '';
       for (let i = 0; i < Math.min(16, u8.length); i++) headHex += u8[i].toString(16).padStart(2, '0');
       const isSqlite = headHex.startsWith('53514c69746520666f726d6174');
-      // 如果是 ZIP（books.sorts / 可能 mrpro），解压并解析条目
+      // 如果是 ZIP（books.sorts / 完整备份 .mrpro）
       if (buf.byteLength > 2 && u8[0] === 0x50 && u8[1] === 0x4b) {
+        if (buf.byteLength > 3 * 1024 * 1024) {
+          // 大 ZIP（完整备份 ~34MB）：只列条目名与压缩大小，不解压避免内存/超时
+          const entryList = this.listZipEntries(buf);
+          return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isZip: true, isLarge: true, entryList } };
+        }
         const entries = await this.decompressZip(buf);
         return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isZip: true, entries } };
       }
@@ -642,6 +647,30 @@ export class WebDAVService {
       offset += 46 + nameLen + extraLen + commentLen;
     }
     return entries;
+  }
+
+  // 只列 ZIP 条目名与压缩大小（不解压，用于 34MB 完整备份）
+  private listZipEntries(zipBytes: ArrayBuffer): Array<{ name: string; size: number }> {
+    const u8 = new Uint8Array(zipBytes);
+    let eocdOffset = -1;
+    for (let i = u8.length - 22; i >= 0 && eocdOffset === -1; i--) {
+      if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) eocdOffset = i;
+    }
+    if (eocdOffset === -1) return [];
+    const centralDirOffset = u8[eocdOffset + 16] | (u8[eocdOffset + 17] << 8) | (u8[eocdOffset + 18] << 16) | (u8[eocdOffset + 19] << 24);
+    const list: Array<{ name: string; size: number }> = [];
+    let offset = centralDirOffset;
+    while (offset + 46 <= u8.length) {
+      if (!(u8[offset] === 0x50 && u8[offset + 1] === 0x4b && u8[offset + 2] === 0x01 && u8[offset + 3] === 0x02)) break;
+      const compSize = u8[offset + 20] | (u8[offset + 21] << 8) | (u8[offset + 22] << 16) | (u8[offset + 23] << 24);
+      const nameLen = u8[offset + 28] | (u8[offset + 29] << 8);
+      const extraLen = u8[offset + 30] | (u8[offset + 31] << 8);
+      const commentLen = u8[offset + 32] | (u8[offset + 33] << 8);
+      const name = new TextDecoder().decode(u8.slice(offset + 46, offset + 46 + nameLen));
+      list.push({ name, size: compSize });
+      offset += 46 + nameLen + extraLen + commentLen;
+    }
+    return list;
   }
 
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
