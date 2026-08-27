@@ -365,7 +365,7 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
   return c.json({ success: true, data: info });
 });
 
-// 重新解析书籍内容（清除 KV 缓存，下次打开时重新下载解析）
+// 重新解析书籍内容（清除 KV 缓存，并在后台立即重新下载解析）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -380,7 +380,13 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
   await c.env.CACHE.delete(`raw:${bookId}`);
   await c.env.CACHE.delete(`cover:${bookId}`);
   await db.markBookSynced(bookId);
-  return c.json({ success: true, message: '已清除缓存，下次打开将重新解析' });
+
+  // 后台立即重新下载并解析（不用等用户打开书）
+  const webdav = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const bookService = new BookService(db, c.env.CACHE);
+  c.executionCtx.waitUntil(bookService.reparseBook(userId, bookId, webdav));
+
+  return c.json({ success: true, message: '已清除缓存，正在后台重新解析' });
 });
 
 // 删除书籍（从本地库移除，不删除WebDAV上的原文件）

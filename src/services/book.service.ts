@@ -177,6 +177,28 @@ export class BookService {
     }
   }
 
+  // 后台重新下载并解析一本书（reparse 用，删除缓存后立即重建）
+  async reparseBook(userId: string, bookId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) return;
+      const fileResult = await webdavService.getFile(userId, book.webdav_path);
+      if (!fileResult.success) return;
+      const raw = (fileResult.data as { content: ArrayBuffer }).content;
+      await this.cache.put(`raw:${bookId}`, new Uint8Array(raw), { expirationTtl: 30 * 24 * 60 * 60 });
+      if (book.format === 'txt') {
+        const text = new TextDecoder().decode(raw);
+        const chapters = this.detectTxtChapters(text);
+        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+      } else {
+        await this.buildEpubCache(book, raw, `book:${bookId}`);
+      }
+      console.log(`[reparse] 重新解析完成: ${bookId}`);
+    } catch (e) {
+      console.error('[reparse] 后台重新解析失败:', e);
+    }
+  }
+
   // 从原始文件数据中提取封面并缓存
   private async cacheCoverFromRaw(bookId: string, fileData: ArrayBuffer, book?: { format?: string }): Promise<void> {
     if (book && book.format === 'txt') return;
