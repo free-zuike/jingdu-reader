@@ -259,7 +259,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     } catch {}
   }
 
-  // 缓存不存在，尝试从 Moon+ Cover 目录拉取
+  // 缓存不存在，尝试从 Moon+ Cover 目录拉取（5 秒超时，避免 WebDAV 慢速拖垮封面加载）
   if (!c.env.ENCRYPTION_KEY) {
     return new Response(null, { status: 204, headers: { 'X-Cover-Error': 'no_key' } });
   }
@@ -273,7 +273,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const baseName = fileName.replace(/\.[^.]+$/, '');
     const coverUrl = `${baseUrl}${basePath}/.Moon+/Cover/${baseName}.epub_2.png`;
     const auth = 'Basic ' + btoa(`${wdConfig.username}:${password}`);
-    const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
+    const resp = await fetch(coverUrl, { headers: { 'Authorization': auth }, signal: AbortSignal.timeout(5000) });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
       // 封面缓存到 R2（waitUntil 中执行）
@@ -286,7 +286,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     // 尝试 URL 编码
     const encUrl = encodeURI(coverUrl);
     if (encUrl !== coverUrl) {
-      const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
+      const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth }, signal: AbortSignal.timeout(5000) });
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
         c.executionCtx.waitUntil(c.env.BOOKS.put(`cover/${bookId}`, buf));
