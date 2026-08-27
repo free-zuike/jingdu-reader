@@ -519,10 +519,10 @@ book.get('/:id/:resource{.*}', async (c) => {
     }
     const mime = guessMimeType(resourcePath);
     let data = result;
-    // CSS 文件过滤 file:// 路径（Kindle 本地字体/图片，网页无法加载）
+    // CSS 文件处理 file:// 路径：提取文件名改写为相对路径，资源路由可通过 endswith 匹配找到
     if (mime === 'text/css') {
       const text = new TextDecoder().decode(result);
-      const cleaned = text.replace(/url\(\s*["']?file:\/\/[^"')]+["']?\s*\)/gi, '');
+      const cleaned = text.replace(/url\(\s*["']?file:\/\/[^"')]+[\/\\]([^"')/\\]+)["']?\s*\)/gi, "url('$1')");
       data = new TextEncoder().encode(cleaned);
     }
     return new Response(data, {
