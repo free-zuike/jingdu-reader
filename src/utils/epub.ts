@@ -202,7 +202,13 @@ function stripHtml(html: string): string {
     } else if (result[i] === '>') {
       inTag = false;
       const tag = current.toLowerCase();
-      if (tag === '<br' || tag === '<br/' || tag === '<br />' ||
+      if (tag.startsWith('<img')) {
+        // 保留 EPUB 内嵌图片：提取 src 相对路径，插入占位符（前端渲染为 <img>）
+        const srcMatch = current.match(/src\s*=\s*["']([^"']+)["']/i);
+        if (srcMatch && srcMatch[1]) {
+          parts.push('\n![IMG]' + srcMatch[1] + '\n');
+        }
+      } else if (tag === '<br' || tag === '<br/' || tag === '<br />' ||
           tag.startsWith('</p') || tag.startsWith('</div') ||
           tag.startsWith('</h1') || tag.startsWith('</h2') || tag.startsWith('</h3') ||
           tag.startsWith('</li') || tag.startsWith('</tr') ||

@@ -213,10 +213,24 @@ function updateNavButtons() {
   next.disabled = currentChapterIndex >= chapters.length - 1;
 }
 
-// 格式化文本（按换行分段；EPUB 提取的段落间是单个 \n，TXT 每行一段）
+// 格式化文本（按换行分段；EPUB 段落间单个 \n；图片占位符 ![]IMG{src} 渲染为 <img>）
 function formatText(text) {
   const paragraphs = text.split(/\n+/);
-  return paragraphs.filter(p => p.trim()).map(p => `<p>${escapeHtml(p.trim())}</p>`).join('');
+  let html = '';
+  for (const raw of paragraphs) {
+    const p = raw.trim();
+    if (!p) continue;
+    const imgMatch = p.match(/^!\[IMG\](.+)$/);
+    if (imgMatch) {
+      const src = imgMatch[1].trim();
+      // 图片通过 EPUB 资源路由从 raw 提取（路径分段编码）
+      const enc = src.split('/').map(encodeURIComponent).join('/');
+      html += `<p class="chapter-image"><img src="/api/books/${currentBookId}/${enc}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></p>`;
+    } else {
+      html += `<p>${escapeHtml(p)}</p>`;
+    }
+  }
+  return html;
 }
 
 function escapeHtml(text) {
