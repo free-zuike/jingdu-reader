@@ -377,6 +377,10 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function escapeAttr(str) {
+  return (str || '').replace(/"/g, '&quot;');
+}
+
 // 进度条
 function updateProgressBar() {
   const fill = document.getElementById('progressFill');
