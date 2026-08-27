@@ -177,7 +177,7 @@ function findMetaCoverItemId(text: string): string | null {
   return null;
 }
 
-function stripHtml(html: string): string {
+function stripHtml(html: string, chapterDir = ''): string {
   let result = html;
   const removals: [RegExp, string][] = [
     [/<\/?head[^>]*>[\s\S]*?<\/head>/gi, ''],
@@ -203,10 +203,13 @@ function stripHtml(html: string): string {
       inTag = false;
       const tag = current.toLowerCase();
       if (tag.startsWith('<img')) {
-        // 保留 EPUB 内嵌图片：提取 src 相对路径，插入占位符（前端渲染为 <img>）
+        // 保留 EPUB 内嵌图片：提取 src 相对路径，结合章节所在目录解析为 EPUB 内真实路径
         const srcMatch = current.match(/src\s*=\s*["']([^"']+)["']/i);
         if (srcMatch && srcMatch[1]) {
-          parts.push('\n![IMG]' + srcMatch[1] + '\n');
+          const resolved = resolveImgPath(chapterDir, srcMatch[1]);
+          if (resolved) {
+            parts.push('\n![IMG]' + resolved + '\n');
+          }
         }
       } else if (tag === '<br' || tag === '<br/' || tag === '<br />' ||
           tag.startsWith('</p') || tag.startsWith('</div') ||
@@ -236,6 +239,20 @@ function stripHtml(html: string): string {
     .trim();
 
   return result;
+}
+
+// 将图片 src 结合章节所在目录解析为 EPUB 内的真实路径（处理 ../ 和 ./）
+function resolveImgPath(chapterDir: string, src: string): string {
+  // 外链图片不处理
+  if (/^https?:/i.test(src) || src.startsWith('data:')) return '';
+  let full = src.startsWith('/') ? src.replace(/^\//, '') : chapterDir + src;
+  const segs = full.split('/');
+  const out: string[] = [];
+  for (const s of segs) {
+    if (s === '' || s === '.') continue;
+    if (s === '..') { out.pop(); } else { out.push(s); }
+  }
+  return out.join('/');
 }
 
 function getManifestFromOpf(opfXml: string): Map<string, string> {
@@ -318,7 +335,9 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
       try {
         const contentBytes = await readZipEntry(fileData, contentEntry);
         const html = new TextDecoder().decode(contentBytes);
-        const text = stripHtml(html);
+        // 传章节文件所在目录，用于把图片相对路径(../)解析为 EPUB 内真实路径
+        const stripDir = contentPath.lastIndexOf('/') > 0 ? contentPath.substring(0, contentPath.lastIndexOf('/') + 1) : '';
+        const text = stripHtml(html, stripDir);
 
         if (text.length > 5) {
           const fileStart = currentOffset;
@@ -450,7 +469,8 @@ export async function inspectEpub(fileData: ArrayBuffer) {
         const t = m[2].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
         if (t && t.length < 120) hTitles.push(t);
       }
-      const text = stripHtml(html);
+      const stripDir = contentPath.lastIndexOf('/') > 0 ? contentPath.substring(0, contentPath.lastIndexOf('/') + 1) : '';
+      const text = stripHtml(html, stripDir);
       files.push({ name: contentPath, hCount: hTitles.length, hTitles, textPreview: text.substring(0, 150) });
     }
     return { spineCount: spine.length, files };
