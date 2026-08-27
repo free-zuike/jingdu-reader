@@ -54,7 +54,16 @@ const PAGE_ROUTES: Record<string, string> = {
 app.get('/reader*', async (c) => {
   const url = new URL(c.req.url);
   url.pathname = '/reader.html';
-  return c.env.ASSETS.fetch(new Request(url.toString()));
+  const resp = await c.env.ASSETS.fetch(new Request(url.toString()));
+  // 强制不缓存 HTML，确保每次加载最新前端代码
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: {
+      ...Object.fromEntries(resp.headers.entries()),
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    }
+  });
 });
 
 // 匹配其他页面路由
@@ -63,7 +72,16 @@ app.get('/*', async (c) => {
 
   // 如果是静态资源（含 . 后缀），由 ASSETS 直接处理
   if (path.includes('.')) {
-    return c.env.ASSETS.fetch(c.req.raw);
+    const resp = await c.env.ASSETS.fetch(c.req.raw);
+    // JS/CSS 不缓存，HTML 更不缓存，确保每次加载最新
+    return new Response(resp.body, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: {
+        ...Object.fromEntries(resp.headers.entries()),
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
+    });
   }
 
   // 页面路由映射
@@ -71,7 +89,15 @@ app.get('/*', async (c) => {
   if (page) {
     const url = new URL(c.req.url);
     url.pathname = page;
-    return c.env.ASSETS.fetch(new Request(url.toString()));
+    const resp = await c.env.ASSETS.fetch(new Request(url.toString()));
+    return new Response(resp.body, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: {
+        ...Object.fromEntries(resp.headers.entries()),
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
+    });
   }
 
   // 不匹配任何路由，返回 404
