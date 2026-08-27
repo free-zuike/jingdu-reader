@@ -306,23 +306,39 @@ function renderTextContent() {
 
 // 把 EPUB HTML 里的资源路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版。
 // 后端已把相对/../路径解析为 ZIP 根路径（前导 / 表示根）；此处去掉前导 / 并加 id 前缀。
+// 用临时 div 操作 DOM（而非正则），避免换行/属性顺序等边缘情况匹配失败。
 function htmlWithUrls(html) {
-  let out = html;
-  if (currentBookId) {
-    out = out.replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src) => {
-      if (/^(data:|https?:)/i.test(src)) return m;
+  if (!currentBookId) return html;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  // 重写 <img> src
+  div.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src');
+    if (src && !/^(data:|https?:)/i.test(src)) {
       const p = src.replace(/^\//, '');
       const enc = p.split('/').map(encodeURIComponent).join('/');
-      return m.replace(src, `/api/books/${currentBookId}/${enc}`);
-    });
-    out = out.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
+      img.setAttribute('src', `/api/books/${currentBookId}/${enc}`);
+    }
+  });
+  // 重写内联 style 中的 background-image: url()
+  div.querySelectorAll('[style]').forEach(el => {
+    el.setAttribute('style', el.getAttribute('style').replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
+      if (/^(data:|https?:)/i.test(u)) return m;
+      const p = u.replace(/^\//, '');
+      const enc = p.split('/').map(encodeURIComponent).join('/');
+      return `url('/api/books/${currentBookId}/${enc}')`;
+    }));
+  });
+  // 重写 <style> 块中的 url()
+  div.querySelectorAll('style').forEach(style => {
+    style.textContent = style.textContent.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
       if (/^(data:|https?:)/i.test(u)) return m;
       const p = u.replace(/^\//, '');
       const enc = p.split('/').map(encodeURIComponent).join('/');
       return `url('/api/books/${currentBookId}/${enc}')`;
     });
-  }
-  return out;
+  });
+  return div.innerHTML;
 }
 
 function updateNavButtons() {
