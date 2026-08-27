@@ -518,7 +518,14 @@ book.get('/:id/:resource{.*}', async (c) => {
       });
     }
     const mime = guessMimeType(resourcePath);
-    return new Response(result, {
+    let data = result;
+    // CSS 文件过滤 file:// 路径（Kindle 本地字体/图片，网页无法加载）
+    if (mime === 'text/css') {
+      const text = new TextDecoder().decode(result);
+      const cleaned = text.replace(/url\(\s*["']?file:\/\/[^"')]+["']?\s*\)/gi, '');
+      data = new TextEncoder().encode(cleaned);
+    }
+    return new Response(data, {
       headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
     });
   } catch {
