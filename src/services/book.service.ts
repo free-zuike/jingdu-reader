@@ -255,15 +255,12 @@ export class BookService {
       const books = await this.db.getBooksByUserId(userId);
       const bookList: BookListItem[] = [];
 
-      // 并行读取所有书的封面和进度（避免串行 await 超时）
-      const coverPromises = books.map(b => this.cache.get(`cover:${b.id}`).catch(() => null));
+      // 只读取进度（封面由前端按需通过 /cover 加载，这里不读大缓存值，避免拖慢接口）
       const progressPromises = books.map(b => this.cache.get(`progress:${userId}:${b.id}`).catch(() => null));
-      const covers = await Promise.all(coverPromises);
       const progresses = await Promise.all(progressPromises);
 
       for (let i = 0; i < books.length; i++) {
         const book = books[i];
-        const cachedCover = covers[i];
 
         let progress: number | undefined;
         let lastReadAt: string | undefined;
