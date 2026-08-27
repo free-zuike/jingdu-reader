@@ -601,18 +601,26 @@ export class WebDAVService {
       const B = nums.length >= 2 ? nums[nums.length - 2] : 0;
       const A = nums.length >= 3 ? nums[nums.length - 3] : 0;
       const colorHex = C !== 0 ? '#' + (C >>> 0).toString(16).padStart(8, '0').toUpperCase() : '';
-      // time 后的文字
+      // time 后的文字：首行为划线文字，后续行为批注；尾部数字为类型 flag
       const after = timeIdx !== -1 ? lines.slice(timeIdx + 1) : lines.slice(11);
-      const text = after.filter(l => l.trim() && !/^\d+$/.test(l.trim())).join('\n');
-      // 尾部 3 个数字 = 类型 flag（过滤空行/文字后的数字行，取最后 3 个有效数字）
-      const digitLines = after.filter(l => /^-?\d+$/.test(l.trim())).map(l => parseInt(l, 10));
+      const clean = after.map(l => l.replace(/\r$/, ''));
+      const textLines = clean.filter(l => l.trim() && !/^-?\d+$/.test(l.trim()));
+      const insertText = textLines[0] || '';
+      const note = textLines.slice(1).join('\n');
+      // 尾部 3 个数字 = 类型 flag（取最后 3 个有效数字，不足补 0）
+      const digitLines = clean.filter(l => /^-?\d+$/.test(l.trim())).map(l => parseInt(l, 10));
       const flags = digitLines.slice(-3);
       while (flags.length < 3) flags.unshift(0);
-      const map: Record<string, string> = {
-        '1,0,0': 'underline', '0,1,0': 'strike', '0,0,1': 'wave', '0,0,0': 'highlight'
-      };
-      const type = map[flags.join(',')] || 'highlight';
-      items.push({ id, bookName, pos: A, len: B, color: C, colorHex, time, flags, type, text });
+      // flags 组合为 styles（bit：下划线/删除线/波浪线；全 0 = 高亮）
+      const styles: string[] = [];
+      if (flags[0] === 1) styles.push('underline');
+      if (flags[1] === 1) styles.push('strike');
+      if (flags[2] === 1) styles.push('wave');
+      if (styles.length === 0) styles.push('highlight');
+      items.push({
+        id, bookName, pos: A, len: B, color: C, colorHex, time, flags, styles,
+        text: insertText, note
+      });
     }
     return items;
   }

@@ -301,17 +301,24 @@ function formatText(text) {
   return html;
 }
 
-// 在段落文本上应用划线高亮（网页自研 + Moon+ .an，均按文本匹配，段落内首个命中）
+// 在段落文本上应用划线高亮（网页自研 + Moon+ .an，按文本匹配，段落内首个命中）
 function applyHighlights(p) {
   const all = [];
   for (const m of marks.items) {
     if (m.type === 'highlight' && m.chapterIndex === currentChapterIndex && m.text) {
-      all.push({ text: m.text, id: m.id, moon: false, type: 'highlight', colorHex: '' });
+      all.push({ text: m.text, id: m.id, moon: false, styles: ['highlight'], colorHex: '', note: m.note || '' });
     }
   }
   for (const mn of (moonMarks || [])) {
     if (mn.text) {
-      all.push({ text: mn.text, id: 'm' + (mn.id ?? 'x'), moon: true, type: mn.type || 'highlight', colorHex: mn.colorHex || '' });
+      all.push({
+        text: mn.text,
+        id: 'm' + (mn.id ?? 'x'),
+        moon: true,
+        styles: mn.styles && mn.styles.length ? mn.styles : ['highlight'],
+        colorHex: mn.colorHex || '',
+        note: mn.note || ''
+      });
     }
   }
   if (!all.length) return escapeHtml(p);
@@ -322,10 +329,11 @@ function applyHighlights(p) {
   }
   if (!best) return escapeHtml(p);
   const { h, idx } = best;
-  const cls = h.type === 'underline' ? 'hl u' : h.type === 'strike' ? 'hl s' : h.type === 'wave' ? 'hl w' : 'hl h';
-  const style = h.type === 'highlight'
-    ? (h.colorHex ? ` style="background:${h.colorHex};"` : '')
-    : (h.colorHex ? ` style="color:${h.colorHex};"` : '');
+  const cls = 'hl ' + h.styles.map(s => s === 'underline' ? 'u' : s === 'strike' ? 's' : s === 'wave' ? 'w' : 'h').join(' ');
+  const styleParts = [];
+  if (h.styles.includes('highlight') && h.colorHex) styleParts.push(`background:${h.colorHex}`);
+  if (!h.styles.includes('highlight') && h.colorHex) styleParts.push(`color:${h.colorHex}`);
+  const style = styleParts.length ? ` style="${styleParts.join(';')};"` : '';
   return escapeHtml(p.substring(0, idx)) +
     `<mark class="${cls}" data-id="${h.id}" data-moon="${h.moon ? 1 : 0}"${style}>${escapeHtml(h.text)}</mark>` +
     escapeHtml(p.substring(idx + h.text.length));
@@ -612,34 +620,55 @@ function addHighlight(text, note) {
   }
 }
 
-// 点击划线 → 查看/编辑笔记/删除
+// 点击划线 → 查看/编辑笔记/删除（moon=Moon+ 只读，可看批注）
 function showNoteTooltip(hlEl) {
   const id = hlEl.dataset.id;
-  const m = marks.items.find(x => x.id === id);
-  if (!m) return;
+  const isMoon = hlEl.dataset.moon === '1';
   const tip = document.getElementById('markTooltip');
   const rect = hlEl.getBoundingClientRect();
-  tip.innerHTML = `
-    <div class="mt-text">${escapeHtml(m.text ? m.text.substring(0, 60) : '浏览标记')}</div>
-    <textarea id="mtNoteInput" rows="3" placeholder="写点笔记...">${escapeHtml(m.note || '')}</textarea>
-    <div class="mt-actions">
-      <button class="mt-btn" id="mtSave">保存笔记</button>
-      <button class="mt-btn mt-del" id="mtDelete">删除</button>
-    </div>`;
+  let text = '', note = '';
+  if (isMoon) {
+    const m = (moonMarks || []).find(x => 'm' + (x.id ?? 'x') === id);
+    if (!m) return;
+    text = m.text || '';
+    note = m.note || '';
+  } else {
+    const m = marks.items.find(x => x.id === id);
+    if (!m) return;
+    text = m.text || '';
+    note = m.note || '';
+  }
+  if (!isMoon) {
+    tip.innerHTML = `
+      <div class="mt-text">${escapeHtml(text.substring(0, 60))}</div>
+      <textarea id="mtNoteInput" rows="3" placeholder="写点笔记...">${escapeHtml(note || '')}</textarea>
+      <div class="mt-actions">
+        <button class="mt-btn" id="mtSave">保存笔记</button>
+        <button class="mt-btn mt-del" id="mtDelete">删除</button>
+      </div>`;
+  } else {
+    tip.innerHTML = `
+      <div class="mt-text">${escapeHtml(text.substring(0, 60))}</div>
+      ${note ? `<div class="mt-note" style="margin:8px 0;color:var(--r-ink-soft);font-size:0.8rem;">📝 ${escapeHtml(note)}</div>` : ''}
+      <div class="mt-actions"><button class="mt-btn" id="mtClose">关闭</button></div>`;
+  }
   tip.style.display = 'block';
   tip.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
   tip.style.top = Math.max(rect.top - 20, 64) + 'px';
-  document.getElementById('mtSave').onclick = () => {
-    m.note = document.getElementById('mtNoteInput').value || '';
-    persistMarks();
-    hideMarkTooltip();
-  };
-  document.getElementById('mtDelete').onclick = () => {
-    marks.items = marks.items.filter(x => x.id !== id);
-    renderTextContent();
-    persistMarks();
-    hideMarkTooltip();
-  };
+  if (!isMoon) {
+    document.getElementById('mtSave').onclick = () => {
+      const m = marks.items.find(x => x.id === id);
+      if (m) { m.note = document.getElementById('mtNoteInput').value || ''; persistMarks(); hideMarkTooltip(); }
+    };
+    document.getElementById('mtDelete').onclick = () => {
+      marks.items = marks.items.filter(x => x.id !== id);
+      renderTextContent();
+      persistMarks();
+      hideMarkTooltip();
+    };
+  } else {
+    document.getElementById('mtClose').onclick = hideMarkTooltip;
+  }
 }
 function closeToc() { document.getElementById('tocSidebar').classList.remove('show'); document.getElementById('overlay').classList.remove('show'); }
 function openSettings() { document.getElementById('settingsPanel').classList.add('show'); document.getElementById('overlay').classList.add('show'); }
