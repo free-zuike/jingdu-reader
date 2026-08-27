@@ -26,8 +26,16 @@ async function request(url, options = {}) {
       ...options.headers
     }
   });
-  
-  const data = await response.json();
+
+  // 非 JSON 响应（如 Cloudflare 503 错误页/静态页）时返回统一结构，避免 JSON.parse 崩溃
+  const contentType = response.headers.get('content-type') || '';
+  let data;
+  if (contentType.includes('application/json')) {
+    try { data = await response.json(); }
+    catch { data = { success: false, error: '响应解析失败' }; }
+  } else {
+    data = { success: false, error: `HTTP ${response.status}` };
+  }
   
   // 如果token过期，跳转到登录页
   if (response.status === 401) {
@@ -244,4 +252,9 @@ async function reparseBook(bookId) {
   return request(`/api/books/${bookId}/reparse`, {
     method: 'POST'
   });
+}
+
+// 查询书籍缓存状态（轻量，只读 R2，不触发解析）——用于轮询等待重新解析完成
+async function getBookCacheStatus(bookId) {
+  return request(`/api/books/${bookId}/cache-status`);
 }

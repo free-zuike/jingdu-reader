@@ -565,15 +565,20 @@ async function reparseCurrentBook() {
   try {
     const r = await reparseBook(currentBookId);
     if (!r.success) { showReaderToast('重新解析失败：' + (r.error || '未知错误')); return; }
-    // 解析在队列中异步执行，轮询等待缓存就绪后重载
+    // 解析由队列在后台异步执行，轮询轻量 /cache-status 等待缓存就绪后重载
+    // （不轮询 /content，避免 raw 缺失时触发额外下载解析导致 503）
     let tries = 0;
     const poll = setInterval(async () => {
       tries++;
-      const c = await getBookContent(currentBookId);
-      if (c.success && c.data && !c.data.processing && (c.data.chapters || []).length) {
-        clearInterval(poll);
-        window.location.reload();
-      } else if (tries > 60) {
+      try {
+        const c = await getBookCacheStatus(currentBookId);
+        if (c && c.success && c.data && c.data.bookCached) {
+          clearInterval(poll);
+          window.location.reload();
+          return;
+        }
+      } catch (e) { /* 忽略单次轮询错误，继续等 */ }
+      if (tries > 60) {
         clearInterval(poll);
         showReaderToast('解析超时，请稍后手动刷新');
       }
