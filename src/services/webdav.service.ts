@@ -567,6 +567,53 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ 阅读偏好（从最新 AUTO .mrpro 备份的 .tag 解析：字号/行距/颜色/对齐）
+  async getMoonPlusPreferences(userId: string): Promise<ApiResponse> {
+    try {
+      // 1. 找最新 AUTO 备份
+      const struct = await this.listMoonPlusStructure(userId);
+      const files = (struct.success && Array.isArray(struct.data)) ? struct.data as any[] : [];
+      const backups = files.filter(f => !f.isDirectory && f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
+      backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+      const target = backups[0];
+      if (!target) return { success: false, error: '没有找到备份文件' };
+
+      const relPath = target.path.includes('/.Moon+/') ? target.path.split('/.Moon+/')[1] : target.name;
+      const fileResult = await this.getMoonPlusDataFile(userId, relPath);
+      if (!fileResult.success || !fileResult.data) return { success: false, error: '读取备份失败' };
+      const data = fileResult.data as { entries?: Record<string, string> };
+      if (!data.entries) return { success: false, error: '备份不是可解析格式' };
+
+      // 2. 找含 pFontSize 的 .tag（当前阅读偏好配置）
+      let tagXml = '';
+      for (const [name, content] of Object.entries(data.entries)) {
+        if (name.endsWith('.tag') && content.includes('pFontSize')) {
+          tagXml = content;
+          break;
+        }
+      }
+      if (!tagXml) return { success: false, error: '备份中未找到阅读偏好(.tag)' };
+
+      const g = (pat: RegExp) => { const m = tagXml.match(pat); return m ? m[1] : undefined; };
+      return {
+        success: true,
+        data: {
+          fontSize: g(/<float name="pFontSize" value="([^"]+)"\s*\/?>/i) || undefined,
+          lineSpace: g(/<int name="pLineSpace" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontColor: g(/<int name="pFontColor" value="([^"]+)"\s*\/?>/i) || undefined,
+          bgColor: g(/<int name="pBackgroundColor" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontName: g(/<string name="pFontName">([^<]+)<\/string>/i) || undefined,
+          justify: g(/<boolean name="pTextJustified" value="([^"]+)"\s*\/?>/i) || undefined,
+          bgImage: g(/<string name="pBackgroundImage">([^<]+)<\/string>/i) || undefined,
+          useBgImage: g(/<boolean name="pUseBackgroundImage" value="([^"]+)"\s*\/?>/i) || undefined,
+          fromBackup: relPath
+        }
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '读取偏好失败' };
+    }
+  }
+
   // 读取 Moon+ 书籍元数据（books.sync，zlib 压缩的 JSON 数组）
   // 返回: Map<filename, { category, favorite, series, rate }>
   async getMoonPlusBookMeta(userId: string): Promise<Map<string, { category: string; favorite: boolean; series: string; rate: string }>> {

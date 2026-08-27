@@ -8,6 +8,15 @@ import { decrypt } from '../utils/crypto';
 
 const book = new Hono<{ Bindings: Env }>();
 
+// 读取 Moon+ 阅读偏好（从最新 .mrpro 备份解析，应用 App 字号/行距/主题）
+book.get('/moonplus/preferences', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.getMoonPlusPreferences(userId);
+  return c.json(result);
+});
+
 // 获取书籍列表
 book.get('/', authMiddleware, async (c) => {
   const userId = c.get('userId');

@@ -348,6 +348,8 @@ async function saveProgress() {
 function initEventListeners() {
   document.getElementById('tocBtn').addEventListener('click', openToc);
   document.getElementById('bookmarkBtn').addEventListener('click', toggleBookmark);
+  const syncPrefsBtn = document.getElementById('syncPrefsBtn');
+  if (syncPrefsBtn) syncPrefsBtn.addEventListener('click', loadMoonPrefs);
   document.getElementById('closeToc').addEventListener('click', closeToc);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
@@ -413,6 +415,55 @@ function savePrefs() {
   const lineHeight = localStorage.getItem('readerLineHeight') || 'standard';
   const paging = localStorage.getItem('readerPagingMode') || 'scroll';
   savePreferences(fontSize, theme, lineHeight, paging).catch(() => {});
+}
+
+// 从 Moon+ 备份(.mrpro 的 .tag)同步阅读偏好（字号/行距）应用到本页
+async function loadMoonPrefs() {
+  try {
+    const r = await getMoonPlusPreferences();
+    if (!r.success || !r.data) {
+      showReaderToast('未读到 App 偏好，请先在 Moon+ 运行一次 WebDAV 备份');
+      return;
+    }
+    const d = r.data;
+    // 字号映射：App pFontSize(sp) → 网页 small/medium/large
+    let fs = 'medium';
+    if (d.fontSize) {
+      const n = parseFloat(d.fontSize);
+      if (n < 15) fs = 'small';
+      else if (n <= 21) fs = 'medium';
+      else fs = 'large';
+    }
+    // 行距映射：App pLineSpace(0-10 档) → 网页 tight/standard/loose
+    let sp = 'standard';
+    if (d.lineSpace) {
+      const n = parseInt(d.lineSpace, 10);
+      if (n <= 2) sp = 'tight';
+      else if (n <= 5) sp = 'standard';
+      else sp = 'loose';
+    }
+    document.body.classList.remove('font-small', 'font-medium', 'font-large');
+    document.body.classList.add(`font-${fs}`);
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
+    document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
+    document.body.classList.add(`spacing-${sp}`);
+    document.querySelectorAll('.spacing-btn').forEach(b => b.classList.toggle('active', b.dataset.spacing === sp));
+    localStorage.setItem('readerFontSize', fs);
+    localStorage.setItem('readerLineHeight', sp);
+    savePrefs();
+    showReaderToast(`已同步 App 偏好：字号 ${fs}，行距 ${sp}`);
+  } catch (e) {
+    console.error('同步偏好失败:', e);
+    showReaderToast('同步 App 偏好失败');
+  }
+}
+
+function showReaderToast(msg) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.querySelector('.toast-message').textContent = msg;
+  toast.className = 'toast show';
+  setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
 // 加载设置

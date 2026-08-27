@@ -192,6 +192,11 @@ async function saveMarks(bookId, items) {
   });
 }
 
+// 读取 Moon+ 阅读偏好（从最新备份 .tag 解析：字号/行距/颜色等）
+async function getMoonPlusPreferences() {
+  return request('/api/books/moonplus/preferences');
+}
+
 async function fetchBookCover(bookId) {
   const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {
