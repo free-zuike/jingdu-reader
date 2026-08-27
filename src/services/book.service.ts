@@ -1,6 +1,6 @@
 // 书籍服务
 
-import type { KVNamespace, ExecutionContext } from '@cloudflare/workers-types';
+import type { KVNamespace, ExecutionContext, R2Bucket } from '@cloudflare/workers-types';
 import { Database } from '../utils/db';
 import { WebDAVService } from './webdav.service';
 import { generateUUID } from '../utils/crypto';
@@ -9,11 +9,34 @@ import { extractEpubContent, extractEpubMetadata } from '../utils/epub';
 
 export class BookService {
   private db: Database;
-  private cache: KVNamespace;
+  private cache: KVNamespace; // 仅存小数据（进度/同步状态）
+  private r2: R2Bucket;       // 大文件：raw/解析结果/封面
 
-  constructor(db: Database, cache: KVNamespace) {
+  constructor(db: Database, cache: KVNamespace, r2: R2Bucket) {
     this.db = db;
     this.cache = cache;
+    this.r2 = r2;
+  }
+
+  // ---- R2 存储辅助（大文件不走 KV） ----
+  private rawKey(id: string) { return `raw/${id}`; }
+  private bookKey(id: string) { return `book/${id}`; }
+  private coverKey(id: string) { return `cover/${id}`; }
+  private async r2Put(key: string, data: ArrayBuffer | Uint8Array | string): Promise<void> {
+    await this.r2.put(key, data as never);
+  }
+  private async r2GetArrayBuffer(key: string): Promise<ArrayBuffer | null> {
+    const obj = await this.r2.get(key);
+    if (!obj) return null;
+    return obj.arrayBuffer();
+  }
+  private async r2GetText(key: string): Promise<string | null> {
+    const buf = await this.r2GetArrayBuffer(key);
+    if (!buf) return null;
+    return new TextDecoder().decode(buf);
+  }
+  private async r2Delete(key: string): Promise<void> {
+    await this.r2.delete(key);
   }
 
   // 同步WebDAV书籍（只做列表对比，不下载，按需下载）
@@ -61,8 +84,8 @@ export class BookService {
                 const fileResult = await webdavService.getFile(userId, file.path);
                 if (fileResult.success) {
                   const fileData = (fileResult.data as { content: ArrayBuffer }).content;
-                  // 缓存 raw 文件
-                  await this.cache.put(`raw:${bookId}`, new Uint8Array(fileData), { expirationTtl: 30 * 24 * 60 * 60 });
+                  // 缓存 raw 文件（R2）
+                  await this.r2Put(this.rawKey(bookId), fileData);
                   // 提取封面（EPUB 内嵌）
                   await this.cacheCoverFromRaw(bookId, fileData, { format: 'epub' });
                 }
@@ -75,7 +98,7 @@ export class BookService {
             try {
               const coverData = await webdavService.getMoonPlusCover(userId, title, author, file.path);
               if (coverData) {
-                await this.cache.put(`cover:${bookId}`, new Uint8Array(coverData), { expirationTtl: 30 * 24 * 60 * 60 });
+                await this.r2Put(this.coverKey(bookId), coverData);
               }
             } catch {
               // Cover 目录获取失败不影响同步
@@ -101,13 +124,12 @@ export class BookService {
     try {
       const books = await this.db.getBooksByUserId(userId);
       const tasks = books.map(async (book) => {
-        const cacheKey = `cover:${book.id}`;
-        const cached = await this.cache.get(cacheKey, 'arrayBuffer');
-        if (cached) return;
+        const covered = await this.r2GetArrayBuffer(this.coverKey(book.id));
+        if (covered) return;
         try {
           const coverData = await webdavService.getMoonPlusCover(userId, book.title, book.author || '', book.webdav_path);
           if (coverData) {
-            await this.cache.put(cacheKey, new Uint8Array(coverData), { expirationTtl: 30 * 24 * 60 * 60 });
+            await this.r2Put(this.coverKey(book.id), coverData);
           }
         } catch {
           // 单个封面失败不影响后续
@@ -159,12 +181,12 @@ export class BookService {
 
       const fileData = (fileResult.data as { content: ArrayBuffer }).content;
       const rawBytes = new Uint8Array(fileData);
-      await this.cache.put(`raw:${bookId}`, rawBytes, { expirationTtl: 30 * 24 * 60 * 60 });
+      await this.r2Put(this.rawKey(bookId), rawBytes);
 
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(fileData);
         const chapters = this.detectTxtChapters(text);
-        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+        await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
       } else {
         // EPUB 等格式：提取封面并缓存（无需等用户打开阅读）
         await this.cacheCoverFromRaw(bookId, fileData, book);
@@ -182,21 +204,19 @@ export class BookService {
     userId: string,
     bookId: string,
     webdavService: WebDAVService,
-    book: Book,
-    rawKey: string,
-    cacheKey: string
+    book: Book
   ): Promise<void> {
     try {
       const dl = await this.downloadAndCacheBook(userId, bookId, webdavService);
       if (!dl.success) return;
-      const raw = await this.cache.get(rawKey, 'arrayBuffer');
+      const raw = await this.r2GetArrayBuffer(this.rawKey(bookId));
       if (!raw) return;
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(raw);
         const chapters = this.detectTxtChapters(text);
-        await this.cache.put(cacheKey, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+        await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
       } else {
-        await this.buildEpubCache(book, raw, cacheKey);
+        await this.buildEpubCache(book, raw);
       }
     } catch (e) {
       console.error('[load] 后台加载书籍失败:', e);
@@ -211,13 +231,13 @@ export class BookService {
       const fileResult = await webdavService.getFile(userId, book.webdav_path);
       if (!fileResult.success) return;
       const raw = (fileResult.data as { content: ArrayBuffer }).content;
-      await this.cache.put(`raw:${bookId}`, new Uint8Array(raw), { expirationTtl: 30 * 24 * 60 * 60 });
+      await this.r2Put(this.rawKey(bookId), raw);
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(raw);
         const chapters = this.detectTxtChapters(text);
-        await this.cache.put(`book:${bookId}`, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+        await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
       } else {
-        await this.buildEpubCache(book, raw, `book:${bookId}`);
+        await this.buildEpubCache(book, raw);
       }
       console.log(`[reparse] 重新解析完成: ${bookId}`);
     } catch (e) {
@@ -236,7 +256,7 @@ export class BookService {
         const binaryStr = atob(base64Data);
         const bytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-        await this.cache.put(`cover:${bookId}`, bytes, { expirationTtl: 30 * 24 * 60 * 60 });
+        await this.r2Put(this.coverKey(bookId), bytes);
       }
       if (meta.title || meta.author) {
         const updates: { title?: string; author?: string } = {};
@@ -370,10 +390,10 @@ export class BookService {
         return { success: false, error: '书籍不存在' };
       }
 
-      // 删除KV缓存
-      await this.cache.delete(`book:${bookId}`);
-      await this.cache.delete(`raw:${bookId}`);
-      await this.cache.delete(`cover:${bookId}`);
+      // 删除 R2 大文件缓存 + KV 进度
+      await this.r2Delete(this.bookKey(bookId));
+      await this.r2Delete(this.rawKey(bookId));
+      await this.r2Delete(this.coverKey(bookId));
       await this.cache.delete(`progress:${userId}:${bookId}`);
 
       // 删除数据库记录
@@ -398,21 +418,19 @@ export class BookService {
         return { success: false, error: '书籍不存在' };
       }
 
-      const cacheKey = `book:${bookId}`;
-      const cached = await this.cache.get(cacheKey);
+      const cached = await this.r2GetText(this.bookKey(bookId));
       if (cached) {
         const content = JSON.parse(cached);
         // 只返回章节列表与总长，不返回整本书全文（按需加载章节）
         return { success: true, data: { chapters: content.chapters, totalLength: content.text.length, title: book.title, author: book.author } };
       }
 
-      const rawKey = `raw:${bookId}`;
-      let rawData = await this.cache.get(rawKey, 'arrayBuffer');
+      let rawData = await this.r2GetArrayBuffer(this.rawKey(bookId));
 
       if (!rawData) {
         // raw 缺失：后台异步下载+解析（避免同步下载大文件超时 503），前端轮询
         if (ctx && webdavService) {
-          ctx.waitUntil(this.backgroundLoadBook(userId, bookId, webdavService, book, rawKey, cacheKey));
+          ctx.waitUntil(this.backgroundLoadBook(userId, bookId, webdavService, book));
           return { success: true, data: { processing: true, message: '书籍正在加载中，请稍后重试' } };
         }
         return { success: false, error: '书籍内容尚未缓存，请重新同步' };
@@ -422,14 +440,13 @@ export class BookService {
       if (book.format === 'txt') {
         const text = new TextDecoder().decode(rawData as ArrayBuffer);
         const chapters = this.detectTxtChapters(text);
-        const contentJson = JSON.stringify({ text, chapters });
-        await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
+        await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
         return { success: true, data: { chapters, totalLength: text.length, title: book.title, author: book.author } };
       }
 
       // EPUB 解析较慢，后台异步解析（避免 503），前端轮询
       if (ctx) {
-        ctx.waitUntil(this.buildEpubCache(book, rawData as ArrayBuffer, cacheKey));
+        ctx.waitUntil(this.buildEpubCache(book, rawData as ArrayBuffer));
       }
       // 立即返回，稍后重试
       return { success: true, data: { processing: true, message: '书籍正在解析中，请稍后重试' } };
@@ -443,8 +460,7 @@ export class BookService {
     try {
       const book = await this.db.getBookById(bookId);
       if (!book || book.user_id !== userId) return { success: false, error: '书籍不存在' };
-      const cacheKey = `book:${bookId}`;
-      const cached = await this.cache.get(cacheKey);
+      const cached = await this.r2GetText(this.bookKey(bookId));
       if (!cached) return { success: false, error: '书籍内容尚未缓存，请重新同步' };
       const content = JSON.parse(cached);
       const chapters = content.chapters || [];
@@ -460,8 +476,8 @@ export class BookService {
     }
   }
 
-  // 后台构建 EPUB 内容缓存
-  private async buildEpubCache(book: Book, fileData: ArrayBuffer, cacheKey: string): Promise<void> {
+  // 后台构建 EPUB 内容缓存（写 R2）
+  private async buildEpubCache(book: Book, fileData: ArrayBuffer): Promise<void> {
     try {
       const { extractEpubContent } = await import('../utils/epub');
 
@@ -471,13 +487,13 @@ export class BookService {
       // 解析内容
       const content = await extractEpubContent(fileData);
       const contentJson = JSON.stringify(content);
-      // KV 限制 25MB，超过则截断
-      const finalContent = contentJson.length < 25 * 1024 * 1024 ? content : {
-        text: content.text.substring(0, 5 * 1024 * 1024),
+      // R2 无 25MB 限制，超大文本仍截断到 20MB 防止单对象过大
+      const finalContent = contentJson.length < 20 * 1024 * 1024 ? content : {
+        text: content.text.substring(0, 10 * 1024 * 1024),
         chapters: content.chapters,
         truncated: true
       };
-      await this.cache.put(cacheKey, JSON.stringify(finalContent), { expirationTtl: 30 * 24 * 60 * 60 });
+      await this.r2Put(this.bookKey(book.id), JSON.stringify(finalContent));
       await this.db.markBookSynced(book.id);
       console.log(`[Cache] EPUB 缓存完成: ${book.id}`);
     } catch (error) {

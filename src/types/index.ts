@@ -1,9 +1,13 @@
 // 类型定义
 
+import type { R2Bucket, Queue } from '@cloudflare/workers-types';
+
 export interface Env {
   CACHE: KVNamespace;
   DB: D1Database;
   ASSETS: Fetcher;
+  BOOKS: R2Bucket;
+  PARSE_QUEUE: Queue;
   JWT_SECRET: string;
   ENCRYPTION_KEY: string;
   SMTP_HOST: string;

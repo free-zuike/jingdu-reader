@@ -20,6 +20,22 @@ binding = "CACHE"
 binding = "DB"
 database_name = "jingdu-db"
 
+# R2存储 - 书籍原始文件 / 解析结果 / 封面（大文件不存 KV，避免 25MB 限制与读取超时）
+# wrangler deploy 时自动创建（无需手动指定 bucket_name id）
+[[r2_buckets]]
+binding = "BOOKS"
+bucket_name = "jingdu-books"
+
+# 解析队列 - 后台串行解析书籍，避免多个并发下载占满资源导致 503
+[[queues.producers]]
+binding = "PARSE_QUEUE"
+queue = "jingdu-parse"
+
+[[queues.consumers]]
+queue = "jingdu-parse"
+max_batch_size = 1
+max_batch_timeout = 0
+
 # 注意：
 # - JWT_SECRET / ENCRYPTION_KEY 首次部署时自动生成并保存为 secret（不进仓库）
 # - SMTP 配置优先通过 Web 设置页面保存到 D1 数据库，以下为回退值

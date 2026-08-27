@@ -2,6 +2,10 @@
 
 import { Hono } from 'hono';
 import type { Env } from './types';
+import type { ExportedHandler } from '@cloudflare/workers-types';
+import { Database } from './utils/db';
+import { WebDAVService } from './services/webdav.service';
+import { BookService } from './services/book.service';
 
 // 导入API路由
 import authApi from './api/auth';
@@ -89,4 +93,23 @@ app.onError((err, c) => {
   }, 500);
 });
 
-export default app;
+// 解析队列消费者（串行处理书籍下载+解析，避免并发占资源导致 503）
+const worker: ExportedHandler<Env> = {
+  fetch: app.fetch.bind(app),
+  async queue(batch, env) {
+    for (const msg of batch.messages) {
+      const body = msg.body as { userId?: string; bookId?: string } | undefined;
+      if (!body?.userId || !body?.bookId) continue;
+      try {
+        const db = new Database(env.DB);
+        const webdav = new WebDAVService(db, env.ENCRYPTION_KEY);
+        const bookService = new BookService(db, env.CACHE, env.BOOKS);
+        await bookService.reparseBook(body.userId, body.bookId, webdav);
+      } catch (e) {
+        console.error('[queue] 解析任务失败:', e);
+      }
+    }
+  }
+};
+
+export default worker;

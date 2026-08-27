@@ -16,7 +16,7 @@ book.get('/', authMiddleware, async (c) => {
   const category = c.req.query('category') || '';
   
   const db = new Database(c.env.DB);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.getBooks(userId, sort, filter, category);
 
@@ -48,7 +48,7 @@ book.post('/sync', authMiddleware, async (c) => {
 
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   // 确保 books 表有 Moon+ 元数据列（迁移）
   await db.ensureMoonMetaColumns();
@@ -113,7 +113,7 @@ book.get('/:id', authMiddleware, async (c) => {
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.getBook(userId, bookId);
 
@@ -131,7 +131,7 @@ book.get('/:id/content', authMiddleware, async (c) => {
 
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.getBookContent(userId, bookId, webdavService, c.executionCtx as any);
 
@@ -149,7 +149,7 @@ book.get('/:id/chapter/:index', authMiddleware, async (c) => {
   const index = parseInt(c.req.param('index'), 10);
 
   const db = new Database(c.env.DB);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.getChapterText(userId, bookId, isNaN(index) ? -1 : index);
 
@@ -181,8 +181,9 @@ book.get('/:id/cover', authMiddleware, async (c) => {
   const cachedResp = await cache.match(cacheReq);
   if (cachedResp) return cachedResp;
 
-  // 2. 检查 KV 缓存（原始二进制格式）
-  const raw = await c.env.CACHE.get(cacheKey, 'arrayBuffer');
+  // 2. 检查 R2 封面缓存（新格式，原始二进制）
+  const coverObj = await c.env.BOOKS.get(`cover/${bookId}`);
+  const raw = coverObj ? await coverObj.arrayBuffer() : null;
   if (raw && raw.byteLength > 0) {
     const magic = new Uint8Array(raw, 0, 2);
     if ((magic[0] === 0x89 && magic[1] === 0x50) || (magic[0] === 0xFF && magic[1] === 0xD8)) {
@@ -191,7 +192,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       });
     }
   }
-  // 3. 兼容旧版 JSON base64 格式
+  // 3. 兼容旧版 KV JSON base64 格式（迁移期间保留）
   const cachedStr = await c.env.CACHE.get(cacheKey);
   if (cachedStr && typeof cachedStr === 'string' && cachedStr.startsWith('{')) {
     try {
@@ -224,10 +225,8 @@ book.get('/:id/cover', authMiddleware, async (c) => {
     const resp = await fetch(coverUrl, { headers: { 'Authorization': auth } });
     if (resp.ok) {
       const buf = await resp.arrayBuffer();
-      // KV 缓存（必须在 waitUntil 中执行，否则响应返回后 Worker 被终止）
-      c.executionCtx.waitUntil(
-        c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 })
-      );
+      // 封面缓存到 R2（waitUntil 中执行）
+      c.executionCtx.waitUntil(c.env.BOOKS.put(`cover/${bookId}`, buf));
       // Cache API 边缘缓存
       const cacheHeaders = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
       c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers: cacheHeaders })));
@@ -239,9 +238,7 @@ book.get('/:id/cover', authMiddleware, async (c) => {
       const resp2 = await fetch(encUrl, { headers: { 'Authorization': auth } });
       if (resp2.ok) {
         const buf = await resp2.arrayBuffer();
-        c.executionCtx.waitUntil(
-          c.env.CACHE.put(cacheKey, new Uint8Array(buf), { expirationTtl: 30 * 24 * 60 * 60 })
-        );
+        c.executionCtx.waitUntil(c.env.BOOKS.put(`cover/${bookId}`, buf));
         const cacheHeaders = new Headers({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
         c.executionCtx.waitUntil(cache.put(cacheReq, new Response(buf, { headers: cacheHeaders })));
         return new Response(buf, { headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' } });
@@ -263,8 +260,9 @@ book.get('/:id/raw', async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  // 优先从 KV 缓存读取
-  const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  // 优先从 R2 读取
+  const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
+  const raw = rawObj ? await rawObj.arrayBuffer() : null;
   if (raw) {
     const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
     return new Response(raw, {
@@ -283,8 +281,8 @@ book.get('/:id/raw', async (c) => {
         const fileResult = await webdav.getFile(user.userId, bookData.webdav_path);
         if (fileResult.success) {
           const content = (fileResult.data as { content: ArrayBuffer }).content;
-          // 同步缓存（必须等待，否则 epub.js 请求内部资源时缓存未就绪）
-          await c.env.CACHE.put(`raw:${bookId}`, new Uint8Array(content), { expirationTtl: 30 * 24 * 60 * 60 });
+          // 同步缓存到 R2（必须等待，否则 epub.js 请求内部资源时缓存未就绪）
+          await c.env.BOOKS.put(`raw/${bookId}`, content);
           const mime = bookData.format === 'epub' ? 'application/epub+zip' : 'text/plain';
           return new Response(content, {
             headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
@@ -306,7 +304,7 @@ book.get('/:id/progress', authMiddleware, async (c) => {
 
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.getProgress(userId, bookId, webdavService);
 
@@ -325,7 +323,7 @@ book.put('/:id/progress', authMiddleware, async (c) => {
 
   const db = new Database(c.env.DB);
   const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.updateProgress(userId, bookId, position, totalLength, currentCfi, percentage);
 
@@ -352,7 +350,8 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  let raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  let rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
+  let raw = rawObj ? await rawObj.arrayBuffer() : null;
   if (!raw) {
     const webdav = new WebDAVService(db, c.env.ENCRYPTION_KEY);
     const r = await webdav.getFile(userId, bookData.webdav_path);
@@ -365,7 +364,7 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
   return c.json({ success: true, data: info });
 });
 
-// 重新解析书籍内容（清除 KV 缓存，并在后台立即重新下载解析）
+// 重新解析书籍内容（清除 R2 缓存，并在后台立即重新下载解析）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -376,20 +375,18 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  await c.env.CACHE.delete(`book:${bookId}`);
-  await c.env.CACHE.delete(`raw:${bookId}`);
-  await c.env.CACHE.delete(`cover:${bookId}`);
+  await c.env.BOOKS.delete(`book/${bookId}`);
+  await c.env.BOOKS.delete(`raw/${bookId}`);
+  await c.env.BOOKS.delete(`cover/${bookId}`);
   await db.markBookSynced(bookId);
 
-  // 后台立即重新下载并解析（不用等用户打开书）
-  const webdav = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const bookService = new BookService(db, c.env.CACHE);
-  c.executionCtx.waitUntil(bookService.reparseBook(userId, bookId, webdav));
+  // 解析任务入队（队列串行执行，避免批量时并发下载占资源导致 503）
+  await c.env.PARSE_QUEUE.send({ userId, bookId });
 
-  return c.json({ success: true, message: '已清除缓存，正在后台重新解析' });
+  return c.json({ success: true, message: '已清除缓存，解析任务已入队' });
 });
 
-// 诊断：查看一本书的 KV 缓存状态（是否存在、大小），排查 503/加载失败
+// 诊断：查看一本书的 R2 缓存状态（是否存在、大小），排查 503/加载失败
 book.get('/:id/cache-status', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -400,16 +397,16 @@ book.get('/:id/cache-status', authMiddleware, async (c) => {
   }
   const info: Record<string, unknown> = { bookId, title: bookData.title, format: bookData.format, webdavPath: bookData.webdav_path };
   try {
-    const bookStr = await c.env.CACHE.get(`book:${bookId}`);
-    info.bookCached = !!bookStr;
-    if (bookStr) info.bookSize = bookStr.length;
+    const bookObj = await c.env.BOOKS.get(`book/${bookId}`);
+    info.bookCached = !!bookObj;
+    if (bookObj) info.bookSize = (await bookObj.arrayBuffer()).byteLength;
   } catch (e: any) {
     info.bookError = e?.message || String(e);
   }
   try {
-    const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
-    info.rawCached = !!raw;
-    if (raw) info.rawSize = raw.byteLength;
+    const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
+    info.rawCached = !!rawObj;
+    if (rawObj) info.rawSize = (await rawObj.arrayBuffer()).byteLength;
   } catch (e: any) {
     info.rawError = e?.message || String(e);
   }
@@ -422,7 +419,7 @@ book.delete('/:id', authMiddleware, async (c) => {
   const bookId = c.req.param('id');
 
   const db = new Database(c.env.DB);
-  const bookService = new BookService(db, c.env.CACHE);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
 
   const result = await bookService.deleteBook(userId, bookId);
 
@@ -444,8 +441,9 @@ book.get('/:id/:resource{.*}', async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  // 获取原始 EPUB 文件
-  const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+  // 获取原始 EPUB 文件（R2）
+  const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
+  const raw = rawObj ? await rawObj.arrayBuffer() : null;
   if (!raw) {
     return c.json({ success: false, error: '文件尚未缓存' }, 404);
   }
