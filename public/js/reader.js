@@ -112,9 +112,12 @@ function renderToc() {
     return;
   }
   const exp = window._tocVolumes || (window._tocVolumes = new Set());
-  // 当前章所在卷默认展开
+  // 仅在首次打开时默认展开当前章节所在卷；之后尊重用户折叠状态
   const cur = chapters[currentChapterIndex];
-  if (cur && cur.volume) exp.add(cur.volume);
+  if (cur && cur.volume && !window._tocVolInit) {
+    exp.add(cur.volume);
+    window._tocVolInit = true;
+  }
 
   const volMap = new Map();
   const flat = [];
@@ -141,13 +144,18 @@ function renderToc() {
   tocList.innerHTML = html;
 }
 
-// 卷分组点击：折叠/展开
+// 卷分组点击：折叠/展开（滚到该卷，不跳回当前章节）
 function toggleTocVolume(el) {
   const v = el.dataset.vol;
   const exp = window._tocVolumes || (window._tocVolumes = new Set());
   exp.has(v) ? exp.delete(v) : exp.add(v);
   renderToc();
-  openToc(); // 重渲染后重新定位当前章节
+  // 等渲染后滚到该卷，保持用户查看位置
+  setTimeout(() => {
+    const vols = document.querySelectorAll('.toc-vol');
+    const t = Array.from(vols).find(x => x.dataset.vol === v);
+    if (t) t.scrollIntoView({ block: 'start' });
+  }, 20);
 }
 
 // 打开目录并定位到当前章节（只定位一次，之后可自由滑动浏览，不会被反复拉回）
