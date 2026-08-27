@@ -305,16 +305,17 @@ function resolveHtmlPaths(html: string, chapterDir: string): string {
     .replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => resolveAttr(m, u));
 }
 
-// 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版样式（head 中的 <style> 也被保留，
-// 保证原排版的段落样式与背景图不丢失）
+// 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版样式（head 中的 <style> 和 <link rel=stylesheet>
+// 也被保留，保证原排版的段落样式、背景图、颜色字体不丢失）
 function sanitizeHtml(html: string): string {
-  // 先抽出 <style>，head 移除后回填，保住排版样式与背景图
-  // 保留下 <link rel="stylesheet">（外部 CSS 引用），只删非样式 <link>（如 favicon、字体等）
+  // 先抽出 <style> 和 <link rel="stylesheet">，head 移除后回填
   const styles: string[] = [];
+  const links: string[] = [];
   const out = html
     .replace(/<style[\s\S]*?<\/style>/gi, (m) => { styles.push(m); return ''; })
+    .replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, (m) => { links.push(m); return ''; })
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<link(?![^>]*rel=["']stylesheet["'])[^>]*>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
     .replace(/<meta[^>]*>/gi, '')
     .replace(/<title[\s\S]*?<\/title>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')
@@ -323,11 +324,8 @@ function sanitizeHtml(html: string): string {
     .replace(/<embed[\s\S]*?<\/embed>/gi, '')
     .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
     .replace(/javascript:/gi, '');
-  if (styles.length) {
-    const styleBody = styles.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n');
-    return `<style>${styleBody}</style>${out}`;
-  }
-  return out;
+  const prefix = [...styles, ...links].join('\n');
+  return prefix ? prefix + out : out;
 }
 
 // 解析 EPUB TOC（toc.ncx 或 nav 文档）→ Map<章节src, 所属卷名>
