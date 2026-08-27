@@ -529,25 +529,34 @@ export class WebDAVService {
       });
       if (!resp.ok) return { success: false, error: `状态码: ${resp.status}` };
       const buf = await resp.arrayBuffer();
-      const head = new Uint8Array(buf, 0, 2);
-      // 如果是 ZIP（books.sorts），解压并解析书架数据
-      if (buf.byteLength > 2 && head[0] === 0x50 && head[1] === 0x4b) {
+      const u8 = new Uint8Array(buf);
+      // 输出文件头 hex（判断格式：PK=zip / 78=zlib / SQLite format）
+      let headHex = '';
+      for (let i = 0; i < Math.min(16, u8.length); i++) headHex += u8[i].toString(16).padStart(2, '0');
+      const isSqlite = headHex.startsWith('53514c69746520666f726d6174');
+      // 如果是 ZIP（books.sorts / 可能 mrpro），解压并解析条目
+      if (buf.byteLength > 2 && u8[0] === 0x50 && u8[1] === 0x4b) {
         const entries = await this.decompressZip(buf);
-        return { success: true, data: { name: fileName, isZip: true, entries } };
+        return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isZip: true, entries } };
       }
       // 如果是 zlib 压缩（books.sync），解压查看内容
-      if (buf.byteLength > 2 && head[0] === 0x78) {
+      if (buf.byteLength > 2 && u8[0] === 0x78) {
         try {
           const ds = new DecompressionStream('deflate');
           const stream = new Blob([buf]).stream().pipeThrough(ds);
           const text = await new Response(stream).text();
-          return { success: true, data: { name: fileName, isZlib: true, content: text } };
+          return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isZlib: true, content: text } };
         } catch (e: any) {
-          return { success: true, data: { name: fileName, isZlib: true, content: `(解压失败: ${e?.message})` } };
+          return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isZlib: true, content: `(解压失败: ${e?.message})` } };
         }
       }
+      if (isSqlite) {
+        // SQLite 数据库（可能是 booklib.db / .mrpro 内部库），返回前 500 字文本片段
+        const text = new TextDecoder().decode(buf.slice(0, 1000));
+        return { success: true, data: { name: fileName, size: buf.byteLength, headHex, isSqlite: true, preview: text.replace(/[^\x20-\x7e\u4e00-\u9fff\n]/g, '·').substring(0, 500) } };
+      }
       const text = new TextDecoder().decode(buf);
-      return { success: true, data: { name: fileName, content: text } };
+      return { success: true, data: { name: fileName, size: buf.byteLength, headHex, content: text.substring(0, 2000) } };
     } catch (error: any) {
       return { success: false, error: error?.message || '读取失败' };
     }
