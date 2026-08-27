@@ -374,7 +374,8 @@ export class BookService {
           author: book.author,
           format: book.format,
           fileSize: book.file_size,
-          lastModified: book.last_modified
+          lastModified: book.last_modified,
+          fileName: (book.webdav_path || '').split('/').pop() || ''
         }
       };
     } catch (error: any) {

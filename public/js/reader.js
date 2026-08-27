@@ -12,13 +12,23 @@ async function initReader(bookId) {
   const bookResult = await getBook(bookId);
   if (!bookResult.success) { window.location.href = '/home'; return; }
   document.getElementById('bookTitle').textContent = bookResult.data.title;
+  currentBookTitle = bookResult.data.title || '';
+  currentBookFileName = bookResult.data.fileName || '';
 
   const format = (bookResult.data.format || '').toLowerCase();
 
-  // 加载书签/笔记/划线
+  // 加载书签/笔记/划线（网页侧）
   const marksResult = await getMarks(bookId);
   if (marksResult.success && marksResult.data && Array.isArray(marksResult.data.items)) {
     marks = { items: marksResult.data.items };
+  }
+
+  // 读取 Moon+ .an 标注（同名文件）
+  if (currentBookFileName) {
+    try {
+      const an = await getMoonAnnotations(currentBookFileName + '.an');
+      if (an.success && an.data && Array.isArray(an.data.items)) moonMarks = an.data.items;
+    } catch (e) { /* 无 .an 或读取失败则忽略 */ }
   }
 
   // 所有格式走纯文本模式
@@ -148,6 +158,9 @@ let totalLength = 0;
 let currentLineHeight = 'standard';
 let pagingMode = 'scroll';      // 'scroll' 滚动 / 'page' 翻页（一屏一屏翻）
 let marks = { items: [] };      // 书签({type:'bookmark'}) / 划线({type:'highlight',start,end,text,note})
+let moonMarks = [];             // Moon+ .an 标注（含 type/colorHex）
+let currentBookFileName = '';   // webdav 文件名（匹配 .an）
+let currentBookTitle = '';
 
 // 上一页/下一页：翻页模式(page)先滚一屏，到底/到顶再切章
 function handlePrev() {
@@ -288,19 +301,33 @@ function formatText(text) {
   return html;
 }
 
-// 在段落文本上应用当前章划线高亮（文本匹配，段落内首个命中）
+// 在段落文本上应用划线高亮（网页自研 + Moon+ .an，均按文本匹配，段落内首个命中）
 function applyHighlights(p) {
-  const hls = marks.items.filter(m => m.type === 'highlight' && m.chapterIndex === currentChapterIndex && m.text);
-  if (!hls.length) return escapeHtml(p);
+  const all = [];
+  for (const m of marks.items) {
+    if (m.type === 'highlight' && m.chapterIndex === currentChapterIndex && m.text) {
+      all.push({ text: m.text, id: m.id, moon: false, type: 'highlight', colorHex: '' });
+    }
+  }
+  for (const mn of (moonMarks || [])) {
+    if (mn.text) {
+      all.push({ text: mn.text, id: 'm' + (mn.id ?? 'x'), moon: true, type: mn.type || 'highlight', colorHex: mn.colorHex || '' });
+    }
+  }
+  if (!all.length) return escapeHtml(p);
   let best = null;
-  for (const h of hls) {
+  for (const h of all) {
     const idx = p.indexOf(h.text);
     if (idx !== -1 && (!best || idx < best.idx)) best = { h, idx };
   }
   if (!best) return escapeHtml(p);
   const { h, idx } = best;
+  const cls = h.type === 'underline' ? 'hl u' : h.type === 'strike' ? 'hl s' : h.type === 'wave' ? 'hl w' : 'hl h';
+  const style = h.type === 'highlight'
+    ? (h.colorHex ? ` style="background:${h.colorHex};"` : '')
+    : (h.colorHex ? ` style="color:${h.colorHex};"` : '');
   return escapeHtml(p.substring(0, idx)) +
-    `<mark class="hl" data-id="${h.id}" data-chapter="${h.chapterIndex}">${escapeHtml(h.text)}</mark>` +
+    `<mark class="${cls}" data-id="${h.id}" data-moon="${h.moon ? 1 : 0}"${style}>${escapeHtml(h.text)}</mark>` +
     escapeHtml(p.substring(idx + h.text.length));
 }
 
@@ -560,7 +587,7 @@ function hideMarkTooltip() {
   if (tip) tip.style.display = 'none';
 }
 
-// 添加划线/笔记（按当前章文本匹配位置）
+// 添加划线/笔记（按当前章文本匹配位置）；同步写回 Moon+ .an
 function addHighlight(text, note) {
   hideMarkTooltip();
   window.getSelection()?.removeAllRanges();
@@ -573,6 +600,16 @@ function addHighlight(text, note) {
   });
   renderTextContent();
   persistMarks();
+  // 同步到 Moon+ .an（默认下划线·红）
+  if (currentBookFileName) {
+    addMoonAnnotation(currentBookFileName + '.an', {
+      bookName: currentBookTitle,
+      text: text.substring(0, 100),
+      colorArgb: -65536,
+      type: 'underline',
+      pos: idx
+    }).catch(() => {});
+  }
 }
 
 // 点击划线 → 查看/编辑笔记/删除

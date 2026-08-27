@@ -214,6 +214,11 @@
   border-bottom: 1px dashed rgba(178, 58, 47, 0.55);
 }
 .book-text mark.hl:hover { background: rgba(178, 58, 47, 0.28); }
+/* 划线类型（Moon+ .an 同步）：下划线 / 删除线 / 波浪线 / 高亮 */
+.book-text mark.hl.u { border-bottom: 2px solid currentColor; background: transparent; }
+.book-text mark.hl.s { text-decoration: line-through; background: transparent; border-bottom: none; }
+.book-text mark.hl.w { text-decoration: underline; text-decoration-style: wavy; text-decoration-thickness: 2px; background: transparent; border-bottom: none; }
+.book-text mark.hl.h { border-bottom: none; }
 
 .mark-tooltip {
   position: fixed;

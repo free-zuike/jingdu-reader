@@ -197,6 +197,19 @@ async function getMoonPlusPreferences() {
   return request('/api/books/moonplus/preferences');
 }
 
+// 读取 Moon+ .an 标注文件
+async function getMoonAnnotations(anFileName) {
+  return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`);
+}
+
+// 向 Moon+ .an 追加标注（网页→Moon+）
+async function addMoonAnnotation(anFileName, ann) {
+  return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`, {
+    method: 'POST',
+    body: JSON.stringify(ann)
+  });
+}
+
 async function fetchBookCover(bookId) {
   const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {
