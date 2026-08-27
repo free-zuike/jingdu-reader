@@ -389,6 +389,33 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
   return c.json({ success: true, message: '已清除缓存，正在后台重新解析' });
 });
 
+// 诊断：查看一本书的 KV 缓存状态（是否存在、大小），排查 503/加载失败
+book.get('/:id/cache-status', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+  const info: Record<string, unknown> = { bookId, title: bookData.title, format: bookData.format, webdavPath: bookData.webdav_path };
+  try {
+    const bookStr = await c.env.CACHE.get(`book:${bookId}`);
+    info.bookCached = !!bookStr;
+    if (bookStr) info.bookSize = bookStr.length;
+  } catch (e: any) {
+    info.bookError = e?.message || String(e);
+  }
+  try {
+    const raw = await c.env.CACHE.get(`raw:${bookId}`, 'arrayBuffer');
+    info.rawCached = !!raw;
+    if (raw) info.rawSize = raw.byteLength;
+  } catch (e: any) {
+    info.rawError = e?.message || String(e);
+  }
+  return c.json({ success: true, data: info });
+});
+
 // 删除书籍（从本地库移除，不删除WebDAV上的原文件）
 book.delete('/:id', authMiddleware, async (c) => {
   const userId = c.get('userId');
