@@ -137,7 +137,8 @@ function renderToc() {
   for (const it of flat) html += item(it, false);
   for (const [v, arr] of volMap) {
     const volOpen = window._tocVolOpen?.[v] ?? allOpen;
-    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleVol('${escapeAttr(v)}')"><span class="toc-vol-arrow">${volOpen ? '▾' : '▸'}</span><span class="toc-vol-name">${escapeHtml(v)}</span></div>`;
+    const volActive = arr.some(it => it.i === currentChapterIndex);
+    html += `<div class="toc-vol${volActive ? ' active' : ''}" data-vol="${escapeAttr(v)}" onclick="toggleVol('${escapeAttr(v)}')"><span class="toc-vol-arrow">${volOpen ? '▾' : '▸'}</span><span class="toc-vol-name">${escapeHtml(v)}</span>${volActive && !volOpen ? '<span class="toc-check">✓</span>' : ''}</div>`;
     if (volOpen) for (const it of arr) html += item(it, true);
   }
   tocList.innerHTML = html;
