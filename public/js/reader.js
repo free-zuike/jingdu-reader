@@ -100,8 +100,9 @@ async function initTextReader(bookId) {
       if (!e.target.closest('.mark-tooltip')) hideMarkTooltip();
     });
   } else {
-    document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架或重试</p><div style="margin-top:var(--sp-md);display:flex;gap:var(--sp-sm);justify-content:center;"><button class="mt-btn" onclick="location.reload()">重试</button><button class="mt-btn" id="retryReparseBtn">重新解析</button></div>';
+    document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架或重试</p><div style="margin-top:var(--sp-md);display:flex;gap:var(--sp-sm);justify-content:center;"><button class="mt-btn" onclick="location.reload()">重试</button><button class="mt-btn" id="retryReparseBtn">重新解析</button><button class="mt-btn" id="forceReparseBtn">强制同步解析</button></div>';
     document.getElementById('retryReparseBtn')?.addEventListener('click', () => reparseCurrentBook());
+    document.getElementById('forceReparseBtn')?.addEventListener('click', () => forceReparseCurrentBook());
   }
 }
 
@@ -569,6 +570,23 @@ async function reparseCurrentBook() {
   } catch (e) {
     console.error('重新解析失败:', e);
     showReaderToast('重新解析失败');
+  }
+}
+
+// 强制同步重新解析（跳过队列，直接在当前请求内下载+解析，适合队列失效时恢复）
+async function forceReparseCurrentBook() {
+  if (!currentBookId) return;
+  if (!confirm('强制同步解析将重新下载并解析本书，耗时视书籍大小而定，期间页面可能卡顿。继续？')) return;
+  closeSettings();
+  showReaderToast('正在下载解析，请稍候...');
+  try {
+    const r = await request(`/api/books/${currentBookId}/reparse?sync=true`, { method: 'POST' });
+    if (!r.success) { showReaderToast('解析失败：' + (r.error || '')); return; }
+    showReaderToast('✅ 解析完成，正在刷新...');
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    console.error('强制解析失败:', e);
+    showReaderToast('强制解析失败');
   }
 }
 

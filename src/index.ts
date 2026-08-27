@@ -100,14 +100,10 @@ const worker: ExportedHandler<Env> = {
     for (const msg of batch.messages) {
       const body = msg.body as { userId?: string; bookId?: string } | undefined;
       if (!body?.userId || !body?.bookId) continue;
-      try {
-        const db = new Database(env.DB);
-        const webdav = new WebDAVService(db, env.ENCRYPTION_KEY);
-        const bookService = new BookService(db, env.CACHE, env.BOOKS);
-        await bookService.reparseBook(body.userId, body.bookId, webdav);
-      } catch (e) {
-        console.error('[queue] 解析任务失败:', e);
-      }
+      const db = new Database(env.DB);
+      const webdav = new WebDAVService(db, env.ENCRYPTION_KEY);
+      const bookService = new BookService(db, env.CACHE, env.BOOKS);
+      await bookService.reparseBook(body.userId, body.bookId, webdav);
     }
   }
 };

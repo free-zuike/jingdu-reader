@@ -225,24 +225,20 @@ export class BookService {
 
   // 后台重新下载并解析一本书（reparse 用，删除缓存后立即重建）
   async reparseBook(userId: string, bookId: string, webdavService: WebDAVService): Promise<void> {
-    try {
-      const book = await this.db.getBookById(bookId);
-      if (!book || book.user_id !== userId) return;
-      const fileResult = await webdavService.getFile(userId, book.webdav_path);
-      if (!fileResult.success) return;
-      const raw = (fileResult.data as { content: ArrayBuffer }).content;
-      await this.r2Put(this.rawKey(bookId), raw);
-      if (book.format === 'txt') {
-        const text = new TextDecoder().decode(raw);
-        const chapters = this.detectTxtChapters(text);
-        await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
-      } else {
-        await this.buildEpubCache(book, raw);
-      }
-      console.log(`[reparse] 重新解析完成: ${bookId}`);
-    } catch (e) {
-      console.error('[reparse] 后台重新解析失败:', e);
+    const book = await this.db.getBookById(bookId);
+    if (!book || book.user_id !== userId) throw new Error('书籍不存在');
+    const fileResult = await webdavService.getFile(userId, book.webdav_path);
+    if (!fileResult.success) throw new Error('从 WebDAV 下载失败: ' + (fileResult.error || ''));
+    const raw = (fileResult.data as { content: ArrayBuffer }).content;
+    await this.r2Put(this.rawKey(bookId), raw);
+    if (book.format === 'txt') {
+      const text = new TextDecoder().decode(raw);
+      const chapters = this.detectTxtChapters(text);
+      await this.r2Put(this.bookKey(bookId), JSON.stringify({ text, chapters }));
+    } else {
+      await this.buildEpubCache(book, raw);
     }
+    console.log(`[reparse] 重新解析完成: ${bookId}`);
   }
 
   // 从原始文件数据中提取封面并缓存

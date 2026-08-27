@@ -415,10 +415,11 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
   return c.json({ success: true, data: info });
 });
 
-// 重新解析书籍内容（入队后由队列后台串行下载+解析，不清除旧缓存避免解析期间无法阅读）
+// 重新解析书籍内容（入队后由队列后台串行下载+解析；?sync=true 时同步执行，跳过队列）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
+  const sync = c.req.query('sync') === 'true';
 
   const db = new Database(c.env.DB);
   const bookData = await db.getBookById(bookId);
@@ -426,9 +427,20 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  // 不清除旧缓存——队列处理时先下载再覆盖，避免解析期间缓存为空导致 503
-  await c.env.PARSE_QUEUE.send({ userId, bookId });
+  if (sync) {
+    // 同步模式：当前请求内直接下载+解析（可能耗时，适合紧急恢复）
+    const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+    const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+    try {
+      await bookService.reparseBook(userId, bookId, webdavService);
+      return c.json({ success: true, message: '重新解析完成' });
+    } catch (e: any) {
+      return c.json({ success: false, error: '重新解析失败: ' + (e?.message || '') });
+    }
+  }
 
+  // 异步模式：不清除旧缓存——队列处理时先下载再覆盖，避免解析期间缓存为空导致 503
+  await c.env.PARSE_QUEUE.send({ userId, bookId });
   return c.json({ success: true, message: '重新解析任务已入队，完成后刷新即可' });
 });
 
