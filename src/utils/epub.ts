@@ -9,7 +9,7 @@ export interface EpubMetadata {
 
 export interface EpubContent {
   text: string;
-  chapters: Array<{ title: string; startIndex: number; volume?: string }>;
+  chapters: Array<{ title: string; startIndex: number; volume?: string; html?: string }>;
 }
 
 interface ZipEntry {
@@ -288,6 +288,21 @@ function getSpineFromOpf(opfXml: string): string[] {
   return items;
 }
 
+// 轻量 HTML 净化：去掉脚本/样式/事件属性/危险标签，保留正文排版与内联样式
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
+    .replace(/<meta[^>]*>/gi, '')
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[\s\S]*?<\/embed>/gi, '')
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/javascript:/gi, '');
+}
+
 // 解析 EPUB TOC（toc.ncx 或 nav 文档）→ Map<章节src, 所属卷名>
 async function readNavVolumes(fileData: ArrayBuffer, entries: ZipEntry[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
@@ -354,7 +369,7 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
     const volumeBySrc = await readNavVolumes(fileData, entries);
 
     const fullTexts: string[] = [];
-    const chapters: Array<{ title: string; startIndex: number; volume?: string }> = [];
+    const chapters: Array<{ title: string; startIndex: number; volume?: string; html?: string }> = [];
     let currentOffset = 0;
 
     for (const idref of spine) {
@@ -428,7 +443,8 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
               else if (/^neirong/.test(base) || /^content/.test(base) || /^intro/.test(base)) title = '内容介绍';
               else title = `章节 ${chapters.length + 1}`;
             }
-            chapters.push({ title, startIndex: fileStart, volume: vol });
+            // 单章文件：保存净化后 HTML（保留 EPUB 排版/内联样式/图片），供前端原排版渲染
+            chapters.push({ title, startIndex: fileStart, volume: vol, html: sanitizeHtml(html) });
           }
           fullTexts.push(text);
           currentOffset = fileStart + text.length + 2;
