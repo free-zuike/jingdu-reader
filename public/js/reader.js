@@ -100,7 +100,8 @@ async function initTextReader(bookId) {
       if (!e.target.closest('.mark-tooltip')) hideMarkTooltip();
     });
   } else {
-    document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架</p>';
+    document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架或重试</p><div style="margin-top:var(--sp-md);display:flex;gap:var(--sp-sm);justify-content:center;"><button class="mt-btn" onclick="location.reload()">重试</button><button class="mt-btn" id="retryReparseBtn">重新解析</button></div>';
+    document.getElementById('retryReparseBtn')?.addEventListener('click', () => reparseCurrentBook());
   }
 }
 

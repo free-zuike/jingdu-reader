@@ -445,8 +445,9 @@ export class BookService {
       const cached = await this.r2GetText(this.bookKey(bookId));
       if (cached) {
         const content = JSON.parse(cached);
-        // 只返回章节列表与总长，不返回整本书全文（按需加载章节）
-        return { success: true, data: { chapters: content.chapters, totalLength: content.text.length, title: book.title, author: book.author } };
+        // 只返回章节列表与总长，不返回整本书全文（按需加载章节）；去除 html 字段（独立存储）
+        const chapters = (content.chapters || []).map((c: any) => ({ title: c.title, startIndex: c.startIndex, volume: c.volume }));
+        return { success: true, data: { chapters, totalLength: content.text.length, title: book.title, author: book.author } };
       }
 
       let rawData = await this.r2GetArrayBuffer(this.rawKey(bookId));
@@ -494,7 +495,15 @@ export class BookService {
       const start = chapters[index].startIndex;
       const end = chapters[index + 1] ? chapters[index + 1].startIndex : content.text.length;
       const text = content.text.substring(start, end);
-      return { success: true, data: { index, startIndex: start, endIndex: end, text, html: chapters[index].html || '' } };
+      // 尝试从独立 htmls 存储读取（新格式），回退到旧版 chapters[index].html（向后兼容）
+      let html = '';
+      const htmlsJson = await this.r2GetText(`book/${bookId}/htmls`);
+      if (htmlsJson) {
+        try { const htmls = JSON.parse(htmlsJson); html = htmls[index] || ''; } catch {}
+      } else {
+        html = chapters[index].html || '';
+      }
+      return { success: true, data: { index, startIndex: start, endIndex: end, text, html } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取章节失败' };
     }
@@ -510,14 +519,18 @@ export class BookService {
 
       // 解析内容
       const content = await extractEpubContent(fileData);
-      const contentJson = JSON.stringify(content);
-      // R2 无 25MB 限制，超大文本仍截断到 20MB 防止单对象过大
-      const finalContent = contentJson.length < 20 * 1024 * 1024 ? content : {
+      // html 单独存为 book/{id}/htmls（索引数组），避免主缓存的 JSON.parse 过大超 503
+      const htmls = content.chapters.map((c: any) => c.html || '');
+      const chaptersMeta = content.chapters.map((c: any) => ({ title: c.title, startIndex: c.startIndex, volume: c.volume }));
+      const contentJson = JSON.stringify({ text: content.text, chapters: chaptersMeta });
+      // R2 无 25MB 限制，超大文本仍截断到 10MB 防止单对象过大
+      const finalContent = contentJson.length < 20 * 1024 * 1024 ? { text: content.text, chapters: chaptersMeta } : {
         text: content.text.substring(0, 10 * 1024 * 1024),
-        chapters: content.chapters,
+        chapters: chaptersMeta,
         truncated: true
       };
       await this.r2Put(this.bookKey(book.id), JSON.stringify(finalContent));
+      await this.r2Put(`book/${book.id}/htmls`, JSON.stringify(htmls));
       await this.db.markBookSynced(book.id);
       console.log(`[Cache] EPUB 缓存完成: ${book.id}`);
     } catch (error) {
