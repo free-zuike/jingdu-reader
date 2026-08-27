@@ -407,6 +407,7 @@
   background: var(--r-bg);
 }
 .toc-item.active::before { background: var(--seal); }
+.toc-check { margin-left: auto; color: var(--seal); font-weight: 700; }
 
 /* 目录卷分组（可收起） */
 .toc-vol {
@@ -427,6 +428,20 @@
 }
 .toc-vol:hover { color: var(--seal); }
 .toc-sub { padding-left: 30px; }
+
+/* 卷名行：箭头 + 名称 + 展开/收起按钮 */
+.toc-vol-arrow { color: var(--gold); font-size: 0.8rem; flex-shrink: 0; }
+.toc-vol-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toc-vol-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+.toc-vol-btn:hover { border-color: var(--seal); color: var(--seal); background: rgba(178,58,47,0.06); }
 
 /* ---------- 设置面板 ---------- */
 

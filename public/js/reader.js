@@ -131,14 +131,18 @@ function renderToc() {
   }
   let html = '';
   const item = (it, sub) => {
-    const active = it.i === currentChapterIndex ? ' active' : '';
+    const active = it.i === currentChapterIndex;
     const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === it.i);
-    return `<div class="toc-item${active}${sub ? ' toc-sub' : ''}" id="toc-${it.i}" onclick="jumpToChapter(${it.i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(it.title)}</div>`;
+    return `<div class="toc-item${active ? ' active' : ''}${sub ? ' toc-sub' : ''}" id="toc-${it.i}" onclick="jumpToChapter(${it.i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(it.title)}${active ? '<span class="toc-check">✓</span>' : ''}</div>`;
   };
   for (const it of flat) html += item(it, false);
   for (const [v, arr] of volMap) {
     const open = exp.has(v);
-    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleTocVolume(this)">${open ? '▾' : '▸'} ${escapeHtml(v)}</div>`;
+    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleTocVolume(this)">
+      <span class="toc-vol-arrow">${open ? '▾' : '▸'}</span>
+      <span class="toc-vol-name">${escapeHtml(v)}</span>
+      <span class="toc-vol-btn">${open ? '收起' : '展开'}</span>
+    </div>`;
     if (open) for (const it of arr) html += item(it, true);
   }
   tocList.innerHTML = html;
