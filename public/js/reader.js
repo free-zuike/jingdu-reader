@@ -304,11 +304,17 @@ function renderTextContent() {
   updateBookmarkBtn();
 }
 
+// 确保 currentBookId 可用（从 URL 兜底）
+function getBookId() {
+  return currentBookId || new URLSearchParams(window.location.search).get('id') || '';
+}
+
 // 把 EPUB HTML 里的资源路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版。
 // 后端已把相对/../路径解析为 ZIP 根路径（前导 / 表示根）；此处去掉前导 / 并加 id 前缀。
 // 用临时 div 操作 DOM（而非正则），避免换行/属性顺序等边缘情况匹配失败。
 function htmlWithUrls(html) {
-  if (!currentBookId) return html;
+  const bid = getBookId();
+  if (!bid) return html;
   const div = document.createElement('div');
   div.innerHTML = html;
   // 重写 <img> src
@@ -317,7 +323,7 @@ function htmlWithUrls(html) {
     if (src && !/^(data:|https?:)/i.test(src)) {
       const p = src.replace(/^\//, '');
       const enc = p.split('/').map(encodeURIComponent).join('/');
-      img.setAttribute('src', `/api/books/${currentBookId}/${enc}`);
+      img.setAttribute('src', `/api/books/${bid}/${enc}`);
     }
   });
   // 重写内联 style 中的 background-image: url()
@@ -326,7 +332,7 @@ function htmlWithUrls(html) {
       if (/^(data:|https?:)/i.test(u)) return m;
       const p = u.replace(/^\//, '');
       const enc = p.split('/').map(encodeURIComponent).join('/');
-      return `url('/api/books/${currentBookId}/${enc}')`;
+      return `url('/api/books/${bid}/${enc}')`;
     }));
   });
   // 重写 <style> 块中的 url()
@@ -335,7 +341,7 @@ function htmlWithUrls(html) {
       if (/^(data:|https?:)/i.test(u)) return m;
       const p = u.replace(/^\//, '');
       const enc = p.split('/').map(encodeURIComponent).join('/');
-      return `url('/api/books/${currentBookId}/${enc}')`;
+      return `url('/api/books/${bid}/${enc}')`;
     });
   });
   return div.innerHTML;
@@ -358,14 +364,14 @@ function formatText(text) {
     const imgMatch = p.match(/^!\[IMG\](.+)$/);
     if (imgMatch) {
       const src = imgMatch[1].trim();
-      if (!currentBookId) {
-        console.warn('[img] currentBookId 为空，跳过图片:', src);
+      const bid = getBookId();
+      if (!bid) {
+        console.warn('[img] bookId 为空，跳过图片:', src);
         html += '<p class="chapter-image"><em>（图片加载）</em></p>';
         continue;
       }
-      // 图片通过 EPUB 资源路由从 raw 提取（路径分段编码）
       const enc = src.split('/').map(encodeURIComponent).join('/');
-      html += `<p class="chapter-image"><img src="/api/books/${currentBookId}/${enc}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></p>`;
+      html += `<p class="chapter-image"><img src="/api/books/${bid}/${enc}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></p>`;
     } else if (p.match(/^!\[IMG\]/)) {
       // 失效的图片占位符（外链等），跳过
       continue;
