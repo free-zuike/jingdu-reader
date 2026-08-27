@@ -415,7 +415,7 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
   return c.json({ success: true, data: info });
 });
 
-// 重新解析书籍内容（清除 R2 缓存，并在后台立即重新下载解析）
+// 重新解析书籍内容（入队后由队列后台串行下载+解析，不清除旧缓存避免解析期间无法阅读）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -426,15 +426,10 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  await c.env.BOOKS.delete(`book/${bookId}`);
-  await c.env.BOOKS.delete(`raw/${bookId}`);
-  await c.env.BOOKS.delete(`cover/${bookId}`);
-  await db.markBookSynced(bookId);
-
-  // 解析任务入队（队列串行执行，避免批量时并发下载占资源导致 503）
+  // 不清除旧缓存——队列处理时先下载再覆盖，避免解析期间缓存为空导致 503
   await c.env.PARSE_QUEUE.send({ userId, bookId });
 
-  return c.json({ success: true, message: '已清除缓存，解析任务已入队' });
+  return c.json({ success: true, message: '重新解析任务已入队，完成后刷新即可' });
 });
 
 // 诊断：查看一本书的 R2 缓存状态（是否存在、大小），排查 503/加载失败
