@@ -305,16 +305,14 @@ function resolveHtmlPaths(html: string, chapterDir: string): string {
     .replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => resolveAttr(m, u));
 }
 
-// 轻量 HTML 净化：只去掉危险的（脚本/事件/iframe/object/embed/javascript:），
-// 保留 EPUB 完整结构（<head>/<link>/<style>/<meta>/<title> 全保留），
-// 这样以后改任何逻辑都不用重新解析——头部的 CSS 和样式始终在缓存里。
+// 轻量 HTML 净化：保留 EPUB 完整结构（包括脚本/iframe/事件），仅对 iframe 加 sandbox 限制。
+// 因为书籍来自用户自己 WebDAV，安全风险极小，不删任何原始内容。
 function sanitizeHtml(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<object[\s\S]*?<\/object>/gi, '')
-    .replace(/<embed[\s\S]*?<\/embed>/gi, '')
-    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    // iframe 加 sandbox 限制（阻止脚本/表单/导航），但不删除
+    .replace(/<iframe\s/gi, '<iframe sandbox="allow-same-origin" ')
+    .replace(/<iframe>/gi, '<iframe sandbox="allow-same-origin">')
+    // 只删 javascript: 链接（点击即执行代码，无法限制）
     .replace(/javascript:/gi, '');
 }
 
