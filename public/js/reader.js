@@ -302,18 +302,21 @@ function renderTextContent() {
   updateBookmarkBtn();
 }
 
-// 把 EPUB HTML 里的相对路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版
+// 把 EPUB HTML 里的资源路径（<img src> / 背景图 url）转为资源路由 URL，保留原排版。
+// 后端已把相对/../路径解析为 ZIP 根路径（前导 / 表示根）；此处去掉前导 / 并加 id 前缀。
 function htmlWithUrls(html) {
   let out = html;
   if (currentBookId) {
     out = out.replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src) => {
       if (/^(data:|https?:)/i.test(src)) return m;
-      const enc = src.split('/').map(encodeURIComponent).join('/');
+      const p = src.replace(/^\//, '');
+      const enc = p.split('/').map(encodeURIComponent).join('/');
       return m.replace(src, `/api/books/${currentBookId}/${enc}`);
     });
     out = out.replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u) => {
-      if (/^(data:|https?:|\/)/i.test(u)) return m;
-      const enc = u.split('/').map(encodeURIComponent).join('/');
+      if (/^(data:|https?:)/i.test(u)) return m;
+      const p = u.replace(/^\//, '');
+      const enc = p.split('/').map(encodeURIComponent).join('/');
       return `url('/api/books/${currentBookId}/${enc}')`;
     });
   }

@@ -288,18 +288,46 @@ function getSpineFromOpf(opfXml: string): string[] {
   return items;
 }
 
-// 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版与内联样式（含 <style> 背景图）
-function sanitizeHtml(html: string): string {
+// 把章节 HTML 里 img src / url() 背景图路径解析为 EPUB ZIP 根路径（带前导 /），
+// 处理 ../ 与 ./ 及 / 绝对路径；http(s)/data: 外链保持不变
+function resolveHtmlPaths(html: string, chapterDir: string): string {
   return html
+    .replace(/<img[^>]*src=["']([^"']+)["']/gi, (m, src: string) => {
+      if (/^(data:|https?:)/i.test(src)) return m;
+      const resolved = resolveImgPath(chapterDir, src);
+      if (resolved) return m.replace(src, '/' + resolved);
+      return m;
+    })
+    .replace(/url\(\s*["']?([^"')]+)["']?\s*\)/gi, (m, u: string) => {
+      if (/^(data:|https?:)/i.test(u)) return m;
+      const resolved = resolveImgPath(chapterDir, u);
+      if (resolved) return m.replace(u, '/' + resolved);
+      return m;
+    });
+}
+
+// 轻量 HTML 净化：去掉脚本/事件属性/危险标签，保留正文排版样式（head 中的 <style> 也被保留，
+// 保证原排版的段落样式与背景图不丢失）
+function sanitizeHtml(html: string): string {
+  // 先抽出 <style>，head 移除后回填，保住排版样式与背景图
+  const styles: string[] = [];
+  const out = html
+    .replace(/<style[\s\S]*?<\/style>/gi, (m) => { styles.push(m); return ''; })
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<link[^>]*>/gi, '')
     .replace(/<meta[^>]*>/gi, '')
+    .replace(/<title[\s\S]*?<\/title>/gi, '')
     .replace(/<head[\s\S]*?<\/head>/gi, '')
     .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
     .replace(/<object[\s\S]*?<\/object>/gi, '')
     .replace(/<embed[\s\S]*?<\/embed>/gi, '')
     .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
     .replace(/javascript:/gi, '');
+  if (styles.length) {
+    const styleBody = styles.map(s => s.replace(/<\/?style[^>]*>/gi, '')).join('\n');
+    return `<style>${styleBody}</style>${out}`;
+  }
+  return out;
 }
 
 // 解析 EPUB TOC（toc.ncx 或 nav 文档）→ Map<章节src, 所属卷名>
@@ -443,7 +471,7 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
               else title = `章节 ${chapters.length + 1}`;
             }
             // 单章文件：保存净化后 HTML（保留 EPUB 排版/内联样式/图片），供前端原排版渲染
-            chapters.push({ title, startIndex: fileStart, volume: vol, html: sanitizeHtml(html) });
+            chapters.push({ title, startIndex: fileStart, volume: vol, html: sanitizeHtml(resolveHtmlPaths(html, stripDir)) });
           }
           fullTexts.push(text);
           currentOffset = fileStart + text.length + 2;
