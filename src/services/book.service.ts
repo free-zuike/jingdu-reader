@@ -357,7 +357,8 @@ export class BookService {
       const cached = await this.cache.get(cacheKey);
       if (cached) {
         const content = JSON.parse(cached);
-        return { success: true, data: { text: content.text, chapters: content.chapters, title: book.title, author: book.author } };
+        // 只返回章节列表与总长，不返回整本书全文（按需加载章节）
+        return { success: true, data: { chapters: content.chapters, totalLength: content.text.length, title: book.title, author: book.author } };
       }
 
       const rawKey = `raw:${bookId}`;
@@ -379,7 +380,7 @@ export class BookService {
         const chapters = this.detectTxtChapters(text);
         const contentJson = JSON.stringify({ text, chapters });
         await this.cache.put(cacheKey, contentJson, { expirationTtl: 30 * 24 * 60 * 60 });
-        return { success: true, data: { text, chapters, title: book.title, author: book.author } };
+        return { success: true, data: { chapters, totalLength: text.length, title: book.title, author: book.author } };
       }
 
       // EPUB 解析较慢，后台异步解析（避免 503），前端轮询
@@ -390,6 +391,28 @@ export class BookService {
       return { success: true, data: { processing: true, message: '书籍正在解析中，请稍后重试' } };
     } catch (error: any) {
       return { success: false, error: error?.message || '获取书籍内容失败' };
+    }
+  }
+
+  // 按需获取某一章的文本（不整本传输，只返回当前章）
+  async getChapterText(userId: string, bookId: string, index: number): Promise<ApiResponse> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) return { success: false, error: '书籍不存在' };
+      const cacheKey = `book:${bookId}`;
+      const cached = await this.cache.get(cacheKey);
+      if (!cached) return { success: false, error: '书籍内容尚未缓存，请重新同步' };
+      const content = JSON.parse(cached);
+      const chapters = content.chapters || [];
+      if (!Array.isArray(chapters) || index < 0 || index >= chapters.length) {
+        return { success: false, error: '章节不存在' };
+      }
+      const start = chapters[index].startIndex;
+      const end = chapters[index + 1] ? chapters[index + 1].startIndex : content.text.length;
+      const text = content.text.substring(start, end);
+      return { success: true, data: { index, startIndex: start, endIndex: end, text } };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '获取章节失败' };
     }
   }
 

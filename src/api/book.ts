@@ -142,6 +142,24 @@ book.get('/:id/content', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 按需获取某章文本
+book.get('/:id/chapter/:index', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const index = parseInt(c.req.param('index'), 10);
+
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE);
+
+  const result = await bookService.getChapterText(userId, bookId, isNaN(index) ? -1 : index);
+
+  if (!result.success) {
+    return c.json(result, 404);
+  }
+
+  return c.json(result);
+});
+
 // 获取书籍封面（从KV缓存读取，缓存不存在时从 Moon+ Cover 目录拉取）
 book.get('/:id/cover', authMiddleware, async (c) => {
   const userId = c.get('userId');

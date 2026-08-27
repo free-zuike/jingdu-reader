@@ -177,6 +177,10 @@ async function getBookContent(bookId) {
   return request(`/api/books/${bookId}/content`);
 }
 
+async function getChapter(bookId, index) {
+  return request(`/api/books/${bookId}/chapter/${index}`);
+}
+
 async function fetchBookCover(bookId) {
   const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {

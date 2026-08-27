@@ -23,16 +23,12 @@ async function initReader(bookId) {
   startAutoHide();
 }
 
-// TXT/EPUB 纯文本阅读器
+// TXT/EPUB 纯文本阅读器（按需加载章节）
 async function initTextReader(bookId) {
   document.getElementById('loadingText').textContent = '正在加载书籍内容...';
 
   // 加载阅读进度
   const progressResult = await getReadingProgress(bookId);
-  if (progressResult.success) {
-    currentPosition = progressResult.data.currentPosition || 0;
-    totalLength = progressResult.data.totalLength || 0;
-  }
 
   const contentResult = await getBookContent(bookId);
   if (contentResult.success) {
@@ -41,32 +37,26 @@ async function initTextReader(bookId) {
       setTimeout(() => initTextReader(bookId), 3000);
       return;
     }
-    bookContent = contentResult.data.text;
     chapters = contentResult.data.chapters || [];
-    totalLength = bookContent.length;
+    totalLength = contentResult.data.totalLength || 0;
 
-    // 用百分比估算阅读位置（跨平台最可靠，兼容旧数据 chapter=0 的情况）
+    // 定位当前章节：优先 Moon+ 章节号（有效>0），否则按百分比估算位置
+    let targetPos = 0;
     const pct = progressResult.data && progressResult.data.percentage;
     if (pct && pct > 0 && totalLength > 0) {
-      currentPosition = Math.floor(totalLength * pct / 100);
+      targetPos = Math.floor(totalLength * pct / 100);
+    }
+    const mc = progressResult.data && progressResult.data.moonChapter;
+    if (mc !== undefined && mc > 0 && mc < chapters.length) {
+      currentChapterIndex = mc;
+    } else {
+      currentChapterIndex = findChapter(targetPos);
     }
 
-    // Moon+ 章节号仅在有效（>0）时用于精确定位，忽略无效的 chapter=0
-    if (progressResult.success && progressResult.data
-        && progressResult.data.moonChapter !== undefined
-        && progressResult.data.moonChapter > 0
-        && progressResult.data.moonChapter < chapters.length) {
-      currentChapterIndex = progressResult.data.moonChapter;
-      currentPosition = chapters[currentChapterIndex].startIndex;
-    }
-
-    // 渲染文本
-    // 使用章节渲染（只显示当前章节，而非全部内容）
+    // 渲染文本（整章显示，滚动阅读）
     document.getElementById('loadingText').style.display = 'none';
-    renderTextContent();
-
     renderToc();
-    if (currentPosition > 0) scrollToPosition(currentPosition);
+    await loadChapter(currentChapterIndex);
     updateNavButtons();
     updateProgressBar();
 
@@ -133,59 +123,68 @@ function centerTocItem() {
   }
 }
 
-// TXT 章节跳转
+// TXT 章节跳转（按需加载：一次只加载一章的完整文本，整章显示可滚动）
 let currentChapterIndex = 0;
-let currentPage = 0;            // 当前页（章内偏移，按 PAGE_SIZE 分页）
-const PAGE_SIZE = 2500;         // 每页字符数
-let bookContent = '';
+let currentChapterText = '';
+let chapterCache = {};          // index -> 章节文本缓存
 let chapters = [];
-let currentPosition = 0;
 let totalLength = 0;
 
-function jumpToChapter(index) {
+function findChapter(pos) {
+  for (let i = 0; i < chapters.length; i++) {
+    const next = chapters[i + 1];
+    if (!next || pos < next.startIndex) return i;
+  }
+  return Math.max(0, chapters.length - 1);
+}
+
+async function loadChapter(index) {
+  if (index < 0 || index >= chapters.length) return;
   currentChapterIndex = index;
-  currentPage = 0;
-  renderTextContent();
+  document.getElementById('chapterTitle').textContent = chapters[index].title;
+  if (chapterCache[index] !== undefined) {
+    currentChapterText = chapterCache[index];
+    renderTextContent();
+    return;
+  }
+  const loadEl = document.getElementById('loadingText');
+  loadEl.style.display = 'block';
+  loadEl.innerHTML = '<p>📖 正在加载章节...</p>';
+  const r = await getChapter(currentBookId, index);
+  loadEl.style.display = 'none';
+  if (r.success && r.data.text !== undefined) {
+    currentChapterText = r.data.text;
+    chapterCache[index] = r.data.text;
+    renderTextContent();
+  } else {
+    loadEl.innerHTML = '<p>章节加载失败</p>';
+  }
+}
+
+function jumpToChapter(index) {
+  loadChapter(index);
   closeToc();
   window.scrollTo(0, 0);
   keepChromeVisible();
   debounceSaveProgress();
 }
 
-function chapterPageCount(chIdx) {
-  const start = chapters[chIdx].startIndex;
-  const end = chapters[chIdx + 1] ? chapters[chIdx + 1].startIndex : bookContent.length;
-  return Math.max(1, Math.ceil((end - start) / PAGE_SIZE));
-}
-
 function prevChapter() {
-  if (currentPage > 0) {
-    currentPage--;
-  } else if (currentChapterIndex > 0) {
-    currentChapterIndex--;
-    currentPage = chapterPageCount(currentChapterIndex) - 1;
-  } else {
-    return;
+  if (currentChapterIndex > 0) {
+    loadChapter(currentChapterIndex - 1);
+    window.scrollTo(0, 0);
+    keepChromeVisible();
+    debounceSaveProgress();
   }
-  renderTextContent();
-  window.scrollTo(0, 0);
-  keepChromeVisible();
-  debounceSaveProgress();
 }
 
 function nextChapter() {
-  if (currentPage < chapterPageCount(currentChapterIndex) - 1) {
-    currentPage++;
-  } else if (currentChapterIndex < chapters.length - 1) {
-    currentChapterIndex++;
-    currentPage = 0;
-  } else {
-    return;
+  if (currentChapterIndex < chapters.length - 1) {
+    loadChapter(currentChapterIndex + 1);
+    window.scrollTo(0, 0);
+    keepChromeVisible();
+    debounceSaveProgress();
   }
-  renderTextContent();
-  window.scrollTo(0, 0);
-  keepChromeVisible();
-  debounceSaveProgress();
 }
 
 // 保持顶栏/底栏可见并重置自动隐藏计时器（翻页后可直接连续点击）
@@ -197,15 +196,8 @@ function keepChromeVisible() {
 
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
-  const currentChapter = chapters[currentChapterIndex];
-  const nextChapter = chapters[currentChapterIndex + 1];
-  const chStart = currentChapter.startIndex;
-  const chEnd = nextChapter ? nextChapter.startIndex : bookContent.length;
-  const pageStart = chStart + currentPage * PAGE_SIZE;
-  const pageEnd = Math.min(chEnd, pageStart + PAGE_SIZE);
-  const pageText = bookContent.substring(pageStart, pageEnd);
-  document.getElementById('chapterTitle').textContent = currentChapter.title;
-  textContainer.innerHTML = formatText(pageText);
+  // 整章完整显示（可滚动），不按 2500 字分页
+  textContainer.innerHTML = formatText(currentChapterText);
   updateNavButtons();
   updateProgressBar();
 }
@@ -215,19 +207,6 @@ function updateNavButtons() {
   const next = document.getElementById('nextBtn');
   prev.disabled = currentChapterIndex === 0;
   next.disabled = currentChapterIndex >= chapters.length - 1;
-}
-
-function scrollToPosition(pos) {
-  for (let i = 0; i < chapters.length; i++) {
-    const next = chapters[i + 1];
-    if (!next || pos < next.startIndex) {
-      currentChapterIndex = i;
-      const offsetInCh = Math.max(0, pos - chapters[i].startIndex);
-      currentPage = Math.min(chapterPageCount(i) - 1, Math.floor(offsetInCh / PAGE_SIZE));
-      renderTextContent();
-      break;
-    }
-  }
 }
 
 // 格式化文本（按换行分段；EPUB 提取的段落间是单个 \n，TXT 每行一段）
@@ -248,8 +227,7 @@ function updateProgressBar() {
   const info = document.getElementById('pageInfo');
   let progress = 0;
   if (chapters.length > 0 && totalLength > 0) {
-    const pos = chapters[currentChapterIndex].startIndex + currentPage * PAGE_SIZE;
-    progress = (pos / totalLength) * 100;
+    progress = (chapters[currentChapterIndex].startIndex / totalLength) * 100;
   } else {
     // 滚动发生在 window 上（.reader-content 随内容增长）
     const doc = document.documentElement;
@@ -272,7 +250,7 @@ function debounceSaveProgress() {
 async function saveProgress() {
   if (!currentBookId) return;
   try {
-    const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex + currentPage * PAGE_SIZE : 0;
+    const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex : 0;
     await updateReadingProgress(currentBookId, pos, totalLength, undefined, undefined, currentChapterIndex);
   } catch (e) { console.error('保存进度失败:', e); }
 }
