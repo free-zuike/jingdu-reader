@@ -381,7 +381,7 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
         const stripDir = contentPath.lastIndexOf('/') > 0 ? contentPath.substring(0, contentPath.lastIndexOf('/') + 1) : '';
         const text = stripHtml(html, stripDir);
 
-        if (text.length > 5) {
+        if (text.length > 5 || /^(cover|banquan|neirong|content|intro|copyright)/i.test(contentPath.replace(/^.*\//, ''))) {
           const fileStart = currentOffset;
 
           // 由 TOC 判断该文件所属卷
@@ -419,8 +419,15 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
               chapters.push({ title: bufTitle, startIndex: fileStart + segStart, volume: vol });
             }
           } else {
-            // 无标题或单标题：整段一章
-            const title = hTitles[0] || `章节 ${chapters.length + 1}`;
+            // 无标题或单标题：整段一章；封面/说明类短文件按文件名推断标题
+            let title = hTitles[0] || '';
+            if (!title) {
+              const base = (contentPath.split('/').pop() || '').toLowerCase();
+              if (/^cover/.test(base)) title = '封面';
+              else if (/^banquan/.test(base) || /^copyright/.test(base)) title = '制作说明';
+              else if (/^neirong/.test(base) || /^content/.test(base) || /^intro/.test(base)) title = '内容介绍';
+              else title = `章节 ${chapters.length + 1}`;
+            }
             chapters.push({ title, startIndex: fileStart, volume: vol });
           }
           fullTexts.push(text);

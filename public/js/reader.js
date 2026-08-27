@@ -104,20 +104,14 @@ async function initTextReader(bookId) {
   }
 }
 
-// 渲染目录（按卷分组，卷可收起/展开）
+// 渲染目录（按卷分组；卷显隐由全局按钮控制——全部展开/全部收起）
 function renderToc() {
   const tocList = document.getElementById('tocList');
   if (chapters.length === 0) {
     tocList.innerHTML = '<p style="padding:var(--sp-md);color:var(--color-text-secondary);">暂无目录</p>';
     return;
   }
-  const exp = window._tocVolumes || (window._tocVolumes = new Set());
-  // 仅在首次打开时默认展开当前章节所在卷；之后尊重用户折叠状态
-  const cur = chapters[currentChapterIndex];
-  if (cur && cur.volume && !window._tocVolInit) {
-    exp.add(cur.volume);
-    window._tocVolInit = true;
-  }
+  const allOpen = window._tocAllExpanded !== false;
 
   const volMap = new Map();
   const flat = [];
@@ -130,6 +124,9 @@ function renderToc() {
     }
   }
   let html = '';
+  if (volMap.size) {
+    html += `<div class="toc-actions"><button class="toc-expand-btn" onclick="toggleAllVolumes()">${allOpen ? '全部收起' : '全部展开'}</button></div>`;
+  }
   const item = (it, sub) => {
     const active = it.i === currentChapterIndex;
     const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === it.i);
@@ -137,29 +134,18 @@ function renderToc() {
   };
   for (const it of flat) html += item(it, false);
   for (const [v, arr] of volMap) {
-    const open = exp.has(v);
-    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleTocVolume(this)">
-      <span class="toc-vol-arrow">${open ? '▾' : '▸'}</span>
-      <span class="toc-vol-name">${escapeHtml(v)}</span>
-      <span class="toc-vol-btn">${open ? '收起' : '展开'}</span>
-    </div>`;
-    if (open) for (const it of arr) html += item(it, true);
+    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}"><span class="toc-vol-arrow">${allOpen ? '▾' : '▸'}</span><span class="toc-vol-name">${escapeHtml(v)}</span></div>`;
+    if (allOpen) for (const it of arr) html += item(it, true);
   }
   tocList.innerHTML = html;
 }
 
-// 卷分组点击：折叠/展开（滚到该卷，不跳回当前章节）
-function toggleTocVolume(el) {
-  const v = el.dataset.vol;
-  const exp = window._tocVolumes || (window._tocVolumes = new Set());
-  exp.has(v) ? exp.delete(v) : exp.add(v);
+// 全局展开/收起所有卷
+function toggleAllVolumes() {
+  window._tocAllExpanded = window._tocAllExpanded === false;
   renderToc();
-  // 等渲染后滚到该卷，保持用户查看位置
-  setTimeout(() => {
-    const vols = document.querySelectorAll('.toc-vol');
-    const t = Array.from(vols).find(x => x.dataset.vol === v);
-    if (t) t.scrollIntoView({ block: 'start' });
-  }, 20);
+  // 重渲染后定位当前章节
+  setTimeout(centerTocItemOnce, 30);
 }
 
 // 打开目录并定位到当前章节（只定位一次，之后可自由滑动浏览，不会被反复拉回）

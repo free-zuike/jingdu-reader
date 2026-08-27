@@ -410,6 +410,19 @@
 .toc-check { margin-left: auto; color: var(--seal); font-weight: 700; }
 
 /* 目录卷分组（可收起） */
+/* 目录顶部：全部展开/收起按钮 */
+.toc-actions { display: flex; justify-content: flex-end; padding: 8px 14px 4px; }
+.toc-expand-btn {
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.toc-expand-btn:hover { border-color: var(--seal); color: var(--seal); background: rgba(178,58,47,0.06); }
 .toc-vol {
   display: flex;
   align-items: center;
