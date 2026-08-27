@@ -313,7 +313,13 @@ async function readNavVolumes(fileData: ArrayBuffer, entries: ZipEntry[]): Promi
     let curVol = '';
     for (let i = 0; i < n; i++) {
       const t = titles[i];
-      const isVol = t.length > 0 && t.length <= 12 && (/卷/.test(t) || /^part\s*\d+/i.test(t) || /^vol/i.test(t));
+      const isVol = t.length > 0 && t.length <= 40 && (
+        /^第\s*[0-9零一二三四五六七八九十百千万]+\s*卷/.test(t) ||
+        /^卷\s*[0-9一二三四五六七八九十]/.test(t) ||
+        /^[Pp]art\s*\d+/i.test(t) ||
+        /^[Vv]ol/i.test(t) ||
+        t.endsWith('卷')
+      );
       if (isVol) curVol = t;
       if (srcs[i]) map.set(srcs[i].replace(/^\.\//, ''), curVol);
     }
