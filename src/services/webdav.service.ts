@@ -567,7 +567,44 @@ export class WebDAVService {
     }
   }
 
-  // 读取 Moon+ 阅读偏好（从最新 AUTO .mrpro 备份的 .tag 解析：字号/行距/颜色/对齐）
+  // 读取并解析 Moon+ 标注文件（.an，zlib 压缩文本）——每条标注含划线/笔记
+  async getMoonPlusAnnotations(userId: string, anFileName: string): Promise<ApiResponse> {
+    try {
+      const result = await this.getMoonPlusDataFile(userId, `Cache/${anFileName}`);
+      if (!result.success || !result.data) return result;
+      const data = result.data as { isZlib?: boolean; content?: string };
+      if (!data.isZlib || !data.content) return { success: false, error: '不是有效的标注文件' };
+      const items = this.parseMoonPlusAnnotations(data.content);
+      return { success: true, data: { name: anFileName, raw: data.content, items } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '解析标注失败' };
+    }
+  }
+
+  // 解析 .an 标注文本：每条以 "#\n<id>" 开头，含 书名/路径/数值字段/颜色/时间戳/文字
+  private parseMoonPlusAnnotations(text: string): Array<Record<string, unknown>> {
+    const items: Array<Record<string, unknown>> = [];
+    const blocks = text.split(/\n#\s*\n/);
+    for (let i = 1; i < blocks.length; i++) {
+      const lines = blocks[i].split('\n').map(l => l.replace(/\r$/, ''));
+      while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+      if (lines.length < 8) continue;
+      const id = lines[0].trim();
+      const bookName = lines[1] || '';
+      const path1 = lines[2] || '';
+      const f1 = lines[4] || '';
+      const f2 = lines[5] || '';
+      const f3 = lines[6] || '';
+      const color = parseInt(lines[7], 10);
+      const flag = lines[8] || '';
+      const time = parseInt(lines[9], 10) || 0;
+      // 剩余行：划线与笔记文字（跳过尾部 0/1 数字标记与空行）
+      const tail = lines.slice(10);
+      const text = tail.filter(l => l.trim() && !/^\d+$/.test(l.trim())).join('\n');
+      items.push({ id, bookName, path: path1, f1, f2, f3, color, flag, time, text });
+    }
+    return items;
+  }
   async getMoonPlusPreferences(userId: string): Promise<ApiResponse> {
     try {
       // 1. 找最新 AUTO 备份
