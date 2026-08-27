@@ -382,6 +382,29 @@ export class BookService {
     }
   }
 
+  // 获取书籍书签/笔记/划线（存 KV，小数据）
+  async getMarks(userId: string, bookId: string): Promise<ApiResponse> {
+    try {
+      const key = `marks:${userId}:${bookId}`;
+      const data = await this.cache.get(key);
+      if (!data) return { success: true, data: { items: [] } };
+      return { success: true, data: JSON.parse(data) };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '获取标记失败' };
+    }
+  }
+
+  // 保存书籍书签/笔记/划线
+  async saveMarks(userId: string, bookId: string, items: Array<Record<string, unknown>>): Promise<ApiResponse> {
+    try {
+      const key = `marks:${userId}:${bookId}`;
+      await this.cache.put(key, JSON.stringify({ items }), { expirationTtl: 365 * 24 * 60 * 60 });
+      return { success: true, data: { items } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '保存标记失败' };
+    }
+  }
+
   // 删除书籍（从本地库和缓存中移除）
   async deleteBook(userId: string, bookId: string): Promise<ApiResponse> {
     try {

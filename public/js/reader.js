@@ -15,6 +15,12 @@ async function initReader(bookId) {
 
   const format = (bookResult.data.format || '').toLowerCase();
 
+  // 加载书签/笔记/划线
+  const marksResult = await getMarks(bookId);
+  if (marksResult.success && marksResult.data && Array.isArray(marksResult.data.items)) {
+    marks = { items: marksResult.data.items };
+  }
+
   // 所有格式走纯文本模式
   await initTextReader(bookId);
 
@@ -69,10 +75,19 @@ async function initTextReader(bookId) {
       debounceSaveProgress();
     }, 1000), { passive: true });
 
-    // 点击阅读区切换顶栏/底栏
+    // 点击阅读区：划线→查看/添加笔记，链接→正常跳转，其余切换顶栏/底栏
     document.querySelector('.reader-content').addEventListener('click', (e) => {
+      const hl = e.target.closest('.hl');
+      if (hl) { showNoteTooltip(hl); return; }
       if (e.target.tagName === 'A' || e.target.closest('a')) return;
       toggleHeaderFooter();
+    });
+    // 选中文字 → 弹出划线菜单
+    document.querySelector('.reader-content').addEventListener('mouseup', (e) => {
+      setTimeout(() => showMarkTooltip(e), 50);
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (!e.target.closest('.mark-tooltip')) hideMarkTooltip();
     });
   } else {
     document.getElementById('loadingText').innerHTML = '<p>加载失败，请返回书架</p>';
@@ -86,9 +101,10 @@ function renderToc() {
     tocList.innerHTML = '<p style="padding:var(--sp-md);color:var(--color-text-secondary);">暂无目录</p>';
     return;
   }
-  tocList.innerHTML = chapters.map((ch, i) => `
-    <div class="toc-item${i === currentChapterIndex ? ' active' : ''}" id="toc-${i}" onclick="jumpToChapter(${i})">${escapeHtml(ch.title)}</div>
-  `).join('');
+  tocList.innerHTML = chapters.map((ch, i) => {
+    const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === i);
+    return `<div class="toc-item${i === currentChapterIndex ? ' active' : ''}" id="toc-${i}" onclick="jumpToChapter(${i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(ch.title)}</div>`;
+  }).join('');
 }
 
 // 打开目录并定位到当前章节（只定位一次，之后可自由滑动浏览，不会被反复拉回）
@@ -131,6 +147,7 @@ let chapters = [];
 let totalLength = 0;
 let currentLineHeight = 'standard';
 let pagingMode = 'scroll';      // 'scroll' 滚动 / 'page' 翻页（一屏一屏翻）
+let marks = { items: [] };      // 书签({type:'bookmark'}) / 划线({type:'highlight',start,end,text,note})
 
 // 上一页/下一页：翻页模式(page)先滚一屏，到底/到顶再切章
 function handlePrev() {
@@ -233,6 +250,7 @@ function renderTextContent() {
   textContainer.innerHTML = formatText(currentChapterText);
   updateNavButtons();
   updateProgressBar();
+  updateBookmarkBtn();
 }
 
 function updateNavButtons() {
@@ -242,7 +260,7 @@ function updateNavButtons() {
   next.disabled = currentChapterIndex >= chapters.length - 1;
 }
 
-// 格式化文本（按换行分段；EPUB 段落间单个 \n；图片占位符 ![]IMG{src} 渲染为 <img>）
+// 格式化文本（按换行分段；EPUB 段落间单个 \n；图片占位符 ![]IMG{src} 渲染为 <img>；划线高亮）
 function formatText(text) {
   const paragraphs = text.split(/\n+/);
   let html = '';
@@ -260,11 +278,30 @@ function formatText(text) {
       // 图片通过 EPUB 资源路由从 raw 提取（路径分段编码）
       const enc = src.split('/').map(encodeURIComponent).join('/');
       html += `<p class="chapter-image"><img src="/api/books/${currentBookId}/${enc}" alt="" loading="lazy" onerror="this.parentElement.style.display='none'"></p>`;
+    } else if (p.match(/^!\[IMG\]/)) {
+      // 失效的图片占位符（外链等），跳过
+      continue;
     } else {
-      html += `<p>${escapeHtml(p)}</p>`;
+      html += `<p>${applyHighlights(p)}</p>`;
     }
   }
   return html;
+}
+
+// 在段落文本上应用当前章划线高亮（文本匹配，段落内首个命中）
+function applyHighlights(p) {
+  const hls = marks.items.filter(m => m.type === 'highlight' && m.chapterIndex === currentChapterIndex && m.text);
+  if (!hls.length) return escapeHtml(p);
+  let best = null;
+  for (const h of hls) {
+    const idx = p.indexOf(h.text);
+    if (idx !== -1 && (!best || idx < best.idx)) best = { h, idx };
+  }
+  if (!best) return escapeHtml(p);
+  const { h, idx } = best;
+  return escapeHtml(p.substring(0, idx)) +
+    `<mark class="hl" data-id="${h.id}" data-chapter="${h.chapterIndex}">${escapeHtml(h.text)}</mark>` +
+    escapeHtml(p.substring(idx + h.text.length));
 }
 
 function escapeHtml(text) {
@@ -310,6 +347,7 @@ async function saveProgress() {
 // 事件监听
 function initEventListeners() {
   document.getElementById('tocBtn').addEventListener('click', openToc);
+  document.getElementById('bookmarkBtn').addEventListener('click', toggleBookmark);
   document.getElementById('closeToc').addEventListener('click', closeToc);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
@@ -419,7 +457,102 @@ function loadSettings() {
   }).catch(() => {});
 }
 
-// 目录/设置面板（openToc 定义在文件上方，带 TOC 定位与诊断日志）
+// 保存标记（书签/划线/笔记）到服务器
+function persistMarks() {
+  saveMarks(currentBookId, marks.items).catch(() => {});
+}
+
+// 切换当前章书签
+function toggleBookmark() {
+  const idx = currentChapterIndex;
+  const existing = marks.items.find(m => m.type === 'bookmark' && m.chapterIndex === idx);
+  if (existing) {
+    marks.items = marks.items.filter(m => m !== existing);
+  } else {
+    marks.items.push({
+      id: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      type: 'bookmark', chapterIndex: idx, note: '', created: Date.now()
+    });
+  }
+  updateBookmarkBtn();
+  renderToc(); // 更新目录书签标记
+  persistMarks();
+}
+
+function updateBookmarkBtn() {
+  const has = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === currentChapterIndex);
+  const btn = document.getElementById('bookmarkBtn');
+  if (btn) { btn.textContent = has ? '★' : '☆'; btn.classList.toggle('active', has); }
+}
+
+// 选中文字后弹出划线菜单
+function showMarkTooltip(e) {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+  const text = sel.toString().trim();
+  if (text.length < 1 || text.length > 500) return;
+  const tip = document.getElementById('markTooltip');
+  tip.innerHTML = `<span class="mt-text">${escapeHtml(text.substring(0, 60))}</span><button class="mt-btn" id="mtHighlight">划线</button><button class="mt-btn" id="mtNote">笔记</button>`;
+  tip.style.display = 'block';
+  const rect = sel.getRangeAt(0).getBoundingClientRect();
+  tip.style.left = Math.min(rect.left + rect.width / 2 - 80, window.innerWidth - 180) + 'px';
+  tip.style.top = Math.max(rect.top - 46, 64) + 'px';
+  document.getElementById('mtHighlight').onclick = () => addHighlight(text, '');
+  document.getElementById('mtNote').onclick = () => {
+    const note = prompt('添加笔记：');
+    if (note != null) addHighlight(text, note);
+  };
+}
+
+function hideMarkTooltip() {
+  const tip = document.getElementById('markTooltip');
+  if (tip) tip.style.display = 'none';
+}
+
+// 添加划线/笔记（按当前章文本匹配位置）
+function addHighlight(text, note) {
+  hideMarkTooltip();
+  window.getSelection()?.removeAllRanges();
+  const idx = currentChapterText.indexOf(text);
+  if (idx === -1) return;
+  marks.items.push({
+    id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    type: 'highlight', chapterIndex: currentChapterIndex,
+    start: idx, end: idx + text.length, text, note, created: Date.now()
+  });
+  renderTextContent();
+  persistMarks();
+}
+
+// 点击划线 → 查看/编辑笔记/删除
+function showNoteTooltip(hlEl) {
+  const id = hlEl.dataset.id;
+  const m = marks.items.find(x => x.id === id);
+  if (!m) return;
+  const tip = document.getElementById('markTooltip');
+  const rect = hlEl.getBoundingClientRect();
+  tip.innerHTML = `
+    <div class="mt-text">${escapeHtml(m.text ? m.text.substring(0, 60) : '浏览标记')}</div>
+    <textarea id="mtNoteInput" rows="3" placeholder="写点笔记...">${escapeHtml(m.note || '')}</textarea>
+    <div class="mt-actions">
+      <button class="mt-btn" id="mtSave">保存笔记</button>
+      <button class="mt-btn mt-del" id="mtDelete">删除</button>
+    </div>`;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
+  tip.style.top = Math.max(rect.top - 20, 64) + 'px';
+  document.getElementById('mtSave').onclick = () => {
+    m.note = document.getElementById('mtNoteInput').value || '';
+    persistMarks();
+    hideMarkTooltip();
+  };
+  document.getElementById('mtDelete').onclick = () => {
+    marks.items = marks.items.filter(x => x.id !== id);
+    renderTextContent();
+    persistMarks();
+    hideMarkTooltip();
+  };
+}
 function closeToc() { document.getElementById('tocSidebar').classList.remove('show'); document.getElementById('overlay').classList.remove('show'); }
 function openSettings() { document.getElementById('settingsPanel').classList.add('show'); document.getElementById('overlay').classList.add('show'); }
 function closeSettings() { document.getElementById('settingsPanel').classList.remove('show'); document.getElementById('overlay').classList.remove('show'); }

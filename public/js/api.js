@@ -181,6 +181,17 @@ async function getChapter(bookId, index) {
   return request(`/api/books/${bookId}/chapter/${index}`);
 }
 
+async function getMarks(bookId) {
+  return request(`/api/books/${bookId}/marks`);
+}
+
+async function saveMarks(bookId, items) {
+  return request(`/api/books/${bookId}/marks`, {
+    method: 'PUT',
+    body: JSON.stringify({ items })
+  });
+}
+
 async function fetchBookCover(bookId) {
   const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {

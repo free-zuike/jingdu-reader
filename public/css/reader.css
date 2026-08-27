@@ -204,6 +204,64 @@
 .reader-page.spacing-standard .book-text { line-height: 1.95; }
 .reader-page.spacing-loose .book-text { line-height: 2.4; }
 
+/* 划线高亮与笔记浮层 */
+.book-text mark.hl {
+  background: rgba(178, 58, 47, 0.16);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(178, 58, 47, 0.55);
+}
+.book-text mark.hl:hover { background: rgba(178, 58, 47, 0.28); }
+
+.mark-tooltip {
+  position: fixed;
+  z-index: 300;
+  width: 200px;
+  background: var(--r-paper);
+  border: 1px solid var(--r-line);
+  box-shadow: 0 6px 24px rgba(43, 39, 36, 0.18);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+}
+.mark-tooltip .mt-text {
+  color: var(--r-ink);
+  margin-bottom: 8px;
+  max-height: 3.2em;
+  overflow: hidden;
+}
+.mark-tooltip textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  font-size: 0.82rem;
+  background: var(--r-bg);
+  color: var(--r-ink);
+  border: 1px solid var(--r-line);
+  resize: vertical;
+}
+.mark-tooltip .mt-actions { display: flex; gap: 6px; margin-top: 8px; }
+.mt-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  background: transparent;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.mt-btn:hover { border-color: var(--gold); color: var(--r-ink); }
+.mt-btn.mt-del:hover { border-color: var(--seal); color: var(--seal); }
+
+/* 目录书签标记 */
+.toc-bm { color: var(--gold); margin-right: 6px; font-size: 0.8rem; }
+
+/* 书签按钮激活态 */
+.header-btn#bookmarkBtn.active { color: var(--gold); }
+
 /* ---------- 页脚（书页脚注 + 翻页条） ---------- */
 
 .reader-footer {

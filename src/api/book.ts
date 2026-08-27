@@ -160,6 +160,27 @@ book.get('/:id/chapter/:index', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 获取书籍书签/笔记/划线
+book.get('/:id/marks', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.getMarks(userId, bookId);
+  return c.json(result);
+});
+
+// 保存书籍书签/笔记/划线（整体覆盖）
+book.put('/:id/marks', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const { items } = await c.req.json();
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.saveMarks(userId, bookId, Array.isArray(items) ? items : []);
+  return c.json(result);
+});
+
 // 获取书籍封面（从KV缓存读取，缓存不存在时从 Moon+ Cover 目录拉取）
 book.get('/:id/cover', authMiddleware, async (c) => {
   const userId = c.get('userId');

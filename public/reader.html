@@ -16,6 +16,7 @@
       <h1 class="book-title" id="bookTitle">加载中...</h1>
     </div>
     <div class="reader-header-right">
+      <button class="header-btn" id="bookmarkBtn" title="书签">★</button>
       <button class="header-btn" id="tocBtn" title="目录">☰ 目录</button>
       <button class="header-btn" id="settingsBtn" title="设置">⚙️ 设置</button>
     </div>
@@ -95,6 +96,9 @@
 
   <div class="overlay" id="overlay"></div>
   <div class="toast" id="toast"><span class="toast-message"></span></div>
+
+  <!-- 划线/笔记浮层 -->
+  <div class="mark-tooltip" id="markTooltip" style="display:none;"></div>
 
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
