@@ -525,6 +525,28 @@ book.get('/:id/:resource{.*}', async (c) => {
       const cleaned = text.replace(/url\(\s*["']?file:\/\/[^"')]+[\/\\]([^"')/\\]+)["']?\s*\)/gi, "url('$1')");
       data = new TextEncoder().encode(cleaned);
     }
+    // TTF/OTF 字体修复：vhea 表版本 0x10001 不被 Chrome OTS 支持，改为 0x10000
+    if (mime === 'font/ttf' || mime === 'font/otf' || resourcePath.endsWith('.ttf') || resourcePath.endsWith('.otf')) {
+      const buf = new Uint8Array(result);
+      if (buf.length > 12) {
+        const numTables = (buf[4] << 8) | buf[5];
+        let pos = 12;
+        for (let i = 0; i < numTables && pos + 16 <= buf.length; i++) {
+          const tag = new TextDecoder().decode(buf.slice(pos, pos + 4));
+          const offset = (buf[pos + 8] << 24) | (buf[pos + 9] << 16) | (buf[pos + 10] << 8) | buf[pos + 11];
+          if (tag === 'vhea' && offset + 8 <= buf.length) {
+            // vhea 表版本在前 4 字节，如果为 0x00010001 则改为 0x00010000
+            if (buf[offset] === 0x00 && buf[offset + 1] === 0x01 && buf[offset + 2] === 0x00 && buf[offset + 3] === 0x01) {
+              buf[offset + 2] = 0x00;
+              buf[offset + 3] = 0x00;
+            }
+            break;
+          }
+          pos += 16;
+        }
+      }
+      data = buf;
+    }
     return new Response(data, {
       headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
     });
