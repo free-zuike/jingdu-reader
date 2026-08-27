@@ -183,7 +183,7 @@ function centerTocItem() {
 let currentChapterIndex = 0;
 let currentChapterText = '';
 let currentChapterHtml = '';   // 单章 EPUB 的净化 HTML（原排版渲染），空则回退纯文本
-let chapterCache = {};          // index -> 章节文本缓存
+let chapterCache = {};          // index -> { text, html } 章节内容缓存
 let chapters = [];
 let totalLength = 0;
 let currentLineHeight = 'standard';
@@ -233,7 +233,8 @@ async function loadChapter(index) {
   currentChapterIndex = index;
   document.getElementById('chapterTitle').textContent = chapters[index].title;
   if (chapterCache[index] !== undefined) {
-    currentChapterText = chapterCache[index];
+    currentChapterText = chapterCache[index].text;
+    currentChapterHtml = chapterCache[index].html || '';
     renderTextContent();
     return;
   }
@@ -245,7 +246,7 @@ async function loadChapter(index) {
     if (r.success && r.data.text !== undefined) {
       currentChapterText = r.data.text;
       currentChapterHtml = r.data.html || '';
-      chapterCache[index] = r.data.text;
+      chapterCache[index] = { text: r.data.text, html: currentChapterHtml };
       renderTextContent();
     } else {
       container.innerHTML = '<p>章节加载失败</p>';
