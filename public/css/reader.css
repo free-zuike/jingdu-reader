@@ -172,6 +172,21 @@
 }
 .book-text p:first-child { text-indent: 0; }
 
+/* EPUB 内嵌图片 */
+.chapter-image {
+  text-align: center;
+  margin: 1.4em auto;
+  text-indent: 0;
+}
+.chapter-image img {
+  max-width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 2px;
+  box-shadow: 0 1px 6px rgba(43, 39, 36, 0.15);
+}
+
 .loading-text {
   text-align: center;
   color: var(--r-ink-soft);
