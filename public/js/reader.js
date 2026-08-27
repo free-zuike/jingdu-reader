@@ -106,7 +106,7 @@ async function initTextReader(bookId) {
   }
 }
 
-// 渲染目录（按卷分组；卷显隐由全局按钮控制——全部展开/全部收起）
+// 渲染目录（按卷分组；每卷可单独点击展开/收起，全局按钮控制全部展开/收起）
 function renderToc() {
   const tocList = document.getElementById('tocList');
   if (chapters.length === 0) {
@@ -136,17 +136,26 @@ function renderToc() {
   };
   for (const it of flat) html += item(it, false);
   for (const [v, arr] of volMap) {
-    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}"><span class="toc-vol-arrow">${allOpen ? '▾' : '▸'}</span><span class="toc-vol-name">${escapeHtml(v)}</span></div>`;
-    if (allOpen) for (const it of arr) html += item(it, true);
+    const volOpen = window._tocVolOpen?.[v] ?? allOpen;
+    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleVol('${escapeAttr(v)}')"><span class="toc-vol-arrow">${volOpen ? '▾' : '▸'}</span><span class="toc-vol-name">${escapeHtml(v)}</span></div>`;
+    if (volOpen) for (const it of arr) html += item(it, true);
   }
   tocList.innerHTML = html;
+}
+
+// 每卷单独展开/收起
+function toggleVol(vol) {
+  if (!window._tocVolOpen) window._tocVolOpen = {};
+  window._tocVolOpen[vol] = !window._tocVolOpen[vol];
+  renderToc();
+  setTimeout(centerTocItemOnce, 30);
 }
 
 // 全局展开/收起所有卷
 function toggleAllVolumes() {
   window._tocAllExpanded = window._tocAllExpanded === false;
+  window._tocVolOpen = {};
   renderToc();
-  // 重渲染后定位当前章节
   setTimeout(centerTocItemOnce, 30);
 }
 
@@ -311,7 +320,7 @@ function getBookId() {
 
 // 把 EPUB HTML 里的资源路径（<img src> / 背景图 url / SVG <image> / <link>）转为资源路由 URL。
 // 后端已把相对/../路径解析为 ZIP 根路径（前导 / 表示根）；此处去掉前导 / 并加 id 前缀。
-// 用临时 div 操作 DOM（而非正则），避免换行/属性顺序等边缘情况匹配失败。
+// 用临时 div 操作 DOM（而非正则），避免换行/属性顺序等边缘情况匹配失败；同时用字符串替换兜底 SVG。
 function htmlWithUrls(html) {
   const bid = getBookId();
   if (!bid) return html;
@@ -329,7 +338,7 @@ function htmlWithUrls(html) {
     const r = rewriteUrl(src);
     if (r !== src) img.setAttribute('src', r);
   });
-  // 重写 SVG <image> xlink:href（SVG 命名空间）
+  // 重写 SVG <image>（DOM 方式）
   div.querySelectorAll('image').forEach(img => {
     const href = img.getAttribute('href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
     const r = rewriteUrl(href);
@@ -358,7 +367,13 @@ function htmlWithUrls(html) {
       return r !== u ? `url('${r}')` : m;
     });
   });
-  return div.innerHTML;
+  let out = div.innerHTML;
+  // 字符串替换兜底：处理 DOM 方式可能遗漏的 SVG <image xlink:href>
+  out = out.replace(/<image[^>]*xlink:href=["']([^"']+)["']/gi, (m, href) => {
+    const r = rewriteUrl(href);
+    return r !== href ? m.replace(href, r) : m;
+  });
+  return out;
 }
 
 function updateNavButtons() {
