@@ -222,16 +222,18 @@ user.get('/preferences', authMiddleware, async (c) => {
     return c.json({ success: true, data: JSON.parse(prefsData) });
   }
 
-  return c.json({ success: true, data: { fontSize: 'medium', theme: 'dark' } });
+  return c.json({ success: true, data: { fontSize: 'medium', theme: 'dark', lineHeight: 'standard', pagingMode: 'scroll' } });
 });
 
 // 保存阅读偏好设置
 user.put('/preferences', authMiddleware, async (c) => {
   const userId = c.get('userId');
-  const { fontSize, theme } = await c.req.json();
+  const { fontSize, theme, lineHeight, pagingMode } = await c.req.json();
 
   const validFontSizes = ['small', 'medium', 'large'];
   const validThemes = ['dark', 'light', 'sepia'];
+  const validLineHeights = ['tight', 'standard', 'loose'];
+  const validPagingModes = ['scroll', 'page'];
 
   if (fontSize && !validFontSizes.includes(fontSize)) {
     return c.json({ success: false, error: '无效的字体大小' }, 400);
@@ -239,9 +241,20 @@ user.put('/preferences', authMiddleware, async (c) => {
   if (theme && !validThemes.includes(theme)) {
     return c.json({ success: false, error: '无效的主题' }, 400);
   }
+  if (lineHeight && !validLineHeights.includes(lineHeight)) {
+    return c.json({ success: false, error: '无效的行距' }, 400);
+  }
+  if (pagingMode && !validPagingModes.includes(pagingMode)) {
+    return c.json({ success: false, error: '无效的翻页方式' }, 400);
+  }
 
   const prefsKey = `prefs:${userId}`;
-  const prefs = { fontSize: fontSize || 'medium', theme: theme || 'dark' };
+  const prefs = {
+    fontSize: fontSize || 'medium',
+    theme: theme || 'dark',
+    lineHeight: lineHeight || 'standard',
+    pagingMode: pagingMode || 'scroll'
+  };
   await c.env.CACHE.put(prefsKey, JSON.stringify(prefs), { expirationTtl: 365 * 24 * 60 * 60 });
 
   return c.json({ success: true, message: '偏好设置已保存', data: prefs });

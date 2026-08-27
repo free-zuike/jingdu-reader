@@ -123,10 +123,10 @@ async function getPreferences() {
   return request('/api/user/preferences');
 }
 
-async function savePreferences(fontSize, theme) {
+async function savePreferences(fontSize, theme, lineHeight, pagingMode) {
   return request('/api/user/preferences', {
     method: 'PUT',
-    body: JSON.stringify({ fontSize, theme })
+    body: JSON.stringify({ fontSize, theme, lineHeight, pagingMode })
   });
 }
 

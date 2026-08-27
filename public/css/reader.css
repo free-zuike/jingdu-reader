@@ -199,6 +199,11 @@
 .reader-page.font-medium .book-text { font-size: 1.1rem; }
 .reader-page.font-large .book-text { font-size: 1.3rem; }
 
+/* 行距 */
+.reader-page.spacing-tight .book-text { line-height: 1.6; }
+.reader-page.spacing-standard .book-text { line-height: 1.95; }
+.reader-page.spacing-loose .book-text { line-height: 2.4; }
+
 /* ---------- 页脚（书页脚注 + 翻页条） ---------- */
 
 .reader-footer {
@@ -382,10 +387,14 @@
 }
 
 .font-size-controls,
-.theme-options { display: flex; gap: 8px; }
+.theme-options,
+.line-spacing-controls,
+.paging-controls { display: flex; gap: 8px; }
 
 .size-btn,
-.theme-btn {
+.theme-btn,
+.spacing-btn,
+.paging-btn {
   flex: 1;
   padding: 9px;
   background: transparent;
@@ -396,9 +405,13 @@
   transition: all var(--t-fast);
 }
 .size-btn:hover,
-.theme-btn:hover { border-color: var(--gold); color: var(--r-ink); }
+.theme-btn:hover,
+.spacing-btn:hover,
+.paging-btn:hover { border-color: var(--gold); color: var(--r-ink); }
 .size-btn.active,
-.theme-btn.active {
+.theme-btn.active,
+.spacing-btn.active,
+.paging-btn.active {
   border-color: var(--seal);
   color: var(--seal);
   background: rgba(178, 58, 47, 0.06);

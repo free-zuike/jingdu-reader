@@ -60,8 +60,8 @@ async function initTextReader(bookId) {
     updateNavButtons();
     updateProgressBar();
 
-    document.getElementById('prevBtn').addEventListener('click', prevChapter);
-    document.getElementById('nextBtn').addEventListener('click', nextChapter);
+    document.getElementById('prevBtn').addEventListener('click', handlePrev);
+    document.getElementById('nextBtn').addEventListener('click', handleNext);
     // 滚动实际发生在 window（.reader-content 是 min-height:100vh + overflow-y:auto，
     // 内容变长时它随内容增长，滚动不回巢自身），监听 window 才能捕获
     window.addEventListener('scroll', throttle(() => {
@@ -129,6 +129,35 @@ let currentChapterText = '';
 let chapterCache = {};          // index -> 章节文本缓存
 let chapters = [];
 let totalLength = 0;
+let currentLineHeight = 'standard';
+let pagingMode = 'scroll';      // 'scroll' 滚动 / 'page' 翻页（一屏一屏翻）
+
+// 上一页/下一页：翻页模式(page)先滚一屏，到底/到顶再切章
+function handlePrev() {
+  if (pagingMode === 'page') {
+    const doc = document.documentElement;
+    if (window.scrollY > 0) {
+      window.scrollTo({ top: Math.max(0, window.scrollY - window.innerHeight), behavior: 'auto' });
+    } else {
+      prevChapter();
+    }
+  } else {
+    prevChapter();
+  }
+}
+function handleNext() {
+  if (pagingMode === 'page') {
+    const doc = document.documentElement;
+    const max = doc.scrollHeight - window.innerHeight;
+    if (window.scrollY < max - 10) {
+      window.scrollTo({ top: window.scrollY + window.innerHeight, behavior: 'auto' });
+    } else {
+      nextChapter();
+    }
+  } else {
+    nextChapter();
+  }
+}
 
 function findChapter(pos) {
   for (let i = 0; i < chapters.length; i++) {
@@ -295,6 +324,7 @@ function initEventListeners() {
       document.body.classList.remove('font-small', 'font-medium', 'font-large');
       document.body.classList.add(`font-${size}`);
       localStorage.setItem('readerFontSize', size);
+      savePrefs();
     });
   });
 
@@ -307,10 +337,44 @@ function initEventListeners() {
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       document.body.classList.add(`theme-${theme}`);
       localStorage.setItem('readerTheme', theme);
+      savePrefs();
+    });
+  });
+
+  // 行距切换
+  document.querySelectorAll('.spacing-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.spacing-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentLineHeight = btn.dataset.spacing;
+      document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
+      document.body.classList.add(`spacing-${currentLineHeight}`);
+      localStorage.setItem('readerLineHeight', currentLineHeight);
+      savePrefs();
+    });
+  });
+
+  // 翻页方式切换
+  document.querySelectorAll('.paging-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.paging-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      pagingMode = btn.dataset.paging;
+      localStorage.setItem('readerPagingMode', pagingMode);
+      savePrefs();
     });
   });
 
   window.addEventListener('beforeunload', saveProgress);
+}
+
+// 保存当前所有阅读偏好到服务器（字号/主题/行距/翻页方式）
+function savePrefs() {
+  const fontSize = localStorage.getItem('readerFontSize') || 'medium';
+  const theme = localStorage.getItem('readerTheme') || 'dark';
+  const lineHeight = localStorage.getItem('readerLineHeight') || 'standard';
+  const paging = localStorage.getItem('readerPagingMode') || 'scroll';
+  savePreferences(fontSize, theme, lineHeight, paging).catch(() => {});
 }
 
 // 加载设置
@@ -323,17 +387,34 @@ function loadSettings() {
   document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.theme === savedTheme));
   document.body.classList.add(`theme-${savedTheme}`);
 
+  const savedSpacing = localStorage.getItem('readerLineHeight') || 'standard';
+  document.querySelectorAll('.spacing-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.spacing === savedSpacing));
+  document.body.classList.add(`spacing-${savedSpacing}`);
+  currentLineHeight = savedSpacing;
+
+  const savedPaging = localStorage.getItem('readerPagingMode') || 'scroll';
+  document.querySelectorAll('.paging-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.paging === savedPaging));
+  pagingMode = savedPaging;
+
   // 异步从服务器加载偏好
   getPreferences().then(r => {
     if (r.success && r.data) {
       const fs = r.data.fontSize || savedFontSize;
       const th = r.data.theme || savedTheme;
+      const sp = r.data.lineHeight || savedSpacing;
+      const pg = r.data.pagingMode || savedPaging;
       document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
       document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === th));
+      document.querySelectorAll('.spacing-btn').forEach(b => b.classList.toggle('active', b.dataset.spacing === sp));
+      document.querySelectorAll('.paging-btn').forEach(b => b.classList.toggle('active', b.dataset.paging === pg));
       document.body.classList.remove('font-small', 'font-medium', 'font-large');
       document.body.classList.add(`font-${fs}`);
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       document.body.classList.add(`theme-${th}`);
+      document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
+      document.body.classList.add(`spacing-${sp}`);
+      currentLineHeight = sp;
+      pagingMode = pg;
     }
   }).catch(() => {});
 }
