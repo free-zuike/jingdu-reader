@@ -581,7 +581,7 @@ export class WebDAVService {
     }
   }
 
-  // 解析 .an 标注文本：每条以 "#\n<id>" 开头，含 书名/路径/数值字段/颜色/时间戳/文字
+  // 解析 .an 标注文本：每条以 "#\n<id>" 开头。输出原始字段行便于对照类型/颜色编码
   private parseMoonPlusAnnotations(text: string): Array<Record<string, unknown>> {
     const items: Array<Record<string, unknown>> = [];
     const blocks = text.split(/\n#\s*\n/);
@@ -591,17 +591,18 @@ export class WebDAVService {
       if (lines.length < 8) continue;
       const id = lines[0].trim();
       const bookName = lines[1] || '';
-      const path1 = lines[2] || '';
-      const f1 = lines[4] || '';
-      const f2 = lines[5] || '';
-      const f3 = lines[6] || '';
-      const color = parseInt(lines[7], 10);
-      const flag = lines[8] || '';
-      const time = parseInt(lines[9], 10) || 0;
-      // 剩余行：划线与笔记文字（跳过尾部 0/1 数字标记与空行）
-      const tail = lines.slice(10);
-      const text = tail.filter(l => l.trim() && !/^\d+$/.test(l.trim())).join('\n');
-      items.push({ id, bookName, path: path1, f1, f2, f3, color, flag, time, text });
+      const rawFields = lines.slice(2);
+      // 13 位毫秒时间戳行
+      const timeIdx = rawFields.findIndex(l => /^\d{13}$/.test(l.trim()));
+      const time = timeIdx !== -1 ? parseInt(rawFields[timeIdx], 10) : 0;
+      // 时间戳之后为文字（跳过尾部的 0/1 数字标记与空行）
+      const after = timeIdx !== -1 ? rawFields.slice(timeIdx + 1) : rawFields;
+      const text = after.filter(l => l.trim() && !/^\d+$/.test(l.trim())).join('\n');
+      // 候选颜色：负数 ARGB 字段
+      const neg = rawFields.find(l => /^-\d+$/.test(l.trim()) && parseInt(l, 10) < 0);
+      const color = neg ? parseInt(neg, 10) : 0;
+      const colorHex = color !== 0 ? '#' + (color >>> 0).toString(16).padStart(8, '0').toUpperCase() : '';
+      items.push({ id, bookName, rawFields, time, color, colorHex, text });
     }
     return items;
   }
