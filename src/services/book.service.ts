@@ -177,6 +177,32 @@ export class BookService {
     }
   }
 
+  // 后台异步下载并解析书籍（raw 缺失时用，避免同步下载大文件超时 503）
+  private async backgroundLoadBook(
+    userId: string,
+    bookId: string,
+    webdavService: WebDAVService,
+    book: Book,
+    rawKey: string,
+    cacheKey: string
+  ): Promise<void> {
+    try {
+      const dl = await this.downloadAndCacheBook(userId, bookId, webdavService);
+      if (!dl.success) return;
+      const raw = await this.cache.get(rawKey, 'arrayBuffer');
+      if (!raw) return;
+      if (book.format === 'txt') {
+        const text = new TextDecoder().decode(raw);
+        const chapters = this.detectTxtChapters(text);
+        await this.cache.put(cacheKey, JSON.stringify({ text, chapters }), { expirationTtl: 30 * 24 * 60 * 60 });
+      } else {
+        await this.buildEpubCache(book, raw, cacheKey);
+      }
+    } catch (e) {
+      console.error('[load] 后台加载书籍失败:', e);
+    }
+  }
+
   // 后台重新下载并解析一本书（reparse 用，删除缓存后立即重建）
   async reparseBook(userId: string, bookId: string, webdavService: WebDAVService): Promise<void> {
     try {
@@ -386,13 +412,12 @@ export class BookService {
       const rawKey = `raw:${bookId}`;
       let rawData = await this.cache.get(rawKey, 'arrayBuffer');
 
-      if (!rawData && webdavService) {
-        const dl = await this.downloadAndCacheBook(userId, bookId, webdavService);
-        if (!dl.success) return { success: false, error: dl.error };
-        rawData = await this.cache.get(rawKey, 'arrayBuffer');
-      }
-
       if (!rawData) {
+        // raw 缺失：后台异步下载+解析（避免同步下载大文件超时 503），前端轮询
+        if (ctx && webdavService) {
+          ctx.waitUntil(this.backgroundLoadBook(userId, bookId, webdavService, book, rawKey, cacheKey));
+          return { success: true, data: { processing: true, message: '书籍正在加载中，请稍后重试' } };
+        }
         return { success: false, error: '书籍内容尚未缓存，请重新同步' };
       }
 
