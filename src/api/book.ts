@@ -8,6 +8,17 @@ import { decrypt } from '../utils/crypto';
 
 const book = new Hono<{ Bindings: Env }>();
 
+// 向 Moon+ .an 追加标注（网页→Moon+ 双向同步）
+book.post('/moonplus/annotations/:name', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const body = await c.req.json();
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.addMoonPlusAnnotation(userId, name, body);
+  return c.json(result);
+});
+
 // 读取 Moon+ 标注（.an 文件；参数为 Cache 下的文件名，如 xxx.epub.an）
 book.get('/moonplus/annotations/:name', authMiddleware, async (c) => {
   const userId = c.get('userId');

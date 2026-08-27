@@ -581,7 +581,7 @@ export class WebDAVService {
     }
   }
 
-  // 解析 .an 标注文本：每条以 "#\n<id>" 开头。输出原始字段行便于对照类型/颜色编码
+  // 解析 .an 标注文本：每条以 "#\n<id>" 开头。识别 位置(A)/长度(B)/颜色(C ARGB)/时间戳/文字/类型(尾部flag)
   private parseMoonPlusAnnotations(text: string): Array<Record<string, unknown>> {
     const items: Array<Record<string, unknown>> = [];
     const blocks = text.split(/\n#\s*\n/);
@@ -591,20 +591,95 @@ export class WebDAVService {
       if (lines.length < 8) continue;
       const id = lines[0].trim();
       const bookName = lines[1] || '';
-      const rawFields = lines.slice(2);
-      // 13 位毫秒时间戳行
-      const timeIdx = rawFields.findIndex(l => /^\d{13}$/.test(l.trim()));
-      const time = timeIdx !== -1 ? parseInt(rawFields[timeIdx], 10) : 0;
-      // 时间戳之后为文字（跳过尾部的 0/1 数字标记与空行）
-      const after = timeIdx !== -1 ? rawFields.slice(timeIdx + 1) : rawFields;
+      // 13 位毫秒时间戳定位
+      const timeIdx = lines.findIndex(l => /^\d{13}$/.test(l.trim()));
+      const time = timeIdx !== -1 ? parseInt(lines[timeIdx], 10) : 0;
+      // time 前 5 个数字 = X, 0, A(位置), B(长度), C(颜色ARGB)
+      const before = timeIdx > 0 ? lines.slice(2, timeIdx) : [];
+      const nums = before.map(l => parseInt(l, 10)).filter(n => !isNaN(n));
+      const C = nums.length >= 1 ? nums[nums.length - 1] : 0;
+      const B = nums.length >= 2 ? nums[nums.length - 2] : 0;
+      const A = nums.length >= 3 ? nums[nums.length - 3] : 0;
+      const colorHex = C !== 0 ? '#' + (C >>> 0).toString(16).padStart(8, '0').toUpperCase() : '';
+      // time 后的文字
+      const after = timeIdx !== -1 ? lines.slice(timeIdx + 1) : lines.slice(11);
       const text = after.filter(l => l.trim() && !/^\d+$/.test(l.trim())).join('\n');
-      // 候选颜色：负数 ARGB 字段
-      const neg = rawFields.find(l => /^-\d+$/.test(l.trim()) && parseInt(l, 10) < 0);
-      const color = neg ? parseInt(neg, 10) : 0;
-      const colorHex = color !== 0 ? '#' + (color >>> 0).toString(16).padStart(8, '0').toUpperCase() : '';
-      items.push({ id, bookName, rawFields, time, color, colorHex, text });
+      // 尾部 3 个数字 = 类型 flag（过滤空行/文字后的数字行，取最后 3 个有效数字）
+      const digitLines = after.filter(l => /^-?\d+$/.test(l.trim())).map(l => parseInt(l, 10));
+      const flags = digitLines.slice(-3);
+      while (flags.length < 3) flags.unshift(0);
+      const map: Record<string, string> = {
+        '1,0,0': 'underline', '0,1,0': 'strike', '0,0,1': 'wave', '0,0,0': 'highlight'
+      };
+      const type = map[flags.join(',')] || 'highlight';
+      items.push({ id, bookName, pos: A, len: B, color: C, colorHex, time, flags, type, text });
     }
     return items;
+  }
+
+  // 向 .an 追加一条标注（网页→Moon+）并上传（zlib 压缩）
+  async addMoonPlusAnnotation(userId: string, anFileName: string, ann: {
+    bookName: string; text: string; colorArgb: number; type: 'underline' | 'strike' | 'wave' | 'highlight'; pos: number;
+  }): Promise<ApiResponse> {
+    try {
+      // 1. 读旧 .an
+      const result = await this.getMoonPlusDataFile(userId, `Cache/${anFileName}`);
+      const existed = result.success && result.data && (result.data as { isZlib?: boolean; content?: string }).isZlib;
+      const oldRaw = existed ? (result.data as { content: string }).content : '';
+      const deviceHead = oldRaw ? oldRaw.split('\n#\n')[0] + '\n' : `1939689501\nindent:true\ntrim:true\n`;
+      // 2. 新 id = 最大 id + 1
+      let maxId = 0;
+      const idRe = /\n#\s*\n(\d+)\n/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = idRe.exec(oldRaw)) !== null) {
+        const n = parseInt(mm[1], 10);
+        if (n > maxId) maxId = n;
+      }
+      const newId = maxId + 1;
+      const flagMap: Record<string, string> = { underline: '1 0 0', strike: '0 1 0', wave: '0 0 1', highlight: '0 0 0' };
+      const bookFile = anFileName.replace(/\.an$/, '');
+      const block =
+        `#\n${newId}\n${ann.bookName || bookFile}\n` +
+        `/sdcard/Download/MoonReader/Cloud/${bookFile}\n` +
+        `/sdcard/download/moonreader/cloud/${bookFile.toLowerCase()}\n` +
+        `12\n0\n${ann.pos}\n${Math.max(1, ann.text.length)}\n${ann.colorArgb}\n${Date.now()}\n\n\n${ann.text}\n${flagMap[ann.type] || '0 0 0'}\n`;
+      const newRaw = existed ? oldRaw + block : deviceHead + block;
+      // 3. zlib 压缩（CompressionStream('deflate') = RFC1950 zlib，与 .an 头 789c 一致）
+      const payload = new TextEncoder().encode(newRaw);
+      const ds = new CompressionStream('deflate');
+      const stream = new Blob([payload]).stream().pipeThrough(ds);
+      const bytes = await new Response(stream).arrayBuffer();
+      // 4. 上传覆盖 Cache/xxx.an
+      const ok = await this.putMoonPlusCacheFile(userId, anFileName, bytes);
+      if (!ok) return { success: false, error: '上传标注失败' };
+      return { success: true, data: { id: newId, file: anFileName } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '写入标注失败' };
+    }
+  }
+
+  // 上传文件到 .Moon+/Cache/（PUT 二进制）
+  private async putMoonPlusCacheFile(userId: string, anFileName: string, bytes: ArrayBuffer): Promise<boolean> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return false;
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/Cache/${anFileName}`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
+      const resp = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'application/octet-stream',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: bytes
+      });
+      return resp.ok || resp.status === 201 || resp.status === 204;
+    } catch {
+      return false;
+    }
   }
   async getMoonPlusPreferences(userId: string): Promise<ApiResponse> {
     try {
