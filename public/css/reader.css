@@ -408,6 +408,26 @@
 }
 .toc-item.active::before { background: var(--seal); }
 
+/* 目录卷分组（可收起） */
+.toc-vol {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-top: 6px;
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  cursor: pointer;
+  border-left: 2px solid var(--gold);
+  background: var(--r-bg);
+  user-select: none;
+}
+.toc-vol:hover { color: var(--seal); }
+.toc-sub { padding-left: 30px; }
+
 /* ---------- 设置面板 ---------- */
 
 .settings-panel {

@@ -104,17 +104,50 @@ async function initTextReader(bookId) {
   }
 }
 
-// 渲染目录
+// 渲染目录（按卷分组，卷可收起/展开）
 function renderToc() {
   const tocList = document.getElementById('tocList');
   if (chapters.length === 0) {
     tocList.innerHTML = '<p style="padding:var(--sp-md);color:var(--color-text-secondary);">暂无目录</p>';
     return;
   }
-  tocList.innerHTML = chapters.map((ch, i) => {
-    const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === i);
-    return `<div class="toc-item${i === currentChapterIndex ? ' active' : ''}" id="toc-${i}" onclick="jumpToChapter(${i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(ch.title)}</div>`;
-  }).join('');
+  const exp = window._tocVolumes || (window._tocVolumes = new Set());
+  // 当前章所在卷默认展开
+  const cur = chapters[currentChapterIndex];
+  if (cur && cur.volume) exp.add(cur.volume);
+
+  const volMap = new Map();
+  const flat = [];
+  for (let i = 0; i < chapters.length; i++) {
+    const c = chapters[i];
+    if (!c.volume) { flat.push({ i, title: c.title }); }
+    else {
+      if (!volMap.has(c.volume)) volMap.set(c.volume, []);
+      volMap.get(c.volume).push({ i, title: c.title });
+    }
+  }
+  let html = '';
+  const item = (it, sub) => {
+    const active = it.i === currentChapterIndex ? ' active' : '';
+    const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === it.i);
+    return `<div class="toc-item${active}${sub ? ' toc-sub' : ''}" id="toc-${it.i}" onclick="jumpToChapter(${it.i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(it.title)}</div>`;
+  };
+  for (const it of flat) html += item(it, false);
+  for (const [v, arr] of volMap) {
+    const open = exp.has(v);
+    html += `<div class="toc-vol" data-vol="${escapeAttr(v)}" onclick="toggleTocVolume(this)">${open ? '▾' : '▸'} ${escapeHtml(v)}</div>`;
+    if (open) for (const it of arr) html += item(it, true);
+  }
+  tocList.innerHTML = html;
+}
+
+// 卷分组点击：折叠/展开
+function toggleTocVolume(el) {
+  const v = el.dataset.vol;
+  const exp = window._tocVolumes || (window._tocVolumes = new Set());
+  exp.has(v) ? exp.delete(v) : exp.add(v);
+  renderToc();
+  openToc(); // 重渲染后重新定位当前章节
 }
 
 // 打开目录并定位到当前章节（只定位一次，之后可自由滑动浏览，不会被反复拉回）
@@ -137,8 +170,7 @@ function centerTocItemOnce() {
 function centerTocItem() {
   const list = document.getElementById('tocList');
   if (!list) return;
-  const items = list.querySelectorAll('.toc-item');
-  const el = items[currentChapterIndex];
+  const el = document.getElementById(`toc-${currentChapterIndex}`);
   if (!el) return;
   // 方式1：scrollIntoView 滚动最近的可滚动容器（.toc-list）
   try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch {}
