@@ -661,6 +661,150 @@
   color: var(--soft);
 }
 
+/* ---------- 编辑书籍弹窗 ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 39, 36, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  padding: var(--sp-lg);
+}
+.modal-box {
+  background: var(--paper-white);
+  border: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  box-shadow: var(--shadow-lift);
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-md) var(--sp-lg);
+  border-bottom: 1px solid var(--line-soft);
+}
+.modal-header h3 {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--soft);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.modal-close:hover { background: var(--page-deep); color: var(--ink); }
+.modal-body {
+  padding: var(--sp-lg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-md);
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-sm);
+  padding: var(--sp-md) var(--sp-lg);
+  border-top: 1px solid var(--line-soft);
+}
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-row > label:first-child {
+  font-size: 0.82rem;
+  color: var(--soft);
+  letter-spacing: 0.04em;
+}
+.form-row input[type="text"] {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  background: var(--light-paper);
+  color: var(--ink);
+  font-size: 0.92rem;
+  border-radius: 3px;
+  font-family: var(--font-serif);
+}
+.form-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--seal);
+}
+.form-hint {
+  font-size: 0.72rem;
+  color: #a89f8b;
+  padding: 6px 0 0;
+  border-top: 1px dashed var(--line-soft);
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.check-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--seal);
+}
+.star-rating {
+  display: flex;
+  gap: 4px;
+}
+.star-rating .star {
+  font-size: 1.4rem;
+  color: var(--line);
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--t-fast);
+}
+.star-rating .star.active { color: var(--gold); }
+.star-rating .star:hover { color: var(--gold); }
+
+/* 书籍卡片右上角编辑按钮 */
+.book-edit-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(43, 39, 36, 0.72);
+  color: var(--paper-white);
+  font-size: 0.7rem;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+  z-index: 2;
+  cursor: pointer;
+}
+.book-card:hover .book-edit-btn { opacity: 1; }
+.book-edit-btn:hover { background: var(--gold); }
+/* 有 format-badge 时，编辑钮移到左上，避开右上角 */
+.book-card .book-format-badge { top: 10px; right: 40px; }
+/* 列表视图按钮位置 */
+.books-list .book-edit-btn { top: 8px; right: 8px; }
+.books-list .book-format-badge { display: none; }
+
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 768px) {

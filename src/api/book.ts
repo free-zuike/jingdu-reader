@@ -579,6 +579,34 @@ book.get('/:id/reparse-status', authMiddleware, async (c) => {
   return c.json({ success: true, data: { done: !!done } });
 });
 
+// 更新书籍元数据（title/author + category/favorite/series/rate），同时回写 Moon+ books.sync
+book.patch('/:id/meta', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const patch = await c.req.json();
+
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+
+  const result = await bookService.updateBookFullMeta(userId, bookId, patch, webdavService);
+  return c.json(result);
+});
+
+// 更新书籍 Moon+ 元数据（category/favorite/series/rate），批量写回 books.sync（不改动 title/author）
+book.patch('/:id/meta/moonplus', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const patch = await c.req.json();
+
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+
+  const result = await bookService.updateBookFullMeta(userId, bookId, patch, webdavService);
+  return c.json(result);
+});
+
 // 诊断：查看一本书的 R2 缓存状态（是否存在、大小），排查 503/加载失败
 book.get('/:id/cache-status', authMiddleware, async (c) => {
   const userId = c.get('userId');

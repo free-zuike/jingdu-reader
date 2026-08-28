@@ -17,7 +17,7 @@ const app = new Hono<{ Bindings: Env }>();
 // CORS中间件
 app.use('*', async (c, next) => {
   c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (c.req.method === 'OPTIONS') {

@@ -543,6 +543,49 @@ export class BookService {
     }
   }
 
+  // 更新书籍元数据（title/author + Moon+ 元数据），同时写回 Moon+ books.sync
+  async updateBookFullMeta(
+    userId: string,
+    bookId: string,
+    patch: { title?: string; author?: string; category?: string; favorite?: boolean; series?: string; rate?: string },
+    webdavService: WebDAVService
+  ): Promise<ApiResponse> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) {
+        return { success: false, error: '书籍不存在' };
+      }
+
+      // 1. 更新本地 DB（title/author 走 updateBookMeta，Moon+ 元数据走 updateBookMoonMeta）
+      if (patch.title !== undefined || patch.author !== undefined) {
+        await this.db.updateBookMeta(bookId, {
+          title: patch.title !== undefined ? patch.title : book.title,
+          author: patch.author !== undefined ? patch.author : book.author,
+        });
+      }
+      const moonPatch: { category?: string | null; favorite?: boolean | null; series?: string | null; rate?: string | null } = {};
+      if (patch.category !== undefined) moonPatch.category = patch.category;
+      if (patch.favorite !== undefined) moonPatch.favorite = patch.favorite;
+      if (patch.series !== undefined) moonPatch.series = patch.series;
+      if (patch.rate !== undefined) moonPatch.rate = patch.rate;
+      if (Object.keys(moonPatch).length > 0) {
+        await this.db.updateBookMoonMeta(bookId, moonPatch);
+      }
+
+      // 2. 写回 Moon+ books.sync（按云端文件名匹配）
+      const fileName = (book.webdav_path || '').split('/').pop() || '';
+      let moonSync: { success: boolean; error?: string } | undefined;
+      if (fileName && Object.keys(moonPatch).length > 0) {
+        const moonResult = await webdavService.updateMoonPlusBookMeta(userId, fileName, moonPatch);
+        moonSync = { success: moonResult.success, error: moonResult.error };
+      }
+
+      return { success: true, data: { bookId, patch, moonSync } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '更新书籍元数据失败' };
+    }
+  }
+
   // 删除书籍（从本地库和缓存中移除）
   async deleteBook(userId: string, bookId: string): Promise<ApiResponse> {
     try {

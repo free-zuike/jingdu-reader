@@ -703,6 +703,78 @@ export class WebDAVService {
     return items;
   }
 
+  // 通用 PUT 到 .Moon+/ 根目录（非 Cache 子目录；用于回写 books.sync 等）
+  private async putMoonPlusRootFile(userId: string, fileName: string, bytes: ArrayBuffer): Promise<boolean> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return false;
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/${fileName}`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
+      const resp = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'application/octet-stream',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: bytes
+      });
+      return resp.ok || resp.status === 201 || resp.status === 204;
+    } catch {
+      return false;
+    }
+  }
+
+  // 更新 Moon+ books.sync 中某本书的元数据（category/favorite/series/rate）
+  // filename: 云端书名（如 乡村教师.epub）；对应 books.sync JSON 数组中的 filename 字段
+  async updateMoonPlusBookMeta(userId: string, filename: string, updates: {
+    category?: string | null; favorite?: boolean | null; series?: string | null; rate?: string | null;
+  }): Promise<ApiResponse> {
+    try {
+      if (!filename) return { success: false, error: 'filename 不能为空' };
+      const result = await this.getMoonPlusDataFile(userId, 'books.sync');
+      if (!result.success || !result.data) return { success: false, error: '读取 books.sync 失败' };
+      const data = result.data as { isZlib?: boolean; content?: string };
+      if (!data.isZlib || !data.content) return { success: false, error: 'books.sync 不是 zlib 格式' };
+
+      let arr: any[];
+      try {
+        arr = JSON.parse(data.content);
+      } catch (e: any) {
+        return { success: false, error: 'books.sync JSON 解析失败: ' + (e?.message || '') };
+      }
+      if (!Array.isArray(arr)) return { success: false, error: 'books.sync 不是数组' };
+
+      const item = arr.find(x => x && x.filename === filename);
+      if (!item) {
+        // 未找到：追加一条新记录
+        const fresh: Record<string, unknown> = { filename };
+        if (updates.category !== undefined) fresh.category = updates.category;
+        if (updates.favorite !== undefined) fresh.favorite = updates.favorite ? '1' : '0';
+        if (updates.series !== undefined) fresh.groupName = updates.series;
+        if (updates.rate !== undefined) fresh.rate = updates.rate;
+        arr.push(fresh);
+      } else {
+        if (updates.category !== undefined) item.category = updates.category;
+        if (updates.favorite !== undefined) item.favorite = updates.favorite ? '1' : '0';
+        if (updates.series !== undefined) item.groupName = updates.series;
+        if (updates.rate !== undefined) item.rate = updates.rate;
+      }
+
+      const payload = new TextEncoder().encode(JSON.stringify(arr));
+      const ds = new CompressionStream('deflate');
+      const stream = new Blob([payload]).stream().pipeThrough(ds);
+      const bytes = await new Response(stream).arrayBuffer();
+      const ok = await this.putMoonPlusRootFile(userId, 'books.sync', bytes);
+      if (!ok) return { success: false, error: '上传 books.sync 失败' };
+      return { success: true, data: { filename, updates, size: bytes.byteLength } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '写入 books.sync 失败' };
+    }
+  }
+
   // 向 .an 追加一条标注（网页→Moon+）并上传（zlib 压缩）
   async addMoonPlusAnnotation(userId: string, anFileName: string, ann: {
     bookName: string; text: string; colorArgb: number; type: 'underline' | 'strike' | 'wave' | 'highlight'; pos: number; note?: string;

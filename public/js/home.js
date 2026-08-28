@@ -297,6 +297,7 @@ function createBookCard(book, layout) {
       <span class="book-format-badge">${book.format.toUpperCase()}</span>
       ${book.cloudAvailable === false ? '<span class="cloud-missing-badge" title="未上传到WebDAV，云端无此文件">未上传</span>' : ''}
       <button class="book-delete-btn" data-book-id="${book.id}" title="删除">✕</button>
+      <button class="book-edit-btn" data-book-id="${book.id}" title="编辑">✎</button>
     </div>
     <div class="book-info">
       <h3 class="book-title" title="${escapeAttr(book.title)}">${escapeHtml(book.title)}</h3>
@@ -333,7 +334,96 @@ function createBookCard(book, layout) {
     }
   });
 
+  const editBtn = card.querySelector('.book-edit-btn');
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openEditBookModal(book);
+  });
+
   return card;
+}
+
+// ---- 编辑书籍弹窗 ----
+let editingBookId = null;
+let editingRate = 0;
+
+function openEditBookModal(book) {
+  editingBookId = book.id;
+  editingRate = book.rate && parseInt(book.rate, 10) >= 1 && parseInt(book.rate, 10) <= 5 ? parseInt(book.rate, 10) : 0;
+
+  document.getElementById('editTitle').value = book.title || '';
+  document.getElementById('editAuthor').value = book.author || '';
+  document.getElementById('editSeries').value = book.series || '';
+  document.getElementById('editCategory').value = book.category || '';
+  document.getElementById('editFavorite').checked = !!book.favorite;
+  renderEditStars();
+
+  const modal = document.getElementById('editBookModal');
+  modal.style.display = 'flex';
+}
+
+function closeEditBookModal() {
+  document.getElementById('editBookModal').style.display = 'none';
+  editingBookId = null;
+}
+
+function renderEditStars() {
+  const box = document.getElementById('editRateStars');
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    html += `<span class="star${i <= editingRate ? ' active' : ''}" data-star="${i}">★</span>`;
+  }
+  html += `<span class="star-clear" style="font-size:0.8rem;color:var(--soft);align-self:center;cursor:pointer;margin-left:6px;">清空</span>`;
+  box.innerHTML = html;
+  box.querySelectorAll('.star').forEach(s => {
+    s.addEventListener('click', () => {
+      editingRate = parseInt(s.dataset.star, 10);
+      renderEditStars();
+    });
+  });
+  box.querySelector('.star-clear').addEventListener('click', () => {
+    editingRate = 0;
+    renderEditStars();
+  });
+}
+
+async function handleEditBookSave() {
+  if (!editingBookId) return;
+  const patch = {
+    title: document.getElementById('editTitle').value.trim(),
+    author: document.getElementById('editAuthor').value.trim(),
+    series: document.getElementById('editSeries').value.trim(),
+    category: document.getElementById('editCategory').value.trim(),
+    favorite: document.getElementById('editFavorite').checked,
+    rate: editingRate > 0 ? String(editingRate) : ''
+  };
+
+  const btn = document.getElementById('editBookSave');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  try {
+    const result = await updateBookMeta(editingBookId, patch);
+    if (result.success) {
+      const moonSync = result.data?.moonSync;
+      let msg = '已保存';
+      if (moonSync && !moonSync.success) {
+        msg = `已保存到本地，但 Moon+ 回写失败: ${moonSync.error || '未知'}`;
+        showToast(msg, 'warning');
+      } else {
+        msg = '已保存并同步到 Moon+';
+        showToast(msg, 'success');
+      }
+      closeEditBookModal();
+      loadBooks();
+    } else {
+      showToast(result.error || '保存失败', 'error');
+    }
+  } catch (e) {
+    showToast('保存失败: ' + (e.message || ''), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存';
+  }
 }
 
 function escapeHtml(str) {

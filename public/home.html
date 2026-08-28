@@ -121,6 +121,50 @@
     <span class="toast-message"></span>
   </div>
 
+  <!-- 编辑书籍元数据弹窗 -->
+  <div class="modal-overlay" id="editBookModal" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>编辑书籍信息</h3>
+        <button class="modal-close" id="editBookClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>书名</label>
+          <input type="text" id="editTitle">
+        </div>
+        <div class="form-row">
+          <label>作者</label>
+          <input type="text" id="editAuthor">
+        </div>
+        <div class="form-row">
+          <label>系列</label>
+          <input type="text" id="editSeries" placeholder="如：三体">
+        </div>
+        <div class="form-row">
+          <label>标签</label>
+          <input type="text" id="editCategory" placeholder="用 ; 分隔多个">
+        </div>
+        <div class="form-row">
+          <label>评分</label>
+          <div class="star-rating" id="editRateStars"></div>
+        </div>
+        <div class="form-row">
+          <label>珍藏</label>
+          <label class="check-row">
+            <input type="checkbox" id="editFavorite">
+            <span>加入我的珍藏</span>
+          </label>
+        </div>
+        <div class="form-hint">保存后将同时回写到 Moon+ books.sync（手机 App 可见）</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="editBookCancel">取消</button>
+        <button class="btn-primary" id="editBookSave">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/home.js"></script>
@@ -203,6 +247,17 @@
       searchInput.addEventListener('input', debounce((e) => {
         filterBooks(e.target.value);
       }, 300));
+
+      // 编辑书籍弹窗
+      document.getElementById('editBookClose').addEventListener('click', closeEditBookModal);
+      document.getElementById('editBookCancel').addEventListener('click', closeEditBookModal);
+      document.getElementById('editBookSave').addEventListener('click', handleEditBookSave);
+      document.getElementById('editBookModal').addEventListener('click', (e) => {
+        if (e.target.id === 'editBookModal') closeEditBookModal();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeEditBookModal();
+      });
     });
   </script>
 </body>

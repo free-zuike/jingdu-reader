@@ -267,6 +267,14 @@ async function deleteBook(bookId) {
   });
 }
 
+// 更新书籍元数据（title/author/category/favorite/series/rate），同时回写 Moon+ books.sync
+async function updateBookMeta(bookId, patch) {
+  return request(`/api/books/${bookId}/meta`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch)
+  });
+}
+
 // 重新解析书籍（清缓存 + 后台重新下载解析，EPUB 排版/图片改动后调用）
 async function reparseBook(bookId) {
   return request(`/api/books/${bookId}/reparse`, {
