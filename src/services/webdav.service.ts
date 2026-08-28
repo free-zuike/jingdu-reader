@@ -1027,6 +1027,43 @@ export class WebDAVService {
 
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
   // bookFileName 是书籍的原始文件名（如 乡村教师.epub），用于直接构造封面路径
+  // 列出 .Moon+/Cover/ 下所有封面文件（文件名可反推书籍：{书名}.epub_2.png）
+  async listMoonPlusCoverFiles(userId: string): Promise<string[]> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return [];
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const coverDir = `${basePath}/.Moon+/Cover`;
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}${coverDir}`;
+      const resp = await fetch(fullUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/xml; charset=utf-8',
+          'Depth': '1',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:displayname/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:resourcetype/>
+  </D:prop>
+  <D:limit><D:nresults>1000</D:nresults></D:limit>
+</D:propfind>`
+      });
+      if (resp.status !== 207) return [];
+      const xml = await resp.text();
+      const files = this.parseWebDAVResponse(xml, coverDir);
+      return files.filter(f => !f.isDirectory && f.name.endsWith('.png')).map(f => f.name);
+    } catch {
+      return [];
+    }
+  }
+
   async getMoonPlusCover(userId: string, bookTitle: string, bookAuthor: string, bookFileName?: string): Promise<ArrayBuffer | null> {
     try {
       const config = await this.db.getWebDAVConfigByUserId(userId);
@@ -1165,30 +1202,34 @@ export class WebDAVService {
 }
 
 // 辅助函数：从书名提取标题和作者
-// 解析书名/作者：剥离来源标签(Z-Library等)、处理 " - "/" — " 作者分隔、"(作者)" 括号提取
+// 解析书名/作者：剥离来源标签（括号或下划线形式）、处理 " - "/" — " 作者分隔、"(作者)" 括号、下划线分隔
 export function parseBookName(name: string): { title: string; author: string } {
-  let withoutExt = name.replace(/\.[^/.]+$/, '');
-  // 1. 去掉来源标签（Z-Library / 1lib / library / 等）
-  withoutExt = withoutExt
-    .replace(/\([^)]*(z-?lib|1lib|library|readfree|kindle)[^)]*\)/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  let s = name.replace(/\.[^/.]+$/, '');
+  // 1. 去掉来源标签：括号形式 (Z-Library)/(1lib.sk) 和 下划线形式 _z_library_sk/_1lib_sk/_z_lib_sk
+  s = s.replace(/\([^)]*(z-?lib|1lib|library|readfree|kindle)[^)]*\)/gi, ' ');
+  s = s.replace(/(?:z[-_ ]?lib(?:rary)?|1lib|library|readfree|kindle)[a-z0-9_]*/gi, ' ');
+  s = s.replace(/[_ ,，]{1,}/g, ' ').trim();
   // 2. " - " 或 " — " 作者分隔
-  const dashIdx = withoutExt.lastIndexOf(' - ');
+  const dashIdx = s.lastIndexOf(' - ');
   if (dashIdx > 0) {
-    return { title: withoutExt.substring(0, dashIdx).trim(), author: withoutExt.substring(dashIdx + 3).trim() };
+    return { title: s.substring(0, dashIdx).trim(), author: s.substring(dashIdx + 3).trim() };
   }
-  const emDashIdx = withoutExt.lastIndexOf(' — ');
+  const emDashIdx = s.lastIndexOf(' — ');
   if (emDashIdx > 0) {
-    return { title: withoutExt.substring(0, emDashIdx).trim(), author: withoutExt.substring(emDashIdx + 3).trim() };
+    return { title: s.substring(0, emDashIdx).trim(), author: s.substring(emDashIdx + 3).trim() };
   }
-  // 3. " (作者)" 括号 → 作者（取最后一个括号对）
-  const parenOpen = Math.max(withoutExt.lastIndexOf('（'), withoutExt.lastIndexOf('('));
+  // 3. " (作者)" 括号（取最后一个括号对）
+  const parenOpen = Math.max(s.lastIndexOf('（'), s.lastIndexOf('('));
   if (parenOpen > 0) {
-    const closeC = withoutExt.indexOf('）', parenOpen) !== -1 ? withoutExt.indexOf('）', parenOpen) : withoutExt.indexOf(')', parenOpen);
+    const closeC = s.indexOf('）', parenOpen) !== -1 ? s.indexOf('）', parenOpen) : s.indexOf(')', parenOpen);
     if (closeC > parenOpen) {
-      return { title: withoutExt.substring(0, parenOpen).trim(), author: withoutExt.substring(parenOpen + 1, closeC).trim() };
+      return { title: s.substring(0, parenOpen).trim(), author: s.substring(parenOpen + 1, closeC).trim() };
     }
   }
-  return { title: withoutExt.replace(/_/g, ' ').replace(/\s+/g, ' ').trim(), author: '' };
+  // 4. 空格分隔：第一段=标题，其余=作者（处理 我师兄实在太稳健了 言归正传 这类）
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return { title: parts[0].trim(), author: parts.slice(1).join(' ').trim() };
+  }
+  return { title: s.replace(/_/g, ' ').replace(/\s+/g, ' ').trim(), author: '' };
 }
