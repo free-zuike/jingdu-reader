@@ -231,17 +231,18 @@ user.put('/preferences', authMiddleware, async (c) => {
   const { fontSize, theme, lineHeight, pagingMode } = await c.req.json();
 
   const validFontSizes = ['small', 'medium', 'large'];
-  const validThemes = ['dark', 'light', 'sepia'];
+  const validThemes = ['dark', 'light', 'sepia', 'custom'];
   const validLineHeights = ['tight', 'standard', 'loose'];
   const validPagingModes = ['scroll', 'page'];
 
-  if (fontSize && !validFontSizes.includes(fontSize)) {
+  // 字号/行距支持连续数值（如 "1.13"、"1.65"），也兼容旧的三档预设
+  if (fontSize && !validFontSizes.includes(fontSize) && isNaN(parseFloat(fontSize))) {
     return c.json({ success: false, error: '无效的字体大小' }, 400);
   }
   if (theme && !validThemes.includes(theme)) {
     return c.json({ success: false, error: '无效的主题' }, 400);
   }
-  if (lineHeight && !validLineHeights.includes(lineHeight)) {
+  if (lineHeight && !validLineHeights.includes(lineHeight) && isNaN(parseFloat(lineHeight))) {
     return c.json({ success: false, error: '无效的行距' }, 400);
   }
   if (pagingMode && !validPagingModes.includes(pagingMode)) {
