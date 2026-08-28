@@ -680,6 +680,43 @@ async function loadMoonPrefs() {
         synced.push('字体');
       }
     }
+    // 字体样式：粗体/斜体/下划线（App pFontBold/Italic/Underline）
+    document.body.classList.toggle('font-bold', d.fontBold === 'true');
+    document.body.classList.toggle('font-italic', d.fontItalic === 'true');
+    document.body.classList.toggle('font-underline', d.fontUnderline === 'true');
+    localStorage.setItem('readerFontBold', d.fontBold === 'true' ? '1' : '0');
+    localStorage.setItem('readerFontItalic', d.fontItalic === 'true' ? '1' : '0');
+    localStorage.setItem('readerFontUnderline', d.fontUnderline === 'true' ? '1' : '0');
+    if (d.fontBold || d.fontItalic || d.fontUnderline) synced.push('字体样式');
+    // 字间距（pFontSpace）
+    if (d.fontSpace) {
+      const n = parseFloat(d.fontSpace);
+      if (!isNaN(n)) {
+        document.body.style.setProperty('--reader-letter-space', n + 'px');
+        localStorage.setItem('readerFontSpace', String(n));
+        synced.push('字间距');
+      }
+    }
+    // 段间距（pParagraphSpace）
+    if (d.paragraphSpace) {
+      const n = parseFloat(d.paragraphSpace);
+      if (!isNaN(n)) {
+        document.body.style.setProperty('--reader-paragraph-space', (0.4 + n * 0.1) + 'em');
+        localStorage.setItem('readerParagraphSpace', String(n));
+        synced.push('段间距');
+      }
+    }
+    // 页边距（pLeftMargin/RightMargin/TopMargin2/BottomMargin2）
+    if (d.leftMargin || d.rightMargin || d.topMargin || d.bottomMargin) {
+      const l = parseFloat(d.leftMargin) || 84;
+      const r = parseFloat(d.rightMargin) || 84;
+      const t = parseFloat(d.topMargin) || 140;
+      const b = parseFloat(d.bottomMargin) || 140;
+      const wrap = document.querySelector('.content-wrapper');
+      if (wrap) wrap.style.padding = `${t / 10}px ${r / 10}px ${b / 10}px ${l / 10}px`;
+      localStorage.setItem('readerMargins', JSON.stringify({ l, r, t, b }));
+      synced.push('页边距');
+    }
     // 主题：直接应用 App 背景色/字色（不再映射三档），并持久化以便刷新后保留
     const bg = d.bgColor ? argbToCss(d.bgColor) : null;
     const fg = d.fontColor ? argbToCss(d.fontColor) : null;
@@ -876,6 +913,23 @@ function loadSettings() {
     const generic = ['serif','sans-serif','monospace','cursive','fantasy'];
     const fam = generic.includes(customFont) ? customFont : `'${customFont}'`;
     document.body.style.setProperty('--font-serif', `${fam}, 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
+  }
+
+  // 重新应用 App 字体样式/字间距/段间距/页边距
+  document.body.classList.toggle('font-bold', localStorage.getItem('readerFontBold') === '1');
+  document.body.classList.toggle('font-italic', localStorage.getItem('readerFontItalic') === '1');
+  document.body.classList.toggle('font-underline', localStorage.getItem('readerFontUnderline') === '1');
+  const letterSpace = localStorage.getItem('readerFontSpace');
+  if (letterSpace) document.body.style.setProperty('--reader-letter-space', parseFloat(letterSpace) + 'px');
+  const paraSpace = localStorage.getItem('readerParagraphSpace');
+  if (paraSpace) document.body.style.setProperty('--reader-paragraph-space', (0.4 + parseFloat(paraSpace) * 0.1) + 'em');
+  const marginsRaw = localStorage.getItem('readerMargins');
+  if (marginsRaw) {
+    try {
+      const m = JSON.parse(marginsRaw);
+      const w = document.querySelector('.content-wrapper');
+      if (w) w.style.padding = `${m.t / 10}px ${m.r / 10}px ${m.b / 10}px ${m.l / 10}px`;
+    } catch {}
   }
 
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';

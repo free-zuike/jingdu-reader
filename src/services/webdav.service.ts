@@ -727,6 +727,15 @@ export class WebDAVService {
           justify: g(/<boolean name="pTextJustified" value="([^"]+)"\s*\/?>/i) || undefined,
           bgImage: g(/<string name="pBackgroundImage">([^<]+)<\/string>/i) || undefined,
           useBgImage: g(/<boolean name="pUseBackgroundImage" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontBold: g(/<boolean name="pFontBold" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontItalic: g(/<boolean name="pFontItalic" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontUnderline: g(/<boolean name="pFontUnderline" value="([^"]+)"\s*\/?>/i) || undefined,
+          fontSpace: g(/<int name="pFontSpace" value="([^"]+)"\s*\/?>/i) || undefined,
+          paragraphSpace: g(/<int name="pParagraphSpace" value="([^"]+)"\s*\/?>/i) || undefined,
+          leftMargin: g(/<int name="pLeftMargin" value="([^"]+)"\s*\/?>/i) || undefined,
+          rightMargin: g(/<int name="pRightMargin" value="([^"]+)"\s*\/?>/i) || undefined,
+          topMargin: g(/<int name="pTopMargin2" value="([^"]+)"\s*\/?>/i) || undefined,
+          bottomMargin: g(/<int name="pBottomMargin2" value="([^"]+)"\s*\/?>/i) || undefined,
           fromBackup: relPath
         }
       };

@@ -209,6 +209,14 @@
 .reader-page.spacing-standard { --reader-line-height: 1.95; }
 .reader-page.spacing-loose { --reader-line-height: 2.4; }
 
+/* App 更多偏好：粗体/斜体/下划线/字间距/段间距 */
+.reader-page { --reader-letter-space: 0px; --reader-paragraph-space: 0.7em; }
+.reader-page.font-bold .book-text { font-weight: 700; }
+.reader-page.font-italic .book-text { font-style: italic; }
+.reader-page.font-underline .book-text { text-decoration: underline; }
+.book-text { letter-spacing: var(--reader-letter-space); }
+.book-text p { margin-bottom: var(--reader-paragraph-space); }
+
 /* 划线高亮与笔记浮层 */
 .book-text mark.hl {
   background: rgba(178, 58, 47, 0.16);
