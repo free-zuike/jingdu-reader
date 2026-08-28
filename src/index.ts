@@ -134,4 +134,7 @@ const worker: ExportedHandler<Env> = {
   }
 };
 
+// Durable Object 类（wrangler 按 class_name 实例化）
+export { ParseDO } from './parse.do';
+
 export default worker;

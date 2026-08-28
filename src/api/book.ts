@@ -441,7 +441,7 @@ book.get('/:id/files', authMiddleware, async (c) => {
   return c.json({ success: true, data: { files, cssContent } });
 });
 
-// 重新解析书籍内容（入队后由队列后台串行下载+解析；?sync=true 时同步执行，跳过队列）
+// 重新解析书籍内容（走 Durable Object 后台解析；?sync=true 时同步执行）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const bookId = c.req.param('id');
@@ -465,9 +465,17 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
     }
   }
 
-  // 异步模式：不清除旧缓存——队列处理时先下载再覆盖，避免解析期间缓存为空导致 503
-  await c.env.PARSE_QUEUE.send({ userId, bookId });
-  return c.json({ success: true, message: '重新解析任务已入队，完成后刷新即可' });
+  // 异步模式：交给 ParseDO（CPU 限制更宽裕），不清旧缓存，完成后刷新即可
+  const id = c.env.PARSE_DO.idFromName(bookId);
+  const stub = c.env.PARSE_DO.get(id);
+  c.executionCtx.waitUntil(
+    stub.fetch('https://parse-do/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, bookId })
+    }).catch(e => console.error('[ParseDO] 解析失败:', e))
+  );
+  return c.json({ success: true, message: '重新解析任务已提交，完成后刷新即可' });
 });
 
 // 诊断：查看一本书的 R2 缓存状态（是否存在、大小），排查 503/加载失败
