@@ -561,23 +561,24 @@ book.get('/:id/:resource{.*}', async (c) => {
   const bookId = c.req.param('id');
   const resourcePath = c.req.param('resource');
 
-  const db = new Database(c.env.DB);
-  const bookData = await db.getBookById(bookId);
-  if (!bookData) {
-    return c.json({ success: false, error: '书籍不存在' }, 404);
-  }
-
-  // R2 资源缓存（res/{bookId}/{path}）：先查缓存，命中直接返回（不读大 raw 文件）
+  // R2 资源缓存（res/{bookId}/{path}）：最先查，命中直接返回——不查库、不读大 raw，保证字体/图片快
   const resKey = `res/${bookId}/${resourcePath}`;
   try {
     const cachedObj = await c.env.BOOKS.get(resKey);
     if (cachedObj) {
       const cachedMime = cachedObj.httpMetadata?.contentType || guessMimeType(resourcePath);
+      const isFont = cachedMime === 'font/ttf' || cachedMime === 'font/otf' || cachedMime === 'font/woff' || cachedMime === 'font/woff2' || /\.(ttf|otf|woff2?)$/i.test(resourcePath);
       return new Response(cachedObj.body, {
-        headers: { 'Content-Type': cachedMime, 'Cache-Control': 'public, max-age=86400' }
+        headers: { 'Content-Type': cachedMime, 'Cache-Control': isFont ? 'public, max-age=31536000, immutable' : 'public, max-age=86400' }
       });
     }
   } catch {}
+
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
 
   // 缓存未命中：读取原始 EPUB 文件（R2）并提取
   const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
