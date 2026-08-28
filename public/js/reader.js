@@ -310,31 +310,41 @@ function renderTextContent() {
     if (!readerContent) return;
     if (file && bid) {
       const enc = file.split('/').map(encodeURIComponent).join('/');
-      // 背景铺满整个阅读页，完整显示整张图（100% 不裁剪），并去掉纸卡片框
-      readerContent.style.minHeight = '100vh';
-      readerContent.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
-      readerContent.style.backgroundSize = '100% 100%';
-      readerContent.style.backgroundPosition = 'center';
-      readerContent.style.backgroundRepeat = 'no-repeat';
+      // 固定高度阅读区：页面不滚动，背景图宽度=章节宽度、高度=满屏，文本在内部滚动
+      readerContent.style.height = '100vh';
+      readerContent.style.overflow = 'hidden';
+      readerContent.style.minHeight = '0';
+      readerContent.style.padding = '0';
       if (wrapper) {
+        wrapper.style.height = '100vh';
+        wrapper.style.overflowY = 'auto';
+        wrapper.style.margin = '0 auto';
+        wrapper.style.maxWidth = '43em';
         wrapper.style.background = 'transparent';
         wrapper.style.border = 'none';
         wrapper.style.boxShadow = 'none';
-        wrapper.style.maxWidth = 'none';
-        wrapper.style.minHeight = '100vh';
+        wrapper.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
+        wrapper.style.backgroundSize = '100% 100%';
+        wrapper.style.backgroundPosition = 'center';
+        wrapper.style.backgroundRepeat = 'no-repeat';
       }
     } else {
+      readerContent.style.height = '';
+      readerContent.style.overflow = '';
       readerContent.style.minHeight = '';
-      readerContent.style.backgroundImage = 'none';
-      readerContent.style.backgroundSize = '';
-      readerContent.style.backgroundPosition = '';
-      readerContent.style.backgroundRepeat = '';
+      readerContent.style.padding = '';
       if (wrapper) {
+        wrapper.style.height = '';
+        wrapper.style.overflowY = '';
+        wrapper.style.margin = '';
+        wrapper.style.maxWidth = '';
         wrapper.style.background = '';
         wrapper.style.border = '';
         wrapper.style.boxShadow = '';
-        wrapper.style.maxWidth = '';
-        wrapper.style.minHeight = '';
+        wrapper.style.backgroundImage = 'none';
+        wrapper.style.backgroundSize = '';
+        wrapper.style.backgroundPosition = '';
+        wrapper.style.backgroundRepeat = '';
       }
     }
   };
