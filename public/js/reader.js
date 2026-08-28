@@ -78,9 +78,9 @@ async function initTextReader(bookId) {
 
     document.getElementById('prevBtn').addEventListener('click', handlePrev);
     document.getElementById('nextBtn').addEventListener('click', handleNext);
-    // 滚动实际发生在 window（.reader-content 是 min-height:100vh + overflow-y:auto，
-    // 内容变长时它随内容增长，滚动不回巢自身），监听 window 才能捕获
-    window.addEventListener('scroll', throttle(() => {
+    // 文本在 .content-wrapper 内部滚动（页面固定不滚动），监听 wrapper 捕获进度
+    const scroller = document.querySelector('.content-wrapper') || window;
+    scroller.addEventListener('scroll', throttle(() => {
       updateProgressBar();
       debounceSaveProgress();
     }, 1000), { passive: true });
@@ -205,12 +205,17 @@ let moonMarks = [];             // Moon+ .an 标注（含 type/colorHex）
 let currentBookFileName = '';   // webdav 文件名（匹配 .an）
 let currentBookTitle = '';
 
+// 文本滚动容器（.content-wrapper 内部滚动）
+function getScroller() {
+  return document.querySelector('.content-wrapper') || document.documentElement;
+}
+
 // 上一页/下一页：翻页模式(page)先滚一屏，到底/到顶再切章
 function handlePrev() {
   if (pagingMode === 'page') {
-    const doc = document.documentElement;
-    if (window.scrollY > 0) {
-      window.scrollTo({ top: Math.max(0, window.scrollY - window.innerHeight), behavior: 'auto' });
+    const sc = getScroller();
+    if (sc.scrollTop > 0) {
+      sc.scrollTop = Math.max(0, sc.scrollTop - sc.clientHeight);
     } else {
       prevChapter();
     }
@@ -220,10 +225,10 @@ function handlePrev() {
 }
 function handleNext() {
   if (pagingMode === 'page') {
-    const doc = document.documentElement;
-    const max = doc.scrollHeight - window.innerHeight;
-    if (window.scrollY < max - 10) {
-      window.scrollTo({ top: window.scrollY + window.innerHeight, behavior: 'auto' });
+    const sc = getScroller();
+    const max = sc.scrollHeight - sc.clientHeight;
+    if (sc.scrollTop < max - 10) {
+      sc.scrollTop = sc.scrollTop + sc.clientHeight;
     } else {
       nextChapter();
     }
@@ -272,7 +277,7 @@ async function loadChapter(index) {
 function jumpToChapter(index) {
   loadChapter(index);
   closeToc();
-  window.scrollTo(0, 0);
+  getScroller().scrollTop = 0;
   keepChromeVisible();
   debounceSaveProgress();
 }
@@ -280,7 +285,7 @@ function jumpToChapter(index) {
 function prevChapter() {
   if (currentChapterIndex > 0) {
     loadChapter(currentChapterIndex - 1);
-    window.scrollTo(0, 0);
+    getScroller().scrollTop = 0;
     keepChromeVisible();
     debounceSaveProgress();
   }
@@ -289,7 +294,7 @@ function prevChapter() {
 function nextChapter() {
   if (currentChapterIndex < chapters.length - 1) {
     loadChapter(currentChapterIndex + 1);
-    window.scrollTo(0, 0);
+    getScroller().scrollTop = 0;
     keepChromeVisible();
     debounceSaveProgress();
   }
@@ -305,42 +310,31 @@ function keepChromeVisible() {
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
   const wrapper = document.querySelector('.content-wrapper');
-  const setBg = (file, bid) => {
-    const readerContent = document.getElementById('readerContent');
-    if (!readerContent) return;
-    if (file && bid) {
-      const enc = file.split('/').map(encodeURIComponent).join('/');
-      // 固定高度阅读区：页面不滚动，背景图宽度=章节宽度、高度=满屏，文本在内部滚动
+  const applyLayout = (file, bid) => {
+    // 固定高度阅读区：页面不滚动、文本内部滚动——所有章节都应用
+    if (readerContent) {
       readerContent.style.height = '100vh';
       readerContent.style.overflow = 'hidden';
       readerContent.style.minHeight = '0';
       readerContent.style.padding = '0';
-      if (wrapper) {
-        wrapper.style.height = '100vh';
-        wrapper.style.overflowY = 'auto';
-        wrapper.style.margin = '0 auto';
-        wrapper.style.maxWidth = '43em';
-        wrapper.style.background = 'transparent';
-        wrapper.style.border = 'none';
-        wrapper.style.boxShadow = 'none';
+      readerContent.style.boxSizing = 'border-box';
+    }
+    if (wrapper) {
+      wrapper.style.height = '100vh';
+      wrapper.style.overflowY = 'auto';
+      wrapper.style.margin = '0 auto';
+      wrapper.style.maxWidth = '43em';
+      wrapper.style.boxSizing = 'border-box';
+      wrapper.style.background = 'transparent';
+      wrapper.style.border = 'none';
+      wrapper.style.boxShadow = 'none';
+      if (file && bid) {
+        const enc = file.split('/').map(encodeURIComponent).join('/');
         wrapper.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
         wrapper.style.backgroundSize = '100% 100%';
         wrapper.style.backgroundPosition = 'center';
         wrapper.style.backgroundRepeat = 'no-repeat';
-      }
-    } else {
-      readerContent.style.height = '';
-      readerContent.style.overflow = '';
-      readerContent.style.minHeight = '';
-      readerContent.style.padding = '';
-      if (wrapper) {
-        wrapper.style.height = '';
-        wrapper.style.overflowY = '';
-        wrapper.style.margin = '';
-        wrapper.style.maxWidth = '';
-        wrapper.style.background = '';
-        wrapper.style.border = '';
-        wrapper.style.boxShadow = '';
+      } else {
         wrapper.style.backgroundImage = 'none';
         wrapper.style.backgroundSize = '';
         wrapper.style.backgroundPosition = '';
@@ -349,16 +343,16 @@ function renderTextContent() {
     }
   };
   if (currentChapterHtml) {
-    // 章节 <body> class → EPUB 背景图（仅特殊页有背景；正文不设背景用阅读主题）
+    // 章节 <body> class → EPUB 背景图（仅特殊页有背景；正文用阅读主题）
     const bgMap = { zzsm: 'back0.jpg', qmp00: 'back2.jpg', qmp0: 'c1.jpg', qmp1: 'c2.jpg', qmp3: 'c3.jpg', qmp4: 'c4.jpg', qmp5: 'c5.jpg', qmp6: 'c6.jpg' };
     const bodyMatch = currentChapterHtml.match(/<body([^>]*)>/i);
     const clsMatch = bodyMatch && bodyMatch[1].match(/class=["']([^"']+)["']/i);
     const epubBodyClass = clsMatch ? clsMatch[1] : '';
     const bgFile = bgMap[epubBodyClass];
-    setBg(bgFile, getBookId());
+    applyLayout(bgFile, getBookId());
     textContainer.innerHTML = htmlWithUrls(currentChapterHtml);
   } else {
-    setBg('', '');
+    applyLayout('', '');
     textContainer.innerHTML = formatText(currentChapterText);
   }
   updateNavButtons();
@@ -520,11 +514,11 @@ function updateProgressBar() {
   if (chapters.length > 0 && totalLength > 0) {
     progress = (chapters[currentChapterIndex].startIndex / totalLength) * 100;
   } else {
-    // 滚动发生在 window 上（.reader-content 随内容增长）
-    const doc = document.documentElement;
-    const max = doc.scrollHeight - window.innerHeight;
+    // 滚动发生在 .content-wrapper 内部
+    const sc = getScroller();
+    const max = sc.scrollHeight - sc.clientHeight;
     if (max > 0) {
-      progress = (window.scrollY / max) * 100;
+      progress = (sc.scrollTop / max) * 100;
     }
   }
   progress = Math.min(100, Math.max(0, progress));
