@@ -548,12 +548,57 @@ export class BookService {
       await this.r2Put(`book/${book.id}/text`, finalText);
       await this.r2Put(`book/${book.id}/chapters`, JSON.stringify({ chapters: chaptersMeta, totalLength }));
       await this.r2Put(`book/${book.id}/htmls`, JSON.stringify(htmls));
+      // 预缓存字体和 CSS 到 R2（res/{id}/路径），避免阅读时首次从 EPUB 解压加载慢
+      await this.precacheResources(book.id, fileData);
       // 删旧版格式（如有）
       await this.r2.delete(this.bookKey(book.id)).catch(() => {});
       await this.db.markBookSynced(book.id);
       console.log(`[Cache] EPUB 缓存完成: ${book.id}`);
     } catch (error) {
       console.error('[Cache] EPUB 解析失败:', error);
+    }
+  }
+
+  // 预缓存字体/CSS 到 R2（与资源路由的处理逻辑一致：字体 vhea 补丁、CSS file:// 改写）
+  private async precacheResources(bookId: string, fileData: ArrayBuffer): Promise<void> {
+    try {
+      const { parseZipEntries, readZipEntry } = await import('../utils/epub');
+      const entries = parseZipEntries(fileData);
+      for (const e of entries) {
+        if (!/\.(ttf|otf|woff|woff2|css)$/i.test(e.name)) continue;
+        try {
+          const bytes = await readZipEntry(fileData, e);
+          let data: Uint8Array = bytes;
+          if (/\.css$/i.test(e.name)) {
+            const text = new TextDecoder().decode(bytes);
+            const cleaned = text.replace(/url\(\s*["']?file:\/\/[^"')]+[\/\\]([^"')/\\]+)["']?\s*\)/gi, "url('$1')");
+            data = new TextEncoder().encode(cleaned);
+          } else {
+            const buf = new Uint8Array(bytes);
+            if (buf.length > 12) {
+              const numTables = (buf[4] << 8) | buf[5];
+              let pos = 12;
+              for (let i = 0; i < numTables && pos + 16 <= buf.length; i++) {
+                const tag = new TextDecoder().decode(buf.slice(pos, pos + 4));
+                const offset = (buf[pos + 8] << 24) | (buf[pos + 9] << 16) | (buf[pos + 10] << 8) | buf[pos + 11];
+                if (tag === 'vhea' && offset + 8 <= buf.length) {
+                  if (buf[offset] === 0x00 && buf[offset + 1] === 0x01 && buf[offset + 2] === 0x00 && buf[offset + 3] === 0x01) {
+                    buf[offset + 2] = 0x00;
+                    buf[offset + 3] = 0x00;
+                  }
+                  break;
+                }
+                pos += 16;
+              }
+            }
+            data = buf;
+          }
+          await this.r2Put(`res/${bookId}/${e.name}`, data);
+        } catch {}
+      }
+      console.log(`[Cache] 预缓存字体/CSS 完成: ${bookId}`);
+    } catch {
+      // 预缓存失败不影响主流程
     }
   }
 
