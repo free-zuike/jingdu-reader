@@ -567,6 +567,36 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ 书架排序偏好（books.sorts 的 shelf.options.shelf_sort_by）
+  async getMoonPlusShelfSort(userId: string): Promise<ApiResponse> {
+    try {
+      const result = await this.getMoonPlusDataFile(userId, 'books.sorts');
+      if (!result.success || !result.data) return { success: false, error: '读取 books.sorts 失败' };
+      const data = result.data as { isZip?: boolean; entries?: Record<string, string> };
+      if (!data.isZip || !data.entries) return { success: false, error: 'books.sorts 不是可解析 ZIP' };
+      const optionsRaw = data.entries['shelf.options'] || data.entries['shelf_options'] || '';
+      let shelfSortBy: number | undefined;
+      let manualSort: Record<string, number> = {};
+      if (optionsRaw && !optionsRaw.startsWith('(')) {
+        try {
+          const opts = JSON.parse(optionsRaw);
+          if (typeof opts.shelf_sort_by === 'number') shelfSortBy = opts.shelf_sort_by;
+        } catch {}
+      }
+      // shelf_sort_0_ 行格式: {filename}**{sortPos}
+      const sortRaw = data.entries['shelf_sort_0_'] || '';
+      if (sortRaw && !sortRaw.startsWith('(')) {
+        for (const line of sortRaw.split('\n')) {
+          const mm = line.trim().match(/^(.+)\*\*(\d+)$/);
+          if (mm) manualSort[mm[1]] = parseInt(mm[2], 10);
+        }
+      }
+      return { success: true, data: { shelfSortBy, manualSort, shelfOptions: optionsRaw.substring(0, 500) } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '读取书架排序失败' };
+    }
+  }
+
   // 读取并解析 Moon+ 标注文件（.an，zlib 压缩文本）——每条标注含划线/笔记
   async getMoonPlusAnnotations(userId: string, anFileName: string): Promise<ApiResponse> {
     try {

@@ -69,6 +69,15 @@ book.get('/moonplus/prefs-fields', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 读取 Moon+ 书架排序偏好（books.sorts 的 shelf.options.shelf_sort_by + 手动排序）
+book.get('/moonplus/shelf-sort', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.getMoonPlusShelfSort(userId);
+  return c.json(result);
+});
+
 // 获取书籍列表
 book.get('/', authMiddleware, async (c) => {
   const userId = c.get('userId');
