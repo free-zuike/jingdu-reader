@@ -516,9 +516,9 @@ book.get('/:id/cache-status', authMiddleware, async (c) => {
   }
   const info: Record<string, unknown> = { bookId, title: bookData.title, format: bookData.format, webdavPath: bookData.webdav_path };
   try {
-    const bookObj = await c.env.BOOKS.get(`book/${bookId}`);
+    const bookObj = await c.env.BOOKS.get(`book/${bookId}/chapters`);
     info.bookCached = !!bookObj;
-    if (bookObj) info.bookSize = (await bookObj.arrayBuffer()).byteLength;
+    if (bookObj) info.chaptersSize = (await bookObj.arrayBuffer()).byteLength;
   } catch (e: any) {
     info.bookError = e?.message || String(e);
   }
