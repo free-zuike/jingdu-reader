@@ -136,10 +136,11 @@ book.post('/sync', authMiddleware, async (c) => {
   const result = await bookService.syncBooks(userId, files, webdavService);
 
   // 后台预缓存所有书的 Moon+ 封面 + 同步元数据/最近阅读/书籍记录（不阻塞同步响应）
+  const cloudNames = files.map((f: any) => f.name);
   c.executionCtx.waitUntil(bookService.precacheMoonCovers(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonPlusMeta(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonRecentRead(userId, webdavService));
-  c.executionCtx.waitUntil(bookService.syncBooksFromMoonPlus(userId, webdavService));
+  c.executionCtx.waitUntil(bookService.syncBooksFromMoonPlus(userId, webdavService, cloudNames));
 
   return c.json({
     ...result,

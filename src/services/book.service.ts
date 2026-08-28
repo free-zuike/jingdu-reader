@@ -172,16 +172,22 @@ export class BookService {
 
   // 同步 Moon+ 书籍记录（books.sync 为记录本源）+ 标记云端可用性
   // books.sync 列出用户拥有的全部书；WebDAV 云端有文件→可读，无→标记未上传
-  async syncBooksFromMoonPlus(userId: string, webdavService: WebDAVService): Promise<void> {
+  // cloudFileNames 由调用方传入（同步接口已 listFiles 过），避免 waitUntil 内重复慢扫描
+  async syncBooksFromMoonPlus(userId: string, webdavService: WebDAVService, cloudFileNames?: string[]): Promise<void> {
     try {
       const metaMap = await webdavService.getMoonPlusBookMeta(userId);
       if (metaMap.size === 0) return;
       const config = await this.db.getWebDAVConfigByUserId(userId);
       const basePath = (config?.base_path || '/Apps/Books').replace(/\/$/, '');
-      // 云端实际文件集合
-      const cloudResult = await webdavService.listFiles(userId);
-      const cloudSet = new Set<string>();
-      for (const f of ((cloudResult.data as any)?.files || [])) cloudSet.add(f.name);
+      // 云端实际文件集合（优先用调用方传入，避免重复 PROPFIND）
+      let cloudSet: Set<string>;
+      if (cloudFileNames) {
+        cloudSet = new Set(cloudFileNames);
+      } else {
+        const cloudResult = await webdavService.listFiles(userId);
+        cloudSet = new Set<string>();
+        for (const f of ((cloudResult.data as any)?.files || [])) cloudSet.add(f.name);
+      }
       const { parseBookName } = await import('../services/webdav.service');
       const existing = await this.db.getBooksByUserId(userId);
       const existingByFile = new Map<string, Book>();
