@@ -304,8 +304,22 @@ function keepChromeVisible() {
 
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
-  const readerContent = document.getElementById('readerContent');
   const wrapper = document.querySelector('.content-wrapper');
+  const setBg = (file, bid) => {
+    if (!wrapper) return;
+    if (file && bid) {
+      const enc = file.split('/').map(encodeURIComponent).join('/');
+      wrapper.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
+      wrapper.style.backgroundSize = '100% 100%';
+      wrapper.style.backgroundPosition = 'center';
+      wrapper.style.backgroundRepeat = 'no-repeat';
+    } else {
+      wrapper.style.backgroundImage = 'none';
+      wrapper.style.backgroundSize = '';
+      wrapper.style.backgroundPosition = '';
+      wrapper.style.backgroundRepeat = '';
+    }
+  };
   if (currentChapterHtml) {
     // 章节 <body> class → EPUB 背景图（仅特殊页有背景；正文不设背景用阅读主题）
     const bgMap = { zzsm: 'back0.jpg', qmp00: 'back2.jpg', qmp0: 'c1.jpg', qmp1: 'c2.jpg', qmp3: 'c3.jpg', qmp4: 'c4.jpg', qmp5: 'c5.jpg', qmp6: 'c6.jpg' };
@@ -313,29 +327,10 @@ function renderTextContent() {
     const clsMatch = bodyMatch && bodyMatch[1].match(/class=["']([^"']+)["']/i);
     const epubBodyClass = clsMatch ? clsMatch[1] : '';
     const bgFile = bgMap[epubBodyClass];
-    const bid = getBookId();
-    if (bgFile && bid) {
-      const enc = bgFile.split('/').map(encodeURIComponent).join('/');
-      // 背景铺满整个阅读区，纸卡片变透明让图片透出
-      readerContent.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
-      readerContent.style.backgroundSize = 'cover';
-      readerContent.style.backgroundPosition = 'center';
-      readerContent.style.backgroundRepeat = 'no-repeat';
-      if (wrapper) { wrapper.style.background = 'transparent'; wrapper.style.border = 'none'; wrapper.style.boxShadow = 'none'; }
-    } else {
-      readerContent.style.backgroundImage = 'none';
-      readerContent.style.backgroundSize = '';
-      readerContent.style.backgroundPosition = '';
-      readerContent.style.backgroundRepeat = '';
-      if (wrapper) { wrapper.style.background = ''; wrapper.style.border = ''; wrapper.style.boxShadow = ''; }
-    }
+    setBg(bgFile, getBookId());
     textContainer.innerHTML = htmlWithUrls(currentChapterHtml);
   } else {
-    readerContent.style.backgroundImage = 'none';
-    readerContent.style.backgroundSize = '';
-    readerContent.style.backgroundPosition = '';
-    readerContent.style.backgroundRepeat = '';
-    if (wrapper) { wrapper.style.background = ''; wrapper.style.border = ''; wrapper.style.boxShadow = ''; }
+    setBg('', '');
     textContainer.innerHTML = formatText(currentChapterText);
   }
   updateNavButtons();
