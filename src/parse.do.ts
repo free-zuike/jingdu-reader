@@ -22,6 +22,8 @@ export class ParseDO {
       const webdav = new WebDAVService(db, this.env.ENCRYPTION_KEY);
       const bookService = new BookService(db, this.env.CACHE, this.env.BOOKS);
       await bookService.reparseBook(body.userId, body.bookId, webdav);
+      // 写解析完成标记，前端轮询到后自动刷新
+      await this.env.CACHE.put(`reparse:done:${body.bookId}`, new Date().toISOString(), { expirationTtl: 600 });
       return new Response(JSON.stringify({ success: true }), {
         headers: { 'Content-Type': 'application/json' }
       });

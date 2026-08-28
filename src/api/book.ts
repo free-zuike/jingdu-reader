@@ -478,6 +478,13 @@ book.post('/:id/reparse', authMiddleware, async (c) => {
   return c.json({ success: true, message: '重新解析任务已提交，完成后刷新即可' });
 });
 
+// 重新解析完成状态（前端轮询，完成后自动刷新）
+book.get('/:id/reparse-status', authMiddleware, async (c) => {
+  const bookId = c.req.param('id');
+  const done = await c.env.CACHE.get(`reparse:done:${bookId}`);
+  return c.json({ success: true, data: { done: !!done } });
+});
+
 // 诊断：查看一本书的 R2 缓存状态（是否存在、大小），排查 503/加载失败
 book.get('/:id/cache-status', authMiddleware, async (c) => {
   const userId = c.get('userId');

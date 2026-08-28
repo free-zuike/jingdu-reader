@@ -658,15 +658,33 @@ async function loadMoonPrefs() {
   }
 }
 
-// 重新解析本书（后台队列模式，立即返回不卡顿，解析完成后刷新）
+// 重新解析本书（后台 Durable Object 解析，完成后自动刷新）
 async function reparseCurrentBook() {
   if (!currentBookId) return;
-  if (!confirm('重新解析本书？将后台重新下载并解析，约1-2分钟后刷新页面即可看到新排版。')) return;
+  if (!confirm('重新解析本书？将在后台下载解析，完成后自动刷新页面。')) return;
   closeSettings();
   try {
     const r = await reparseBook(currentBookId);
-    if (!r.success) { showReaderToast('入队失败：' + (r.error || '')); return; }
-    showReaderToast('✅ 重新解析已入队，约1-2分钟后刷新页面');
+    if (!r.success) { showReaderToast('提交失败：' + (r.error || '')); return; }
+    showReaderToast('⏳ 正在解析，完成后自动刷新...');
+    // 轮询解析完成标记，完成后自动刷新
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries++;
+      try {
+        const st = await request(`/api/books/${currentBookId}/reparse-status`);
+        if (st && st.success && st.data && st.data.done) {
+          clearInterval(poll);
+          showReaderToast('✅ 解析完成，正在刷新...');
+          setTimeout(() => location.reload(), 1200);
+          return;
+        }
+      } catch (e) { /* 忽略单次轮询错误 */ }
+      if (tries > 80) { // 约 4 分钟超时
+        clearInterval(poll);
+        showReaderToast('解析超时，请稍后手动刷新');
+      }
+    }, 3000);
   } catch (e) {
     console.error('重新解析失败:', e);
     showReaderToast('重新解析失败');
