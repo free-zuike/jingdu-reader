@@ -227,6 +227,7 @@ export class WebDAVService {
     <D:getlastmodified/>
     <D:resourcetype/>
   </D:prop>
+  <D:limit><D:nresults>1000</D:nresults></D:limit>
 </D:propfind>`
       });
 
@@ -621,6 +622,7 @@ export class WebDAVService {
     <D:getlastmodified/>
     <D:resourcetype/>
   </D:prop>
+  <D:limit><D:nresults>1000</D:nresults></D:limit>
 </D:propfind>`
       });
       if (response.status !== 207) return { success: false, error: `PROPFIND 状态码: ${response.status}` };
