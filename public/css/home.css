@@ -289,6 +289,25 @@
   border: 1px solid var(--line);
 }
 
+/* 未上传到 WebDAV 的标记 */
+.cloud-missing-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 2px 8px;
+  font-size: 0.66rem;
+  color: #fff;
+  background: rgba(178, 58, 47, 0.88);
+  border-radius: 3px;
+}
+.book-card.cloud-missing { opacity: 0.82; }
+.book-card.cloud-missing .book-title::after {
+  content: '（未上传）';
+  font-size: 0.62rem;
+  color: var(--gold);
+  margin-left: 4px;
+}
+
 /* 删除钮（hover 出现） */
 .book-delete-btn {
   position: absolute;

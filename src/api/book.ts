@@ -135,10 +135,11 @@ book.post('/sync', authMiddleware, async (c) => {
   // 同步书籍（下载、解析、缓存），进度写入KV
   const result = await bookService.syncBooks(userId, files, webdavService);
 
-  // 后台预缓存所有书的 Moon+ 封面 + 同步 Moon+ 元数据 + 最近阅读时间（不阻塞同步响应）
+  // 后台预缓存所有书的 Moon+ 封面 + 同步元数据/最近阅读/书籍记录（不阻塞同步响应）
   c.executionCtx.waitUntil(bookService.precacheMoonCovers(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonPlusMeta(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonRecentRead(userId, webdavService));
+  c.executionCtx.waitUntil(bookService.syncBooksFromMoonPlus(userId, webdavService));
 
   return c.json({
     ...result,

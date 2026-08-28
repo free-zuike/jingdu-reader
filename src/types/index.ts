@@ -76,6 +76,7 @@ export interface Book {
   favorite?: number;
   series?: string;
   rate?: string;
+  cloud_available?: number; // 1=WebDAV 云端有文件可读，0=books.sync 有记录但未上传到云端
 }
 
 export interface BookListItem {
@@ -94,6 +95,7 @@ export interface BookListItem {
   dir?: string;
   readStatus?: 'unread' | 'reading' | 'read';
   fileName?: string; // webdav 文件名（匹配 Moon+ manualSort）
+  cloudAvailable?: boolean; // 云端是否有文件（false=未上传到 WebDAV）
 }
 
 export interface BookContent {

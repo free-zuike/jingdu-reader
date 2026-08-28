@@ -117,19 +117,6 @@ export class BookService {
         }
       }
 
-      // 清理幽灵书：file_size=0 且路径不在 WebDAV 实际扫描结果中（上次误用 books.sync 补导入产生的记录）
-      const scannedPaths = new Set(webdavFiles.map(f => f.path));
-      const allExisting = await this.db.getBooksByUserId(userId);
-      for (const b of allExisting) {
-        if (b.file_size === 0 && !scannedPaths.has(b.webdav_path)) {
-          await this.r2Delete(this.bookKey(b.id)).catch(() => {});
-          await this.r2Delete(this.rawKey(b.id)).catch(() => {});
-          await this.r2Delete(this.coverKey(b.id)).catch(() => {});
-          await this.cache.delete(`progress:${userId}:${b.id}`).catch(() => {});
-          await this.db.deleteBook(b.id);
-        }
-      }
-
       return {
         success: true,
         message: `同步完成，新增 ${added} 本书籍`,
@@ -180,6 +167,89 @@ export class BookService {
       }
     } catch {
       // 元数据同步失败不影响主流程
+    }
+  }
+
+  // 同步 Moon+ 书籍记录（books.sync 为记录本源）+ 标记云端可用性
+  // books.sync 列出用户拥有的全部书；WebDAV 云端有文件→可读，无→标记未上传
+  async syncBooksFromMoonPlus(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const metaMap = await webdavService.getMoonPlusBookMeta(userId);
+      if (metaMap.size === 0) return;
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      const basePath = (config?.base_path || '/Apps/Books').replace(/\/$/, '');
+      // 云端实际文件集合
+      const cloudResult = await webdavService.listFiles(userId);
+      const cloudSet = new Set<string>();
+      for (const f of ((cloudResult.data as any)?.files || [])) cloudSet.add(f.name);
+      const { parseBookName } = await import('../services/webdav.service');
+      const existing = await this.db.getBooksByUserId(userId);
+      const existingByFile = new Map<string, Book>();
+      for (const b of existing) existingByFile.set((b.webdav_path || '').split('/').pop() || '', b);
+
+      for (const [fileName, meta] of metaMap) {
+        const cloudAvailable = cloudSet.has(fileName);
+        const ext = (fileName.toLowerCase().split('.').pop() || 'epub');
+        const parsed = parseBookName(fileName);
+        const book = existingByFile.get(fileName);
+        if (book) {
+          // 已有：更新元数据 + 云端标记 + 书名纠正
+          await this.db.updateBookMoonMeta(book.id, meta);
+          await this.db.updateBookCloudAvailable(book.id, cloudAvailable);
+          const upd: { title?: string; author?: string } = {};
+          if (parsed.title && parsed.title !== book.title) upd.title = parsed.title;
+          if (parsed.author && parsed.author !== book.author) upd.author = parsed.author;
+          if (upd.title || upd.author) await this.db.updateBookMeta(book.id, upd);
+        } else {
+          // 新增记录（books.sync 本源）
+          const bookId = generateUUID();
+          const path = `${basePath}/${fileName}`;
+          await this.db.createBook({
+            id: bookId, user_id: userId, webdav_path: path,
+            title: parsed.title || fileName.replace(/\.[^.]+$/, ''),
+            author: parsed.author || '',
+            format: ext as Book['format'],
+            file_size: cloudAvailable ? 0 : 0,
+            cached_at: new Date().toISOString()
+          });
+          await this.db.updateBookCloudAvailable(bookId, cloudAvailable);
+          if (cloudAvailable) {
+            // 云端有文件：后台下载+缓存（解析惰性）
+            this.backgroundLoadBook(userId, bookId, webdavService, {
+              id: bookId, user_id: userId, webdav_path: path,
+              title: parsed.title || fileName, author: parsed.author || '',
+              format: ext as Book['format'], cached_at: new Date().toISOString()
+            }).catch(() => {});
+          }
+        }
+      }
+
+      // 云端有但 books.sync 没有的书，标记为可用（如网页侧手动加的）
+      for (const b of existing) {
+        const fn = (b.webdav_path || '').split('/').pop() || '';
+        if (!metaMap.has(fn) && cloudSet.has(fn)) await this.db.updateBookCloudAvailable(b.id, true);
+      }
+
+      // 按文件名去重：同文件名保留一个（优先云端可用/有文件大小），删多余的（历史幽灵重复）
+      const byFile = new Map<string, Book[]>();
+      for (const b of await this.db.getBooksByUserId(userId)) {
+        const fn = (b.webdav_path || '').split('/').pop() || '';
+        if (!byFile.has(fn)) byFile.set(fn, []);
+        byFile.get(fn)!.push(b);
+      }
+      for (const [fn, list] of byFile) {
+        if (list.length <= 1 || !fn) continue;
+        list.sort((a, b) => ((b.file_size || 0) - (a.file_size || 0)) || ((b.cloud_available || 0) - (a.cloud_available || 0)));
+        for (const dup of list.slice(1)) {
+          await this.r2Delete(this.bookKey(dup.id)).catch(() => {});
+          await this.r2Delete(this.rawKey(dup.id)).catch(() => {});
+          await this.r2Delete(this.coverKey(dup.id)).catch(() => {});
+          await this.cache.delete(`progress:${userId}:${dup.id}`).catch(() => {});
+          await this.db.deleteBook(dup.id);
+        }
+      }
+    } catch {
+      // 失败不影响主流程
     }
   }
 
@@ -376,7 +446,8 @@ export class BookService {
           dir,
           readStatus,
           cachedAt: book.cached_at,
-          fileName: (book.webdav_path || '').split('/').pop() || ''
+          fileName: (book.webdav_path || '').split('/').pop() || '',
+          cloudAvailable: book.cloud_available !== 0
         });
       }
 

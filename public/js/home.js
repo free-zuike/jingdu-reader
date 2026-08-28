@@ -281,8 +281,11 @@ async function loadBookCover(book, card) {
 // 创建书籍卡片
 function createBookCard(book, layout) {
   const card = document.createElement('div');
-  card.className = 'book-card';
-  card.onclick = () => { window.location.href = `/reader?id=${book.id}`; };
+  card.className = 'book-card' + (book.cloudAvailable === false ? ' cloud-missing' : '');
+  card.onclick = () => {
+    if (book.cloudAvailable === false) { showToast('云端无此文件（未上传到 WebDAV）', 'error'); return; }
+    window.location.href = `/reader?id=${book.id}`;
+  };
 
   const progress = book.progress || 0;
   const lastRead = book.lastReadAt ? formatDate(book.lastReadAt) : '';
@@ -291,6 +294,7 @@ function createBookCard(book, layout) {
     <div class="book-cover">
       <span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>
       <span class="book-format-badge">${book.format.toUpperCase()}</span>
+      ${book.cloudAvailable === false ? '<span class="cloud-missing-badge" title="未上传到WebDAV，云端无此文件">未上传</span>' : ''}
       <button class="book-delete-btn" data-book-id="${book.id}" title="删除">✕</button>
     </div>
     <div class="book-info">

@@ -172,12 +172,18 @@ export class Database {
       if (!names.has('favorite')) missing.push('favorite INTEGER DEFAULT 0');
       if (!names.has('series')) missing.push('series TEXT');
       if (!names.has('rate')) missing.push('rate TEXT');
+      if (!names.has('cloud_available')) missing.push('cloud_available INTEGER DEFAULT 0');
       for (const def of missing) {
         await this.db.prepare(`ALTER TABLE books ADD COLUMN ${def}`).run();
       }
     } catch {
       // 列可能已存在，忽略
     }
+  }
+
+  // 更新书籍云端可用标记（books.sync 有记录但 WebDAV 无文件 = 未上传）
+  async updateBookCloudAvailable(id: string, available: boolean): Promise<void> {
+    await this.db.prepare('UPDATE books SET cloud_available = ? WHERE id = ?').bind(available ? 1 : 0, id).run();
   }
 
   async getBooksByUserId(userId: string): Promise<Book[]> {
