@@ -210,6 +210,11 @@ async function getMoonAnnotations(anFileName) {
   return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`);
 }
 
+// 读取 Moon+ 书架排序偏好（books.sorts）
+async function getMoonShelfSort() {
+  return request('/api/books/moonplus/shelf-sort');
+}
+
 // 向 Moon+ .an 追加标注（网页→Moon+）
 async function addMoonAnnotation(anFileName, ann) {
   return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`, {

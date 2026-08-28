@@ -35,6 +35,21 @@ async function loadBooks() {
     console.error('加载书籍失败:', error);
     showToast('加载书籍失败', 'error');
   }
+
+  // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序）
+  try {
+    const ss = await getMoonShelfSort();
+    if (ss.success && ss.data && typeof ss.data.shelfSortBy === 'number') {
+      const map = { 0: 'title', 1: 'author', 2: 'import', 3: 'dir', 4: 'recent' };
+      const s = map[ss.data.shelfSortBy];
+      if (s && s !== currentSort) {
+        currentSort = s;
+        const sel = document.getElementById('sortSelect');
+        if (sel) sel.value = s;
+        renderShelf();
+      }
+    }
+  } catch (e) { /* 忽略同步失败 */ }
 }
 
 // 主渲染：应用分类/过滤/排序/布局
