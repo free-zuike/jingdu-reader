@@ -540,7 +540,19 @@ book.get('/:id/:resource{.*}', async (c) => {
     return c.json({ success: false, error: '书籍不存在' }, 404);
   }
 
-  // 获取原始 EPUB 文件（R2）
+  // R2 资源缓存（res/{bookId}/{path}）：先查缓存，命中直接返回（不读大 raw 文件）
+  const resKey = `res/${bookId}/${resourcePath}`;
+  try {
+    const cachedObj = await c.env.BOOKS.get(resKey);
+    if (cachedObj) {
+      const cachedMime = cachedObj.httpMetadata?.contentType || guessMimeType(resourcePath);
+      return new Response(cachedObj.body, {
+        headers: { 'Content-Type': cachedMime, 'Cache-Control': 'public, max-age=86400' }
+      });
+    }
+  } catch {}
+
+  // 缓存未命中：读取原始 EPUB 文件（R2）并提取
   const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
   const raw = rawObj ? await rawObj.arrayBuffer() : null;
   if (!raw) {
@@ -549,16 +561,6 @@ book.get('/:id/:resource{.*}', async (c) => {
 
   // 从 ZIP 中提取指定资源
   try {
-    // R2 资源缓存（res/{bookId}/{path}）：提取一次后直接读，避免每次解压导致字体/图片加载慢
-    const resKey = `res/${bookId}/${resourcePath}`;
-    const cachedObj = await c.env.BOOKS.get(resKey);
-    if (cachedObj) {
-      const cachedMime = cachedObj.httpMetadata?.contentType || guessMimeType(resourcePath);
-      return new Response(cachedObj.body, {
-        headers: { 'Content-Type': cachedMime, 'Cache-Control': 'public, max-age=86400' }
-      });
-    }
-
     const { extractEpubResource } = await import('../utils/epub');
     const result = await extractEpubResource(raw, resourcePath);
     if (!result) {
