@@ -170,6 +170,43 @@ export class BookService {
     }
   }
 
+  // 从 books.sync 发现所有书（含 Koofr PROPFIND 截断漏掉的书），缺失的补导入
+  async syncMissingBooksFromMoon(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const metaMap = await webdavService.getMoonPlusBookMeta(userId);
+      if (metaMap.size === 0) return;
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      const basePath = (config?.base_path || '/Apps/Books').replace(/\/$/, '');
+      const existing = await this.db.getBooksByUserId(userId);
+      const existingPaths = new Set(existing.map(b => b.webdav_path));
+      const { parseBookName } = await import('../services/webdav.service');
+      for (const [fileName] of metaMap) {
+        const path = `${basePath}/${fileName}`;
+        if (existingPaths.has(path)) continue;
+        const parsed = parseBookName(fileName);
+        const bookId = generateUUID();
+        await this.db.createBook({
+          id: bookId,
+          user_id: userId,
+          webdav_path: path,
+          title: parsed.title || fileName.replace(/\.[^.]+$/, ''),
+          author: parsed.author || '',
+          format: (fileName.toLowerCase().split('.').pop() || 'epub') as Book['format'],
+          file_size: 0,
+          cached_at: new Date().toISOString()
+        });
+        // 立即后台下载+缓存 raw/封面（解析在首次打开时惰性进行）
+        this.backgroundLoadBook(userId, bookId, webdavService, {
+          id: bookId, user_id: userId, webdav_path: path, title: parsed.title || fileName,
+          author: parsed.author || '', format: (fileName.toLowerCase().split('.').pop() || 'epub') as Book['format'],
+          cached_at: new Date().toISOString()
+        }).catch(() => {});
+      }
+    } catch {
+      // 补导入失败不影响主流程
+    }
+  }
+
   // 同步 Moon+ 最近阅读时间：把每本书 .po 文件的 lastModified 写入进度 KV 的 lastReadAt，
   // 使书架"最近阅读"排序与 App 一致（App 排序基于 .po 时间）
   async syncMoonRecentRead(userId: string, webdavService: WebDAVService): Promise<void> {
