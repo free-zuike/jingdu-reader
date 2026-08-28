@@ -178,6 +178,26 @@ book.get('/sync/status', authMiddleware, async (c) => {
   return c.json({ done: true, total: 0, processed: 0, current: '', errors: [] });
 });
 
+// 诊断：列出 WebDAV 书籍目录扫描到的所有书籍文件（对比 App 数量，排查少书）
+// 注意：必须定义在 /:id 之前，否则会被当成 id=scan-files
+book.get('/scan-files', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.listFiles(userId);
+  const dbBooks = await db.getBooksByUserId(userId);
+  const dbNames = dbBooks.map(b => (b.webdav_path || '').split('/').pop() || '');
+  return c.json({
+    success: true,
+    data: {
+      scanCount: (result.data as any)?.files?.length || 0,
+      scannedFiles: ((result.data as any)?.files || []).map((f: any) => f.path),
+      dbCount: dbBooks.length,
+      dbNames
+    }
+  });
+});
+
 // 获取书籍详情
 book.get('/:id', authMiddleware, async (c) => {
   const userId = c.get('userId');
@@ -480,25 +500,6 @@ book.get('/:id/files', authMiddleware, async (c) => {
     } catch {}
   }
   return c.json({ success: true, data: { files, cssContent } });
-});
-
-// 诊断：列出 WebDAV 书籍目录扫描到的所有书籍文件（对比 App 17 本，排查少书）
-book.get('/scan-files', authMiddleware, async (c) => {
-  const userId = c.get('userId');
-  const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const result = await webdavService.listFiles(userId);
-  const dbBooks = await db.getBooksByUserId(userId);
-  const dbNames = dbBooks.map(b => (b.webdav_path || '').split('/').pop() || '');
-  return c.json({
-    success: true,
-    data: {
-      scanCount: (result.data as any)?.files?.length || 0,
-      scannedFiles: ((result.data as any)?.files || []).map((f: any) => f.path),
-      dbCount: dbBooks.length,
-      dbNames
-    }
-  });
 });
 
 // 重新解析书籍内容（走 Durable Object 后台解析；?sync=true 时同步执行）
