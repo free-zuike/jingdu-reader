@@ -306,21 +306,36 @@ function renderTextContent() {
   const textContainer = document.getElementById('bookText');
   const wrapper = document.querySelector('.content-wrapper');
   const setBg = (file, bid) => {
-    if (!wrapper) return;
+    const readerContent = document.getElementById('readerContent');
+    if (!readerContent) return;
     if (file && bid) {
       const enc = file.split('/').map(encodeURIComponent).join('/');
-      // 背景铺满整个屏幕高度，图片按屏幕比例 cover 填充（不压扁）
-      wrapper.style.minHeight = '100vh';
-      wrapper.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
-      wrapper.style.backgroundSize = 'cover';
-      wrapper.style.backgroundPosition = 'center';
-      wrapper.style.backgroundRepeat = 'no-repeat';
+      // 背景铺满整个阅读页，完整显示整张图（100% 不裁剪），并去掉纸卡片框
+      readerContent.style.minHeight = '100vh';
+      readerContent.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
+      readerContent.style.backgroundSize = '100% 100%';
+      readerContent.style.backgroundPosition = 'center';
+      readerContent.style.backgroundRepeat = 'no-repeat';
+      if (wrapper) {
+        wrapper.style.background = 'transparent';
+        wrapper.style.border = 'none';
+        wrapper.style.boxShadow = 'none';
+        wrapper.style.maxWidth = 'none';
+        wrapper.style.minHeight = '100vh';
+      }
     } else {
-      wrapper.style.minHeight = '';
-      wrapper.style.backgroundImage = 'none';
-      wrapper.style.backgroundSize = '';
-      wrapper.style.backgroundPosition = '';
-      wrapper.style.backgroundRepeat = '';
+      readerContent.style.minHeight = '';
+      readerContent.style.backgroundImage = 'none';
+      readerContent.style.backgroundSize = '';
+      readerContent.style.backgroundPosition = '';
+      readerContent.style.backgroundRepeat = '';
+      if (wrapper) {
+        wrapper.style.background = '';
+        wrapper.style.border = '';
+        wrapper.style.boxShadow = '';
+        wrapper.style.maxWidth = '';
+        wrapper.style.minHeight = '';
+      }
     }
   };
   if (currentChapterHtml) {
