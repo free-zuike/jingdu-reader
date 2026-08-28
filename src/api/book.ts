@@ -529,6 +529,13 @@ book.get('/:id/cache-status', authMiddleware, async (c) => {
   } catch (e: any) {
     info.rawError = e?.message || String(e);
   }
+  // 检查字体/资源是否已预缓存到 R2（res/...），未缓存则首次加载字体慢
+  try {
+    const fontObj = await c.env.BOOKS.get(`res/${bookId}/OEBPS/Fonts/zdy1.ttf`);
+    info.fontResCached = !!fontObj;
+  } catch (e: any) {
+    info.fontResError = e?.message || String(e);
+  }
   return c.json({ success: true, data: info });
 });
 

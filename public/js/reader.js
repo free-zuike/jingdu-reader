@@ -1051,6 +1051,9 @@ function updateBookmarkBtn() {
   const has = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === currentChapterIndex) || moonBookmarkChapters.has(currentChapterIndex);
   const btn = document.getElementById('bookmarkBtn');
   if (btn) { btn.textContent = has ? '★' : '☆'; btn.classList.toggle('active', has); }
+  // 实体书签布条：当前章节有书签时挂出
+  const ribbon = document.getElementById('bookmarkRibbon');
+  if (ribbon) ribbon.classList.toggle('show', has);
 }
 
 // 选中文字后弹出划线菜单
