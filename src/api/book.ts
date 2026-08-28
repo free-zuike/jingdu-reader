@@ -198,6 +198,15 @@ book.get('/scan-files', authMiddleware, async (c) => {
   });
 });
 
+// 诊断：原始 PROPFIND 列出 base_path 所有条目（排查 Koofr 大目录截断导致少书）
+book.get('/webdav-ls', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.listRawEntries(userId);
+  return c.json(result);
+});
+
 // 获取书籍详情
 book.get('/:id', authMiddleware, async (c) => {
   const userId = c.get('userId');

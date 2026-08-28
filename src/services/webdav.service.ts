@@ -597,6 +597,52 @@ export class WebDAVService {
     }
   }
 
+  // 诊断：原始 PROPFIND 列出 base_path 下所有条目（含目录/非书籍），排查 Koofr 大目录截断
+  async listRawEntries(userId: string): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return { success: false, error: 'WebDAV配置不存在' };
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const fullUrl = `${config.server_url.replace(/\/$/, '')}/${basePath.replace(/^\//, '')}`;
+      const response = await fetch(fullUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/xml; charset=utf-8',
+          'Depth': '1',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:">
+  <D:prop>
+    <D:displayname/>
+    <D:getcontentlength/>
+    <D:getlastmodified/>
+    <D:resourcetype/>
+  </D:prop>
+</D:propfind>`
+      });
+      if (response.status !== 207) return { success: false, error: `PROPFIND 状态码: ${response.status}` };
+      const xmlText = await response.text();
+      const all = this.parseWebDAVResponse(xmlText, basePath);
+      return {
+        success: true,
+        data: {
+          rawTotal: all.length,
+          entries: all.map((f: any) => ({
+            name: f.name,
+            isDir: !!f.isDirectory,
+            size: f.size,
+            lastModified: f.lastModified
+          }))
+        }
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'PROPFIND 失败' };
+    }
+  }
+
   // 读取并解析 Moon+ 标注文件（.an，zlib 压缩文本）——每条标注含划线/笔记
   async getMoonPlusAnnotations(userId: string, anFileName: string): Promise<ApiResponse> {
     try {
