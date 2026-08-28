@@ -170,6 +170,8 @@
   text-align: justify;
   transition: font-size var(--t-norm);
 }
+/* App 设置两端对齐关闭时左对齐 */
+.reader-page.justify-off .book-text { text-align: left; }
 .book-text p {
   margin-bottom: 0.7em;
   text-indent: 2em;

@@ -626,6 +626,7 @@ async function loadMoonPrefs() {
       return;
     }
     const d = r.data;
+    const synced = [];
     // 字号映射：App pFontSize(sp) → 网页 small/medium/large
     let fs = 'medium';
     if (d.fontSize) {
@@ -634,6 +635,11 @@ async function loadMoonPrefs() {
       else if (n <= 21) fs = 'medium';
       else fs = 'large';
     }
+    document.body.classList.remove('font-small', 'font-medium', 'font-large');
+    document.body.classList.add(`font-${fs}`);
+    document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
+    localStorage.setItem('readerFontSize', fs);
+    synced.push('字号');
     // 行距映射：App pLineSpace(0-10 档) → 网页 tight/standard/loose
     let sp = 'standard';
     if (d.lineSpace) {
@@ -642,20 +648,45 @@ async function loadMoonPrefs() {
       else if (n <= 5) sp = 'standard';
       else sp = 'loose';
     }
-    document.body.classList.remove('font-small', 'font-medium', 'font-large');
-    document.body.classList.add(`font-${fs}`);
-    document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
     document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
     document.body.classList.add(`spacing-${sp}`);
     document.querySelectorAll('.spacing-btn').forEach(b => b.classList.toggle('active', b.dataset.spacing === sp));
-    localStorage.setItem('readerFontSize', fs);
     localStorage.setItem('readerLineHeight', sp);
+    synced.push('行距');
+    // 主题：由 App 背景色判断 深色/浅色/护眼
+    if (d.bgColor) {
+      const theme = themeFromBgColor(d.bgColor);
+      document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+      document.body.classList.add(`theme-${theme}`);
+      document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+      localStorage.setItem('readerTheme', theme);
+      synced.push('主题');
+    }
+    // 两端对齐：App pTextJustified(false) → 左对齐
+    if (d.justify !== undefined) {
+      document.body.classList.toggle('justify-off', d.justify === 'false' || d.justify === '0');
+      synced.push('两端对齐');
+    }
     savePrefs();
-    showReaderToast(`已同步 App 偏好：字号 ${fs}，行距 ${sp}`);
+    showReaderToast(`已同步：${synced.join('、')}`);
   } catch (e) {
     console.error('同步偏好失败:', e);
     showReaderToast('同步 App 偏好失败');
   }
+}
+
+// App 背景色(ARGB int) → 深色/浅色/护眼 主题
+function themeFromBgColor(argb) {
+  const n = Number(argb);
+  if (isNaN(n)) return 'light';
+  const hex = (n >>> 0).toString(16).padStart(8, '0');
+  const r = parseInt(hex.slice(2, 4), 16);
+  const g = parseInt(hex.slice(4, 6), 16);
+  const b = parseInt(hex.slice(6, 8), 16);
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  if (lum < 100) return 'dark';
+  if (r > 200 && g > 190 && b < 240 && r > b && (r - b) > 10 && g > b) return 'sepia';
+  return 'light';
 }
 
 // 重新解析本书（后台 Durable Object 解析，完成后自动刷新）
