@@ -162,6 +162,39 @@ export class BookService {
     }
   }
 
+  // 同步 Moon+ 最近阅读时间：把每本书 .po 文件的 lastModified 写入进度 KV 的 lastReadAt，
+  // 使书架"最近阅读"排序与 App 一致（App 排序基于 .po 时间）
+  async syncMoonRecentRead(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const cacheResult = await webdavService.listMoonPlusCache(userId);
+      const files = (cacheResult.success && Array.isArray((cacheResult.data as any)?.files)) ? (cacheResult.data as any).files : [];
+      if (!files.length) return;
+      const books = await this.db.getBooksByUserId(userId);
+      const bookByFile = new Map<string, Book>();
+      for (const b of books) bookByFile.set((b.webdav_path || '').split('/').pop() || '', b);
+      for (const f of files) {
+        // f.name 形如 "神秘复苏....epub.po"
+        const baseName = (f.name || '').replace(/\.po$/, '');
+        const book = bookByFile.get(baseName);
+        if (!book || !f.lastModified) continue;
+        const poTime = new Date(f.lastModified).getTime();
+        if (isNaN(poTime)) continue;
+        const progressKey = `progress:${userId}:${book.id}`;
+        const existing = await this.cache.get(progressKey).catch(() => null);
+        try {
+          const p = existing ? JSON.parse(existing) : { bookId: book.id, currentPosition: 0, totalLength: 0 };
+          const curTime = p.lastReadAt ? new Date(p.lastReadAt).getTime() : 0;
+          if (poTime > curTime) {
+            p.lastReadAt = new Date(poTime).toISOString();
+            await this.cache.put(progressKey, JSON.stringify(p), { expirationTtl: 365 * 24 * 60 * 60 });
+          }
+        } catch {}
+      }
+    } catch {
+      // 最近阅读同步失败不影响主流程
+    }
+  }
+
   // 按需下载并缓存单本书籍
   async downloadAndCacheBook(
     userId: string,
