@@ -541,7 +541,7 @@ export class BookService {
       const content = await extractEpubContent(fileData);
       // 新版存储：text 纯文本、chapters 元数据、htmls 独立数组——三者分开，避免 JSON.parse 大文本超时 503
       const htmls = content.chapters.map((c: any) => c.html || '');
-      const chaptersMeta = content.chapters.map((c: any) => ({ title: c.title, startIndex: c.startIndex, volume: c.volume }));
+      const chaptersMeta = content.chapters.map((c: any) => ({ title: c.title, startIndex: c.startIndex, volume: c.volume, isVolume: !!c.isVolume }));
       const totalLength = content.text.length;
       // text 以纯文本存（无需 JSON.parse 即可读）
       const finalText = totalLength > 10 * 1024 * 1024 ? content.text.substring(0, 10 * 1024 * 1024) : content.text;

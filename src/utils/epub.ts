@@ -519,7 +519,25 @@ export async function extractEpubContent(fileData: ArrayBuffer): Promise<EpubCon
       chapters.push({ title: '正文', startIndex: 0 });
     }
 
-    return { text, chapters };
+    // 插入卷名章节（App 里卷名占一章）：新一卷开始时插入，进度/阅读流程算作一章
+    const withVolumes: Array<{ title: string; startIndex: number; volume?: string; html?: string; isVolume?: boolean }> = [];
+    let prevVol: string | undefined;
+    for (const ch of chapters) {
+      if (ch.volume && ch.volume !== prevVol) {
+        const escTitle = ch.volume.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        withVolumes.push({
+          title: ch.volume,
+          startIndex: ch.startIndex,
+          volume: ch.volume,
+          isVolume: true,
+          html: `<div style="text-align:center;padding-top:40vh;"><h1 style="font-weight:normal;">${escTitle}</h1></div>`
+        });
+      }
+      withVolumes.push(ch);
+      if (ch.volume) prevVol = ch.volume;
+    }
+
+    return { text, chapters: withVolumes };
   } catch {
     return { text: '', chapters: [] };
   }

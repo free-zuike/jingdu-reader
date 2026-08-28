@@ -119,6 +119,7 @@ function renderToc() {
   const flat = [];
   for (let i = 0; i < chapters.length; i++) {
     const c = chapters[i];
+    if (c.isVolume) continue; // 卷名章节跳过，卷名行已代表
     if (!c.volume) { flat.push({ i, title: c.title }); }
     else {
       if (!volMap.has(c.volume)) volMap.set(c.volume, []);
