@@ -700,6 +700,38 @@ export class WebDAVService {
     }
   }
 
+  // 从 .an 删除一条标注（按 id，网页删除划线/笔记 → Moon+），重写后上传
+  async deleteMoonPlusAnnotation(userId: string, anFileName: string, id: string | number): Promise<ApiResponse> {
+    try {
+      const result = await this.getMoonPlusDataFile(userId, `Cache/${anFileName}`);
+      if (!result.success || !result.data) return { success: false, error: '读取 .an 失败' };
+      const data = result.data as { isZlib?: boolean; content?: string };
+      if (!data.isZlib) return { success: false, error: '.an 格式不可解析' };
+      const oldRaw = data.content || '';
+      const idStr = String(id);
+      const parts = oldRaw.split('\n#\n');
+      const header = parts[0];
+      const kept: string[] = [header];
+      let removed = false;
+      for (let i = 1; i < parts.length; i++) {
+        const firstLine = parts[i].split('\n')[0].trim();
+        if (firstLine === idStr) { removed = true; continue; }
+        kept.push(parts[i]);
+      }
+      if (!removed) return { success: false, error: '未找到该标注(id=' + idStr + ')' };
+      const newRaw = kept.join('\n#\n');
+      const payload = new TextEncoder().encode(newRaw);
+      const ds = new CompressionStream('deflate');
+      const stream = new Blob([payload]).stream().pipeThrough(ds);
+      const bytes = await new Response(stream).arrayBuffer();
+      const ok = await this.putMoonPlusCacheFile(userId, anFileName, bytes);
+      if (!ok) return { success: false, error: '上传 .an 失败' };
+      return { success: true, data: { removed: idStr } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '删除标注失败' };
+    }
+  }
+
   // 上传文件到 .Moon+/Cache/（PUT 二进制）
   private async putMoonPlusCacheFile(userId: string, anFileName: string, bytes: ArrayBuffer): Promise<boolean> {
     try {

@@ -19,6 +19,17 @@ book.post('/moonplus/annotations/:name', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 从 Moon+ .an 删除标注（网页删除划线/笔记 → Moon+）
+book.delete('/moonplus/annotations/:name/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const id = c.req.param('id');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.deleteMoonPlusAnnotation(userId, name, id);
+  return c.json(result);
+});
+
 // 向 Moon+ .an 追加书签（网页 ★ → Moon+）
 book.post('/moonplus/bookmarks/:name', authMiddleware, async (c) => {
   const userId = c.get('userId');

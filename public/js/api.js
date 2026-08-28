@@ -218,6 +218,13 @@ async function addMoonAnnotation(anFileName, ann) {
   });
 }
 
+// 从 Moon+ .an 删除标注（网页删除划线/笔记 → Moon+）
+async function deleteMoonAnnotation(anFileName, id) {
+  return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+}
+
 // 向 Moon+ .an 追加书签（网页★→Moon+）
 async function addMoonBookmark(anFileName, bm) {
   return request(`/api/books/moonplus/bookmarks/${encodeURIComponent(anFileName)}`, {

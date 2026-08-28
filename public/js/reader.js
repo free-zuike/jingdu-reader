@@ -1086,14 +1086,15 @@ function addHighlight(text, note) {
   window.getSelection()?.removeAllRanges();
   const idx = currentChapterText.indexOf(text);
   if (idx === -1) return;
+  const newId = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   marks.items.push({
-    id: 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: newId,
     type: 'highlight', chapterIndex: currentChapterIndex,
     start: idx, end: idx + text.length, text, note, created: Date.now()
   });
   renderTextContent();
   persistMarks();
-  // 同步到 Moon+ .an（默认下划线·红，含笔记）
+  // 同步到 Moon+ .an（默认下划线·红，含笔记），并记录返回的 Moon+ 标注 id 供删除时同步
   if (currentBookFileName) {
     addMoonAnnotation(currentBookFileName + '.an', {
       bookName: currentBookTitle,
@@ -1102,6 +1103,11 @@ function addHighlight(text, note) {
       type: 'underline',
       pos: idx,
       note: note || ''
+    }).then(r => {
+      if (r && r.success && r.data && r.data.id) {
+        const mk = marks.items.find(x => x.id === newId);
+        if (mk) { mk.moonAnId = r.data.id; persistMarks(); }
+      }
     }).catch(() => {});
   }
 }
@@ -1147,6 +1153,11 @@ function showNoteTooltip(hlEl) {
       if (m) { m.note = document.getElementById('mtNoteInput').value || ''; persistMarks(); hideMarkTooltip(); }
     };
     document.getElementById('mtDelete').onclick = () => {
+      const m = marks.items.find(x => x.id === id);
+      // 同步删除到 Moon+ .an（若该划线是网页创建且记录了 Moon+ id）
+      if (m && m.moonAnId && currentBookFileName) {
+        deleteMoonAnnotation(currentBookFileName + '.an', m.moonAnId).catch(() => {});
+      }
       marks.items = marks.items.filter(x => x.id !== id);
       renderTextContent();
       persistMarks();
