@@ -218,6 +218,14 @@ async function addMoonAnnotation(anFileName, ann) {
   });
 }
 
+// 向 Moon+ .an 追加书签（网页★→Moon+）
+async function addMoonBookmark(anFileName, bm) {
+  return request(`/api/books/moonplus/bookmarks/${encodeURIComponent(anFileName)}`, {
+    method: 'POST',
+    body: JSON.stringify(bm)
+  });
+}
+
 async function fetchBookCover(bookId) {
   const token = getToken();
   const response = await fetch(`/api/books/${bookId}/cover`, {

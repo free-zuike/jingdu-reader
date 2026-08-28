@@ -644,13 +644,13 @@ export class WebDAVService {
         if (n > maxId) maxId = n;
       }
       const newId = maxId + 1;
-      const flagMap: Record<string, string> = { underline: '1 0 0', strike: '0 1 0', wave: '0 0 1', highlight: '0 0 0' };
+      const flagMap: Record<string, string> = { underline: '1\n0\n0', strike: '0\n1\n0', wave: '0\n0\n1', highlight: '0\n0\n0' };
       const bookFile = anFileName.replace(/\.an$/, '');
       const block =
         `#\n${newId}\n${ann.bookName || bookFile}\n` +
         `/sdcard/Download/MoonReader/Cloud/${bookFile}\n` +
         `/sdcard/download/moonreader/cloud/${bookFile.toLowerCase()}\n` +
-        `12\n0\n${ann.pos}\n${Math.max(1, ann.text.length)}\n${ann.colorArgb}\n${Date.now()}\n\n\n${ann.text}\n${ann.note ? ann.note + '\n' : ''}${flagMap[ann.type] || '0 0 0'}\n`;
+        `12\n0\n${ann.pos}\n${Math.max(1, ann.text.length)}\n${ann.colorArgb}\n${Date.now()}\n\n\n${ann.text}\n${ann.note ? ann.note + '\n' : ''}${flagMap[ann.type] || '0\n0\n0'}\n`;
       const newRaw = existed ? oldRaw + block : deviceHead + block;
       // 3. zlib 压缩（CompressionStream('deflate') = RFC1950 zlib，与 .an 头 789c 一致）
       const payload = new TextEncoder().encode(newRaw);
@@ -663,6 +663,40 @@ export class WebDAVService {
       return { success: true, data: { id: newId, file: anFileName } };
     } catch (e: any) {
       return { success: false, error: e?.message || '写入标注失败' };
+    }
+  }
+
+  // 向 .an 追加一条书签（网页 ★ → Moon+，格式与 Moon+ 原生书签一致）
+  async addMoonPlusBookmark(userId: string, anFileName: string, bm: { bookName: string; text: string }): Promise<ApiResponse> {
+    try {
+      const result = await this.getMoonPlusDataFile(userId, `Cache/${anFileName}`);
+      const existed = result.success && result.data && (result.data as { isZlib?: boolean; content?: string }).isZlib;
+      const oldRaw = existed ? (result.data as { content: string }).content : '';
+      const deviceHead = oldRaw ? oldRaw.split('\n#\n')[0] + '\n' : `1939689501\nindent:true\ntrim:true\n`;
+      let maxId = 0;
+      const idRe = /\n#\s*\n(\d+)\n/g;
+      let mm: RegExpExecArray | null;
+      while ((mm = idRe.exec(oldRaw)) !== null) {
+        const n = parseInt(mm[1], 10);
+        if (n > maxId) maxId = n;
+      }
+      const newId = maxId + 1;
+      const bookFile = anFileName.replace(/\.an$/, '');
+      const block =
+        `#\n${newId}\n${bm.bookName || bookFile}\n` +
+        `/sdcard/Download/MoonReader/Cloud/${bookFile}\n` +
+        `/sdcard/download/moonreader/cloud/${bookFile.toLowerCase()}\n` +
+        `8\n0\n1\n-65536\n1996532479\n${Date.now()}\n${bm.text}\n\n\n0\n0\n0\n`;
+      const newRaw = existed ? oldRaw + block : deviceHead + block;
+      const payload = new TextEncoder().encode(newRaw);
+      const ds = new CompressionStream('deflate');
+      const stream = new Blob([payload]).stream().pipeThrough(ds);
+      const bytes = await new Response(stream).arrayBuffer();
+      const ok = await this.putMoonPlusCacheFile(userId, anFileName, bytes);
+      if (!ok) return { success: false, error: '上传书签失败' };
+      return { success: true, data: { id: newId, file: anFileName } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '写入书签失败' };
     }
   }
 

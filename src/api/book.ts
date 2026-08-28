@@ -19,6 +19,17 @@ book.post('/moonplus/annotations/:name', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 向 Moon+ .an 追加书签（网页 ★ → Moon+）
+book.post('/moonplus/bookmarks/:name', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const body = await c.req.json();
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.addMoonPlusBookmark(userId, name, body);
+  return c.json(result);
+});
+
 // 读取 Moon+ 标注（.an 文件；参数为 Cache 下的文件名，如 xxx.epub.an）
 book.get('/moonplus/annotations/:name', authMiddleware, async (c) => {
   const userId = c.get('userId');

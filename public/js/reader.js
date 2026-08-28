@@ -34,6 +34,9 @@ async function initReader(bookId) {
   // 所有格式走纯文本模式
   await initTextReader(bookId);
 
+  // 章节加载完成后，从 moonMarks 识别书签（文本以 (X%) 开头）→ 映射到章节，TOC 显示 ★
+  detectMoonBookmarks();
+
   initEventListeners();
   loadSettings();
   renderBgPicker();
@@ -107,6 +110,22 @@ async function initTextReader(bookId) {
   }
 }
 
+// 从 moonMarks 识别 Moon+ 书签（文本以 (X%) 开头），映射到章节
+function detectMoonBookmarks() {
+  moonBookmarkChapters.clear();
+  if (!totalLength || !chapters.length) return;
+  for (const mk of (moonMarks || [])) {
+    const m = (mk.text || '').match(/^\((\d+(?:\.\d+)?)%\)/);
+    if (m) {
+      const pct = parseFloat(m[1]);
+      if (pct >= 0 && pct <= 100) {
+        const pos = totalLength * pct / 100;
+        moonBookmarkChapters.add(findChapter(pos));
+      }
+    }
+  }
+}
+
 // 渲染目录（按卷分组；每卷可单独点击展开/收起，全局按钮控制全部展开/收起）
 function renderToc() {
   const tocList = document.getElementById('tocList');
@@ -133,7 +152,7 @@ function renderToc() {
   }
   const item = (it, sub) => {
     const active = it.i === currentChapterIndex;
-    const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === it.i);
+    const bm = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === it.i) || moonBookmarkChapters.has(it.i);
     return `<div class="toc-item${active ? ' active' : ''}${sub ? ' toc-sub' : ''}" id="toc-${it.i}" onclick="jumpToChapter(${it.i})">${bm ? '<span class="toc-bm">★</span>' : ''}${escapeHtml(it.title)}${active ? '<span class="toc-check">✓</span>' : ''}</div>`;
   };
   for (const it of flat) html += item(it, false);
@@ -204,6 +223,7 @@ let currentLineHeight = 'standard';
 let pagingMode = 'scroll';      // 'scroll' 滚动 / 'page' 翻页（一屏一屏翻）
 let marks = { items: [] };      // 书签({type:'bookmark'}) / 划线({type:'highlight',start,end,text,note})
 let moonMarks = [];             // Moon+ .an 标注（含 type/colorHex）
+let moonBookmarkChapters = new Set(); // Moon+ .an 书签映射到的章节索引
 let currentBookFileName = '';   // webdav 文件名（匹配 .an）
 let currentBookTitle = '';
 
@@ -1011,6 +1031,16 @@ function toggleBookmark() {
       id: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       type: 'bookmark', chapterIndex: idx, note: '', created: Date.now()
     });
+    // 同步到 Moon+ .an 书签（格式：(X%) ￼  章节名 内容预览）
+    if (currentBookFileName && chapters[idx]) {
+      const pct = totalLength > 0 ? (chapters[idx].startIndex / totalLength * 100).toFixed(1) : '0.0';
+      const title = chapters[idx].title || '';
+      const preview = (currentChapterText || title).replace(/\s+/g, ' ').trim().substring(0, 80);
+      addMoonBookmark(currentBookFileName + '.an', {
+        bookName: currentBookTitle,
+        text: `(${pct}%) ￼  ${title}  ${preview}`
+      }).catch(() => {});
+    }
   }
   updateBookmarkBtn();
   renderToc(); // 更新目录书签标记
@@ -1018,7 +1048,7 @@ function toggleBookmark() {
 }
 
 function updateBookmarkBtn() {
-  const has = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === currentChapterIndex);
+  const has = marks.items.some(m => m.type === 'bookmark' && m.chapterIndex === currentChapterIndex) || moonBookmarkChapters.has(currentChapterIndex);
   const btn = document.getElementById('bookmarkBtn');
   if (btn) { btn.textContent = has ? '★' : '☆'; btn.classList.toggle('active', has); }
 }
