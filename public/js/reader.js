@@ -1006,14 +1006,15 @@ function addHighlight(text, note) {
   });
   renderTextContent();
   persistMarks();
-  // 同步到 Moon+ .an（默认下划线·红）
+  // 同步到 Moon+ .an（默认下划线·红，含笔记）
   if (currentBookFileName) {
     addMoonAnnotation(currentBookFileName + '.an', {
       bookName: currentBookTitle,
       text: text.substring(0, 100),
       colorArgb: -65536,
       type: 'underline',
-      pos: idx
+      pos: idx,
+      note: note || ''
     }).catch(() => {});
   }
 }

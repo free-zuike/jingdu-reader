@@ -627,7 +627,7 @@ export class WebDAVService {
 
   // 向 .an 追加一条标注（网页→Moon+）并上传（zlib 压缩）
   async addMoonPlusAnnotation(userId: string, anFileName: string, ann: {
-    bookName: string; text: string; colorArgb: number; type: 'underline' | 'strike' | 'wave' | 'highlight'; pos: number;
+    bookName: string; text: string; colorArgb: number; type: 'underline' | 'strike' | 'wave' | 'highlight'; pos: number; note?: string;
   }): Promise<ApiResponse> {
     try {
       // 1. 读旧 .an
@@ -650,7 +650,7 @@ export class WebDAVService {
         `#\n${newId}\n${ann.bookName || bookFile}\n` +
         `/sdcard/Download/MoonReader/Cloud/${bookFile}\n` +
         `/sdcard/download/moonreader/cloud/${bookFile.toLowerCase()}\n` +
-        `12\n0\n${ann.pos}\n${Math.max(1, ann.text.length)}\n${ann.colorArgb}\n${Date.now()}\n\n\n${ann.text}\n${flagMap[ann.type] || '0 0 0'}\n`;
+        `12\n0\n${ann.pos}\n${Math.max(1, ann.text.length)}\n${ann.colorArgb}\n${Date.now()}\n\n\n${ann.text}\n${ann.note ? ann.note + '\n' : ''}${flagMap[ann.type] || '0 0 0'}\n`;
       const newRaw = existed ? oldRaw + block : deviceHead + block;
       // 3. zlib 压缩（CompressionStream('deflate') = RFC1950 zlib，与 .an 头 789c 一致）
       const payload = new TextEncoder().encode(newRaw);
@@ -732,6 +732,37 @@ export class WebDAVService {
       };
     } catch (e: any) {
       return { success: false, error: e?.message || '读取偏好失败' };
+    }
+  }
+
+  // 诊断：dump 阅读偏好 .tag 的所有字段（翻页方式等更多字段解析用）
+  async dumpMoonPlusPrefsFields(userId: string): Promise<ApiResponse> {
+    try {
+      const struct = await this.listMoonPlusStructure(userId);
+      const files = (struct.success && Array.isArray(struct.data)) ? struct.data as any[] : [];
+      const backups = files.filter(f => !f.isDirectory && f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
+      backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+      const target = backups[0];
+      if (!target) return { success: false, error: '没有找到备份文件' };
+      const relPath = target.path.includes('/.Moon+/') ? target.path.split('/.Moon+/')[1] : target.name;
+      const fileResult = await this.getMoonPlusDataFile(userId, relPath);
+      if (!fileResult.success || !fileResult.data) return { success: false, error: '读取备份失败' };
+      const data = fileResult.data as { entries?: Record<string, string> };
+      if (!data.entries) return { success: false, error: '备份不是可解析格式' };
+      let tagXml = '';
+      for (const [name, content] of Object.entries(data.entries)) {
+        if (name.endsWith('.tag') && content.includes('pFontSize')) { tagXml = content; break; }
+      }
+      if (!tagXml) return { success: false, error: '未找到 .tag' };
+      const fields: Record<string, string> = {};
+      const re = /<(?:float|int|boolean|string)\s+name="([^"]+)"\s+value="([^"]*)"\s*\/?>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(tagXml)) !== null) fields[m[1]] = m[2];
+      const strRe = /<string\s+name="([^"]+)">([^<]*)<\/string>/gi;
+      while ((m = strRe.exec(tagXml)) !== null) fields[m[1]] = m[2];
+      return { success: true, data: fields };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '读取偏好字段失败' };
     }
   }
 

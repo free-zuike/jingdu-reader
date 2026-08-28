@@ -38,6 +38,15 @@ book.get('/moonplus/preferences', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：dump 阅读偏好 .tag 所有字段（翻页方式等）
+book.get('/moonplus/prefs-fields', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.dumpMoonPlusPrefsFields(userId);
+  return c.json(result);
+});
+
 // 获取书籍列表
 book.get('/', authMiddleware, async (c) => {
   const userId = c.get('userId');
