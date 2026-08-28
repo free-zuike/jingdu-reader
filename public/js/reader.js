@@ -1025,12 +1025,17 @@ function toggleBookmark() {
   const idx = currentChapterIndex;
   const existing = marks.items.find(m => m.type === 'bookmark' && m.chapterIndex === idx);
   if (existing) {
+    // 同步删除到 Moon+ .an（若该书签是网页创建且记录了 Moon+ id）
+    if (existing.moonAnId && currentBookFileName) {
+      deleteMoonAnnotation(currentBookFileName + '.an', existing.moonAnId).catch(() => {});
+    }
     marks.items = marks.items.filter(m => m !== existing);
   } else {
-    marks.items.push({
-      id: 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      type: 'bookmark', chapterIndex: idx, note: '', created: Date.now()
-    });
+    const newId = 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const newMark = {
+      id: newId, type: 'bookmark', chapterIndex: idx, note: '', created: Date.now()
+    };
+    marks.items.push(newMark);
     // 同步到 Moon+ .an 书签（格式：(X%) ￼  章节名 内容预览）
     if (currentBookFileName && chapters[idx]) {
       const pct = totalLength > 0 ? (chapters[idx].startIndex / totalLength * 100).toFixed(1) : '0.0';
@@ -1039,6 +1044,11 @@ function toggleBookmark() {
       addMoonBookmark(currentBookFileName + '.an', {
         bookName: currentBookTitle,
         text: `(${pct}%) ￼  ${title}  ${preview}`
+      }).then(r => {
+        if (r && r.success && r.data && r.data.id) {
+          newMark.moonAnId = r.data.id;
+          persistMarks();
+        }
       }).catch(() => {});
     }
   }
