@@ -93,6 +93,7 @@ export interface BookListItem {
   cachedAt?: string;
   dir?: string;
   readStatus?: 'unread' | 'reading' | 'read';
+  fileName?: string; // webdav 文件名（匹配 Moon+ manualSort）
 }
 
 export interface BookContent {

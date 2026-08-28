@@ -134,6 +134,11 @@
       const user = getCurrentUser();
       document.getElementById('userEmail').textContent = user.email;
       
+      // 恢复布局偏好（列表/网格/单本）
+      const savedLayout = localStorage.getItem('shelfLayout') || 'grid';
+      currentLayout = savedLayout;
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === savedLayout));
+      
       // 加载书籍列表
       loadBooks();
       
@@ -187,6 +192,7 @@
           document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           currentLayout = btn.dataset.view;
+          localStorage.setItem('shelfLayout', currentLayout);
           singleIndex = 0;
           renderShelf();
         });

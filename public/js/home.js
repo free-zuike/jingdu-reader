@@ -11,6 +11,7 @@ let currentSort = 'recent';    // recent/title/author/import/dir
 let currentLayout = 'grid';    // grid/list/single
 let searchQuery = '';
 let singleIndex = 0;           // 单本布局当前索引
+let moonManualSort = {};       // Moon+ 手动排序位置 {fileName: pos}
 
 // 加载书籍列表
 async function loadBooks() {
@@ -36,18 +37,23 @@ async function loadBooks() {
     showToast('加载书籍失败', 'error');
   }
 
-  // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序）
+  // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序 + 手动排序位置）
   try {
     const ss = await getMoonShelfSort();
-    if (ss.success && ss.data && typeof ss.data.shelfSortBy === 'number') {
-      const map = { 0: 'title', 1: 'author', 2: 'import', 3: 'dir', 4: 'recent' };
-      const s = map[ss.data.shelfSortBy];
-      if (s && s !== currentSort) {
-        currentSort = s;
-        const sel = document.getElementById('sortSelect');
-        if (sel) sel.value = s;
-        renderShelf();
+    if (ss.success && ss.data) {
+      if (typeof ss.data.shelfSortBy === 'number') {
+        const map = { 0: 'title', 1: 'author', 2: 'import', 3: 'dir', 4: 'recent' };
+        const s = map[ss.data.shelfSortBy];
+        if (s && s !== currentSort) {
+          currentSort = s;
+          const sel = document.getElementById('sortSelect');
+          if (sel) sel.value = s;
+        }
       }
+      if (ss.data.manualSort && typeof ss.data.manualSort === 'object') {
+        moonManualSort = ss.data.manualSort;
+      }
+      renderShelf();
     }
   } catch (e) { /* 忽略同步失败 */ }
 }
@@ -106,24 +112,36 @@ function renderShelf() {
   }
 }
 
-// 排序
+// 排序（Moon+ 手动排序位置优先，其余按 currentSort）
 function sortBooks(books) {
   const arr = [...books];
+  const manualKeys = Object.keys(moonManualSort || {});
+  if (manualKeys.length > 0) {
+    const manual = arr.filter(b => b.fileName && b.fileName in moonManualSort)
+      .sort((a, b) => moonManualSort[a.fileName] - moonManualSort[b.fileName]);
+    const rest = arr.filter(b => !b.fileName || !(b.fileName in moonManualSort));
+    return [...manual, ...sortByKey(rest)];
+  }
+  return sortByKey(arr);
+}
+
+function sortByKey(arr) {
+  const out = [...arr];
   switch (currentSort) {
-    case 'title': arr.sort((a, b) => a.title.localeCompare(b.title, 'zh')); break;
-    case 'author': arr.sort((a, b) => (a.author || '').localeCompare(b.author || '', 'zh') || a.title.localeCompare(b.title, 'zh')); break;
-    case 'import': arr.sort((a, b) => (b.cachedAt || '').localeCompare(a.cachedAt || '')); break;
-    case 'dir': arr.sort((a, b) => (a.dir || '').localeCompare(b.dir || '', 'zh')); break;
+    case 'title': out.sort((a, b) => a.title.localeCompare(b.title, 'zh')); break;
+    case 'author': out.sort((a, b) => (a.author || '').localeCompare(b.author || '', 'zh') || a.title.localeCompare(b.title, 'zh')); break;
+    case 'import': out.sort((a, b) => (b.cachedAt || '').localeCompare(a.cachedAt || '')); break;
+    case 'dir': out.sort((a, b) => (a.dir || '').localeCompare(b.dir || '', 'zh')); break;
     case 'recent':
     default:
-      arr.sort((a, b) => {
+      out.sort((a, b) => {
         if (!a.lastReadAt && !b.lastReadAt) return 0;
         if (!a.lastReadAt) return 1;
         if (!b.lastReadAt) return -1;
         return new Date(b.lastReadAt).getTime() - new Date(a.lastReadAt).getTime();
       });
   }
-  return arr;
+  return out;
 }
 
 // 星星显示

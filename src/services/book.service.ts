@@ -312,7 +312,8 @@ export class BookService {
           rate: book.rate || '',
           dir,
           readStatus,
-          cachedAt: book.cached_at
+          cachedAt: book.cached_at,
+          fileName: (book.webdav_path || '').split('/').pop() || ''
         });
       }
 
