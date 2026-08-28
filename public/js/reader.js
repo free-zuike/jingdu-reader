@@ -665,6 +665,15 @@ async function loadMoonPrefs() {
         synced.push('行距');
       }
     }
+    // 字体：App pFontName → 正文字体（覆盖 --font-serif，含系统字体回退）
+    if (d.fontName) {
+      const name = d.fontName.trim();
+      if (name) {
+        document.body.style.setProperty('--font-serif', `'${name}', 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
+        localStorage.setItem('readerCustomFont', name);
+        synced.push('字体');
+      }
+    }
     // 主题：直接应用 App 背景色/字色（不再映射三档），并持久化以便刷新后保留
     const bg = d.bgColor ? argbToCss(d.bgColor) : null;
     const fg = d.fontColor ? argbToCss(d.fontColor) : null;
@@ -782,6 +791,12 @@ function normalizeLineHeight(v) {
 function loadSettings() {
   const savedFontSize = normalizeFontSize(localStorage.getItem('readerFontSize') || '1.1');
   applyFontSize(savedFontSize);
+
+  // 重新应用 App 同步的字体
+  const customFont = localStorage.getItem('readerCustomFont');
+  if (customFont) {
+    document.body.style.setProperty('--font-serif', `'${customFont}', 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
+  }
 
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';
   // 自定义主题（App 同步的颜色）重新应用
