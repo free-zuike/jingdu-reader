@@ -309,11 +309,14 @@ function renderTextContent() {
     if (!wrapper) return;
     if (file && bid) {
       const enc = file.split('/').map(encodeURIComponent).join('/');
+      // 背景铺满整个屏幕高度，图片按屏幕比例 cover 填充（不压扁）
+      wrapper.style.minHeight = '100vh';
       wrapper.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
-      wrapper.style.backgroundSize = '100% 100%';
+      wrapper.style.backgroundSize = 'cover';
       wrapper.style.backgroundPosition = 'center';
       wrapper.style.backgroundRepeat = 'no-repeat';
     } else {
+      wrapper.style.minHeight = '';
       wrapper.style.backgroundImage = 'none';
       wrapper.style.backgroundSize = '';
       wrapper.style.backgroundPosition = '';

@@ -534,6 +534,16 @@ book.get('/:id/:resource{.*}', async (c) => {
 
   // 从 ZIP 中提取指定资源
   try {
+    // R2 资源缓存（res/{bookId}/{path}）：提取一次后直接读，避免每次解压导致字体/图片加载慢
+    const resKey = `res/${bookId}/${resourcePath}`;
+    const cachedObj = await c.env.BOOKS.get(resKey);
+    if (cachedObj) {
+      const cachedMime = cachedObj.httpMetadata?.contentType || guessMimeType(resourcePath);
+      return new Response(cachedObj.body, {
+        headers: { 'Content-Type': cachedMime, 'Cache-Control': 'public, max-age=86400' }
+      });
+    }
+
     const { extractEpubResource } = await import('../utils/epub');
     const result = await extractEpubResource(raw, resourcePath);
     if (!result) {
@@ -573,9 +583,10 @@ book.get('/:id/:resource{.*}', async (c) => {
       }
       data = buf;
     }
-    const cacheControl = mime === 'text/css' ? 'no-cache, no-store' : 'public, max-age=86400';
+    // 缓存修复后的资源到 R2，后续请求快速读取
+    c.executionCtx.waitUntil(c.env.BOOKS.put(resKey, data, { httpMetadata: { contentType: mime } }));
     return new Response(data, {
-      headers: { 'Content-Type': mime, 'Cache-Control': cacheControl }
+      headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
     });
   } catch {
     return c.json({ success: false, error: '资源读取失败' }, 500);
