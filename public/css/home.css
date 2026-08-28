@@ -292,13 +292,20 @@
 /* 未上传到 WebDAV 的标记 */
 .cloud-missing-badge {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
-  padding: 2px 8px;
-  font-size: 0.66rem;
+  bottom: 6px;
+  left: 6px;
+  padding: 1px 5px;
+  font-size: 0.6rem;
+  line-height: 1.3;
   color: #fff;
   background: rgba(178, 58, 47, 0.88);
   border-radius: 3px;
+  white-space: nowrap;
+}
+.missing-inline {
+  font-size: 0.62rem;
+  color: var(--gold);
+  margin-left: 4px;
 }
 .book-card.cloud-missing { opacity: 0.82; }
 .book-card.cloud-missing .book-title::after {
@@ -307,6 +314,9 @@
   color: var(--gold);
   margin-left: 4px;
 }
+/* 列表视图封面很小，隐藏角标（书名后缀已标识） */
+.books-list .cloud-missing-badge { display: none; }
+.books-list .book-card.cloud-missing .book-title::after { display: inline; }
 
 /* 删除钮（hover 出现） */
 .book-delete-btn {

@@ -216,13 +216,14 @@ function renderSubcats() {
 function renderSingle(books) {
   const grid = document.getElementById('booksGrid');
   const book = books[singleIndex];
+  const missing = book.cloudAvailable === false;
   grid.innerHTML = `
     <div class="single-container">
       <button class="single-nav single-prev" id="singlePrev">‹</button>
-      <div class="single-card" onclick="window.location.href='/reader?id=${book.id}'">
-        <div class="single-cover"><span class="book-cover-placeholder">${getFormatIcon(book.format)}</span></div>
+      <div class="single-card" onclick="${missing ? "showToast('云端无此文件（未上传到 WebDAV）', 'error')" : `window.location.href='/reader?id=${book.id}'`}">
+        <div class="single-cover"><span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>${missing ? '<span class="cloud-missing-badge">未上传</span>' : ''}</div>
         <div class="single-info">
-          <h3 class="single-title">${escapeHtml(book.title)}</h3>
+          <h3 class="single-title">${escapeHtml(book.title)}${missing ? '<span class="missing-inline">（未上传）</span>' : ''}</h3>
           <p class="single-author">${escapeHtml(book.author) || '未知作者'}</p>
           ${book.category ? `<p class="single-tags">${escapeHtml(book.category.split(/[;\n；]/)[0])}</p>` : ''}
           ${book.rate && parseInt(book.rate, 10) >= 1 && parseInt(book.rate, 10) <= 5 ? `<p class="single-stars">${stars(book.rate)}</p>` : ''}
