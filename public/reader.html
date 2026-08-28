@@ -58,12 +58,8 @@
         <button class="close-btn" id="closeSettings">✕</button>
       </div>
       <div class="settings-section">
-        <label>字体大小</label>
-        <div class="font-size-controls">
-          <button class="size-btn" data-size="small">小</button>
-          <button class="size-btn active" data-size="medium">中</button>
-          <button class="size-btn" data-size="large">大</button>
-        </div>
+        <label>字体大小 <span class="slider-val" id="fontSizeVal"></span></label>
+        <input type="range" class="settings-slider" id="fontSizeSlider" min="0.8" max="2.2" step="0.05" value="1.1">
       </div>
       <div class="settings-section">
         <label>主题模式</label>
@@ -74,12 +70,8 @@
         </div>
       </div>
       <div class="settings-section">
-        <label>行距</label>
-        <div class="line-spacing-controls">
-          <button class="spacing-btn" data-spacing="tight">紧凑</button>
-          <button class="spacing-btn active" data-spacing="standard">标准</button>
-          <button class="spacing-btn" data-spacing="loose">宽松</button>
-        </div>
+        <label>行距 <span class="slider-val" id="lineHeightVal"></span></label>
+        <input type="range" class="settings-slider" id="lineHeightSlider" min="1.2" max="3.0" step="0.05" value="1.95">
       </div>
       <div class="settings-section">
         <label>翻页方式</label>

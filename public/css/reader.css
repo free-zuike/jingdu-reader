@@ -164,8 +164,8 @@
 /* 正文（宋体，首行缩进） */
 .book-text {
   font-family: var(--font-serif);
-  font-size: 1.1rem;
-  line-height: 1.95;
+  font-size: var(--reader-font-size, 1.1rem);
+  line-height: var(--reader-line-height, 1.95);
   color: var(--r-ink);
   text-align: justify;
   transition: font-size var(--t-norm);
@@ -200,15 +200,14 @@
 }
 .loading-text .btn-primary { margin-top: var(--sp-md); }
 
-/* 字体大小 */
-.reader-page.font-small .book-text { font-size: 0.95rem; }
-.reader-page.font-medium .book-text { font-size: 1.1rem; }
-.reader-page.font-large .book-text { font-size: 1.3rem; }
-
-/* 行距 */
-.reader-page.spacing-tight .book-text { line-height: 1.6; }
-.reader-page.spacing-standard .book-text { line-height: 1.95; }
-.reader-page.spacing-loose .book-text { line-height: 2.4; }
+/* 字体大小 / 行距（CSS 变量，可连续调节） */
+.reader-page { --reader-font-size: 1.1rem; --reader-line-height: 1.95; }
+.reader-page.font-small { --reader-font-size: 0.95rem; }
+.reader-page.font-medium { --reader-font-size: 1.1rem; }
+.reader-page.font-large { --reader-font-size: 1.3rem; }
+.reader-page.spacing-tight { --reader-line-height: 1.6; }
+.reader-page.spacing-standard { --reader-line-height: 1.95; }
+.reader-page.spacing-loose { --reader-line-height: 2.4; }
 
 /* 划线高亮与笔记浮层 */
 .book-text mark.hl {
@@ -501,6 +500,16 @@
   font-size: 0.82rem;
   color: var(--r-ink-soft);
   letter-spacing: 0.06em;
+}
+.slider-val {
+  color: var(--gold);
+  font-size: 0.78rem;
+  margin-left: 4px;
+}
+.settings-slider {
+  width: 100%;
+  accent-color: var(--gold);
+  cursor: pointer;
 }
 
 .font-size-controls,

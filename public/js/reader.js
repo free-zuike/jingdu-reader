@@ -555,17 +555,11 @@ function initEventListeners() {
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
   document.getElementById('overlay').addEventListener('click', () => { closeToc(); closeSettings(); });
 
-  // 字体大小
-  document.querySelectorAll('.size-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const size = btn.dataset.size;
-      document.body.classList.remove('font-small', 'font-medium', 'font-large');
-      document.body.classList.add(`font-${size}`);
-      localStorage.setItem('readerFontSize', size);
-      savePrefs();
-    });
+  // 字体大小滑块（连续可调）
+  const fsSlider = document.getElementById('fontSizeSlider');
+  if (fsSlider) fsSlider.addEventListener('input', () => {
+    applyFontSize(fsSlider.value);
+    savePrefs();
   });
 
   // 主题切换
@@ -576,22 +570,22 @@ function initEventListeners() {
       const theme = btn.dataset.theme;
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       document.body.classList.add(`theme-${theme}`);
+      // 清除 App 自定义颜色覆盖
+      document.body.style.removeProperty('--r-bg');
+      document.body.style.removeProperty('--r-paper');
+      document.body.style.removeProperty('--r-ink');
+      localStorage.removeItem('readerCustomBg');
+      localStorage.removeItem('readerCustomFg');
       localStorage.setItem('readerTheme', theme);
       savePrefs();
     });
   });
 
-  // 行距切换
-  document.querySelectorAll('.spacing-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.spacing-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentLineHeight = btn.dataset.spacing;
-      document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
-      document.body.classList.add(`spacing-${currentLineHeight}`);
-      localStorage.setItem('readerLineHeight', currentLineHeight);
-      savePrefs();
-    });
+  // 行距滑块（连续可调）
+  const lhSlider = document.getElementById('lineHeightSlider');
+  if (lhSlider) lhSlider.addEventListener('input', () => {
+    applyLineHeight(lhSlider.value);
+    savePrefs();
   });
 
   // 翻页方式切换
@@ -608,11 +602,37 @@ function initEventListeners() {
   window.addEventListener('beforeunload', saveProgress);
 }
 
+// 应用字号（连续值，rem），返回数值
+function applyFontSize(val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return;
+  document.body.classList.remove('font-small', 'font-medium', 'font-large');
+  document.body.style.setProperty('--reader-font-size', v + 'rem');
+  localStorage.setItem('readerFontSize', String(v));
+  const el = document.getElementById('fontSizeSlider');
+  const valEl = document.getElementById('fontSizeVal');
+  if (el) el.value = v;
+  if (valEl) valEl.textContent = v.toFixed(2) + 'rem';
+}
+// 应用行距（连续值）
+function applyLineHeight(val) {
+  const v = parseFloat(val);
+  if (isNaN(v)) return;
+  document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
+  document.body.style.setProperty('--reader-line-height', String(v));
+  currentLineHeight = String(v);
+  localStorage.setItem('readerLineHeight', String(v));
+  const el = document.getElementById('lineHeightSlider');
+  const valEl = document.getElementById('lineHeightVal');
+  if (el) el.value = v;
+  if (valEl) valEl.textContent = v.toFixed(2);
+}
+
 // 保存当前所有阅读偏好到服务器（字号/主题/行距/翻页方式）
 function savePrefs() {
-  const fontSize = localStorage.getItem('readerFontSize') || 'medium';
+  const fontSize = localStorage.getItem('readerFontSize') || '1.1';
   const theme = localStorage.getItem('readerTheme') || 'dark';
-  const lineHeight = localStorage.getItem('readerLineHeight') || 'standard';
+  const lineHeight = localStorage.getItem('readerLineHeight') || '1.95';
   const paging = localStorage.getItem('readerPagingMode') || 'scroll';
   savePreferences(fontSize, theme, lineHeight, paging).catch(() => {});
 }
@@ -627,40 +647,41 @@ async function loadMoonPrefs() {
     }
     const d = r.data;
     const synced = [];
-    // 字号映射：App pFontSize(sp) → 网页 small/medium/large
-    let fs = 'medium';
+    // 字号：App pFontSize(sp) → rem（1sp ≈ 1/16rem）
     if (d.fontSize) {
-      const n = parseFloat(d.fontSize);
-      if (n < 15) fs = 'small';
-      else if (n <= 21) fs = 'medium';
-      else fs = 'large';
+      const sp = parseFloat(d.fontSize);
+      if (!isNaN(sp) && sp > 0) {
+        const rem = Math.max(0.6, Math.min(3, (sp / 16).toFixed(3)));
+        applyFontSize(rem);
+        synced.push('字号');
+      }
     }
-    document.body.classList.remove('font-small', 'font-medium', 'font-large');
-    document.body.classList.add(`font-${fs}`);
-    document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
-    localStorage.setItem('readerFontSize', fs);
-    synced.push('字号');
-    // 行距映射：App pLineSpace(0-10 档) → 网页 tight/standard/loose
-    let sp = 'standard';
+    // 行距：App pLineSpace(0-10) → line-height
     if (d.lineSpace) {
       const n = parseInt(d.lineSpace, 10);
-      if (n <= 2) sp = 'tight';
-      else if (n <= 5) sp = 'standard';
-      else sp = 'loose';
+      if (!isNaN(n)) {
+        const lh = (1.2 + (n / 10) * 1.5).toFixed(2);
+        applyLineHeight(lh);
+        synced.push('行距');
+      }
     }
-    document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
-    document.body.classList.add(`spacing-${sp}`);
-    document.querySelectorAll('.spacing-btn').forEach(b => b.classList.toggle('active', b.dataset.spacing === sp));
-    localStorage.setItem('readerLineHeight', sp);
-    synced.push('行距');
-    // 主题：由 App 背景色判断 深色/浅色/护眼
-    if (d.bgColor) {
-      const theme = themeFromBgColor(d.bgColor);
+    // 主题：直接应用 App 背景色/字色（不再映射三档），并持久化以便刷新后保留
+    const bg = d.bgColor ? argbToCss(d.bgColor) : null;
+    const fg = d.fontColor ? argbToCss(d.fontColor) : null;
+    if (bg || fg) {
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
-      document.body.classList.add(`theme-${theme}`);
-      document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
-      localStorage.setItem('readerTheme', theme);
-      synced.push('主题');
+      document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+      if (bg) {
+        document.body.style.setProperty('--r-bg', bg);
+        document.body.style.setProperty('--r-paper', bg);
+        localStorage.setItem('readerCustomBg', bg);
+      }
+      if (fg) {
+        document.body.style.setProperty('--r-ink', fg);
+        localStorage.setItem('readerCustomFg', fg);
+      }
+      localStorage.setItem('readerTheme', 'custom');
+      synced.push('主题颜色');
     }
     // 两端对齐：App pTextJustified(false) → 左对齐
     if (d.justify !== undefined) {
@@ -675,18 +696,15 @@ async function loadMoonPrefs() {
   }
 }
 
-// App 背景色(ARGB int) → 深色/浅色/护眼 主题
-function themeFromBgColor(argb) {
+// App 颜色值(ARGB int) → CSS color
+function argbToCss(argb) {
   const n = Number(argb);
-  if (isNaN(n)) return 'light';
+  if (isNaN(n)) return null;
   const hex = (n >>> 0).toString(16).padStart(8, '0');
   const r = parseInt(hex.slice(2, 4), 16);
   const g = parseInt(hex.slice(4, 6), 16);
   const b = parseInt(hex.slice(6, 8), 16);
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  if (lum < 100) return 'dark';
-  if (r > 200 && g > 190 && b < 240 && r > b && (r - b) > 10 && g > b) return 'sepia';
-  return 'light';
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 // 重新解析本书（后台 Durable Object 解析，完成后自动刷新）
@@ -748,19 +766,38 @@ function showReaderToast(msg) {
 }
 
 // 加载设置
+function normalizeFontSize(v) {
+  if (v === 'small') return '0.95';
+  if (v === 'medium') return '1.1';
+  if (v === 'large') return '1.3';
+  return v;
+}
+function normalizeLineHeight(v) {
+  if (v === 'tight') return '1.6';
+  if (v === 'standard') return '1.95';
+  if (v === 'loose') return '2.4';
+  return v;
+}
+
 function loadSettings() {
-  const savedFontSize = localStorage.getItem('readerFontSize') || 'medium';
-  document.querySelectorAll('.size-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.size === savedFontSize));
-  document.body.classList.add(`font-${savedFontSize}`);
+  const savedFontSize = normalizeFontSize(localStorage.getItem('readerFontSize') || '1.1');
+  applyFontSize(savedFontSize);
 
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';
-  document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.theme === savedTheme));
-  document.body.classList.add(`theme-${savedTheme}`);
+  // 自定义主题（App 同步的颜色）重新应用
+  const customBg = localStorage.getItem('readerCustomBg');
+  const customFg = localStorage.getItem('readerCustomFg');
+  if (savedTheme === 'custom' && (customBg || customFg)) {
+    document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+    if (customBg) { document.body.style.setProperty('--r-bg', customBg); document.body.style.setProperty('--r-paper', customBg); }
+    if (customFg) document.body.style.setProperty('--r-ink', customFg);
+  } else {
+    document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.theme === savedTheme));
+    document.body.classList.add(`theme-${savedTheme}`);
+  }
 
-  const savedSpacing = localStorage.getItem('readerLineHeight') || 'standard';
-  document.querySelectorAll('.spacing-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.spacing === savedSpacing));
-  document.body.classList.add(`spacing-${savedSpacing}`);
-  currentLineHeight = savedSpacing;
+  const savedSpacing = normalizeLineHeight(localStorage.getItem('readerLineHeight') || '1.95');
+  applyLineHeight(savedSpacing);
 
   const savedPaging = localStorage.getItem('readerPagingMode') || 'scroll';
   document.querySelectorAll('.paging-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.paging === savedPaging));
@@ -769,21 +806,24 @@ function loadSettings() {
   // 异步从服务器加载偏好
   getPreferences().then(r => {
     if (r.success && r.data) {
-      const fs = r.data.fontSize || savedFontSize;
+      const fs = normalizeFontSize(r.data.fontSize || savedFontSize);
       const th = r.data.theme || savedTheme;
-      const sp = r.data.lineHeight || savedSpacing;
+      const sp = normalizeLineHeight(r.data.lineHeight || savedSpacing);
       const pg = r.data.pagingMode || savedPaging;
-      document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === fs));
-      document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === th));
-      document.querySelectorAll('.spacing-btn').forEach(b => b.classList.toggle('active', b.dataset.spacing === sp));
+      const cbg = localStorage.getItem('readerCustomBg');
+      const cfg = localStorage.getItem('readerCustomFg');
       document.querySelectorAll('.paging-btn').forEach(b => b.classList.toggle('active', b.dataset.paging === pg));
-      document.body.classList.remove('font-small', 'font-medium', 'font-large');
-      document.body.classList.add(`font-${fs}`);
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
-      document.body.classList.add(`theme-${th}`);
-      document.body.classList.remove('spacing-tight', 'spacing-standard', 'spacing-loose');
-      document.body.classList.add(`spacing-${sp}`);
-      currentLineHeight = sp;
+      if (th === 'custom' && (cbg || cfg)) {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        if (cbg) { document.body.style.setProperty('--r-bg', cbg); document.body.style.setProperty('--r-paper', cbg); }
+        if (cfg) document.body.style.setProperty('--r-ink', cfg);
+      } else {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === th));
+        document.body.classList.add(`theme-${th}`);
+      }
+      applyFontSize(fs);
+      applyLineHeight(sp);
       pagingMode = pg;
     }
   }).catch(() => {});
