@@ -56,14 +56,11 @@ export class BookService {
         if (!existingByPath.has(file.path)) {
           try {
             const bookId = generateUUID();
-            const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-            const dashIdx = nameWithoutExt.indexOf(' - ');
-            let title = file.name;
-            let author = '';
-            if (dashIdx > 0) {
-              title = nameWithoutExt.substring(0, dashIdx).trim();
-              author = nameWithoutExt.substring(dashIdx + 3).trim();
-            }
+            // 解析书名/作者：剥离来源标签(Z-Library)、"(作者)"括号提取、"-"分隔
+            const { parseBookName } = await import('../services/webdav.service');
+            const parsed = parseBookName(file.name);
+            const title = parsed.title || file.name;
+            const author = parsed.author || '';
 
             await this.db.createBook({
               id: bookId,
@@ -106,6 +103,17 @@ export class BookService {
           } catch (e: any) {
             errors.push(`${file.name}: ${e?.message || '导入失败'}`);
           }
+        } else {
+          // 已有书：重新解析书名/作者，纠正旧格式（含扩展名/来源标签/括号作者）
+          try {
+            const { parseBookName } = await import('../services/webdav.service');
+            const parsed = parseBookName(file.name);
+            const existing = existingByPath.get(file.path)!;
+            const updates: { title?: string; author?: string } = {};
+            if (parsed.title && parsed.title !== existing.title) updates.title = parsed.title;
+            if (parsed.author && parsed.author !== existing.author) updates.author = parsed.author;
+            if (updates.title || updates.author) await this.db.updateBookMeta(existing.id, updates);
+          } catch {}
         }
       }
 
@@ -172,10 +180,19 @@ export class BookService {
       const books = await this.db.getBooksByUserId(userId);
       const bookByFile = new Map<string, Book>();
       for (const b of books) bookByFile.set((b.webdav_path || '').split('/').pop() || '', b);
+      // 规范化：去空格/符号/作者后缀，用于模糊匹配（.po 名常比书名短）
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
       for (const f of files) {
-        // f.name 形如 "神秘复苏....epub.po"
+        // f.name 形如 "灵境行者.epub.po" 或 "神秘复苏....epub.po"
         const baseName = (f.name || '').replace(/\.po$/, '');
-        const book = bookByFile.get(baseName);
+        let book = bookByFile.get(baseName);
+        if (!book && baseName) {
+          const target = norm(baseName);
+          book = books.find(b => {
+            const fn = norm((b.webdav_path || '').split('/').pop() || '');
+            return target && fn && (fn.includes(target) || target.includes(fn));
+          });
+        }
         if (!book || !f.lastModified) continue;
         const poTime = new Date(f.lastModified).getTime();
         if (isNaN(poTime)) continue;

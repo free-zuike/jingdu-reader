@@ -117,10 +117,18 @@ function sortBooks(books) {
   const arr = [...books];
   const manualKeys = Object.keys(moonManualSort || {});
   if (manualKeys.length > 0) {
-    const manual = arr.filter(b => b.fileName && b.fileName in moonManualSort)
-      .sort((a, b) => moonManualSort[a.fileName] - moonManualSort[b.fileName]);
-    const rest = arr.filter(b => !b.fileName || !(b.fileName in moonManualSort));
-    return [...manual, ...sortByKey(rest)];
+    // 模糊匹配：书名/文件名规范化后包含匹配
+    const norm = s => (s || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
+    const manual = [];
+    const rest = [];
+    for (const b of arr) {
+      const fn = norm(b.fileName);
+      const key = manualKeys.find(k => norm(k) === fn || (fn && norm(k).includes(fn)) || (norm(k) && fn.includes(norm(k))));
+      if (key !== undefined) manual.push({ book: b, pos: moonManualSort[key] });
+      else rest.push(b);
+    }
+    manual.sort((a, b) => a.pos - b.pos);
+    return [...manual.map(x => x.book), ...sortByKey(rest)];
   }
   return sortByKey(arr);
 }

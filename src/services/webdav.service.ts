@@ -1117,21 +1117,30 @@ export class WebDAVService {
 }
 
 // 辅助函数：从书名提取标题和作者
-function parseBookName(name: string): { title: string; author: string } {
-  const withoutExt = name.replace(/\.[^/.]+$/, '');
+// 解析书名/作者：剥离来源标签(Z-Library等)、处理 " - "/" — " 作者分隔、"(作者)" 括号提取
+export function parseBookName(name: string): { title: string; author: string } {
+  let withoutExt = name.replace(/\.[^/.]+$/, '');
+  // 1. 去掉来源标签（Z-Library / 1lib / library / 等）
+  withoutExt = withoutExt
+    .replace(/\([^)]*(z-?lib|1lib|library|readfree|kindle)[^)]*\)/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  // 2. " - " 或 " — " 作者分隔
   const dashIdx = withoutExt.lastIndexOf(' - ');
   if (dashIdx > 0) {
-    return {
-      title: withoutExt.substring(0, dashIdx).trim(),
-      author: withoutExt.substring(dashIdx + 3).trim()
-    };
+    return { title: withoutExt.substring(0, dashIdx).trim(), author: withoutExt.substring(dashIdx + 3).trim() };
   }
   const emDashIdx = withoutExt.lastIndexOf(' — ');
   if (emDashIdx > 0) {
-    return {
-      title: withoutExt.substring(0, emDashIdx).trim(),
-      author: withoutExt.substring(emDashIdx + 3).trim()
-    };
+    return { title: withoutExt.substring(0, emDashIdx).trim(), author: withoutExt.substring(emDashIdx + 3).trim() };
   }
-  return { title: withoutExt.trim(), author: '' };
+  // 3. " (作者)" 括号 → 作者（取最后一个括号对）
+  const parenOpen = Math.max(withoutExt.lastIndexOf('（'), withoutExt.lastIndexOf('('));
+  if (parenOpen > 0) {
+    const closeC = withoutExt.indexOf('）', parenOpen) !== -1 ? withoutExt.indexOf('）', parenOpen) : withoutExt.indexOf(')', parenOpen);
+    if (closeC > parenOpen) {
+      return { title: withoutExt.substring(0, parenOpen).trim(), author: withoutExt.substring(parenOpen + 1, closeC).trim() };
+    }
+  }
+  return { title: withoutExt.replace(/_/g, ' ').replace(/\s+/g, ' ').trim(), author: '' };
 }
