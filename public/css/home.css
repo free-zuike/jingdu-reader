@@ -412,15 +412,15 @@
 }
 .books-list .book-card:hover { transform: none; }
 .books-list .book-cover {
-  width: 90px;
-  height: 130px;
+  width: 140px;
+  height: 210px;
   aspect-ratio: auto;
   flex-shrink: 0;
   border-bottom: none;
   border-right: 1px solid var(--line-soft);
 }
-.books-list .book-cover::before { width: 5px; }
-.books-list .book-cover-placeholder { font-size: 2.2rem; }
+.books-list .book-cover::before { width: 6px; }
+.books-list .book-cover-placeholder { font-size: 2.6rem; }
 .books-list .book-format-badge { display: none; }
 .books-list .book-info {
   flex: 1;
