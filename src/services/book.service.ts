@@ -117,6 +117,19 @@ export class BookService {
         }
       }
 
+      // 清理幽灵书：file_size=0 且路径不在 WebDAV 实际扫描结果中（上次误用 books.sync 补导入产生的记录）
+      const scannedPaths = new Set(webdavFiles.map(f => f.path));
+      const allExisting = await this.db.getBooksByUserId(userId);
+      for (const b of allExisting) {
+        if (b.file_size === 0 && !scannedPaths.has(b.webdav_path)) {
+          await this.r2Delete(this.bookKey(b.id)).catch(() => {});
+          await this.r2Delete(this.rawKey(b.id)).catch(() => {});
+          await this.r2Delete(this.coverKey(b.id)).catch(() => {});
+          await this.cache.delete(`progress:${userId}:${b.id}`).catch(() => {});
+          await this.db.deleteBook(b.id);
+        }
+      }
+
       return {
         success: true,
         message: `同步完成，新增 ${added} 本书籍`,
@@ -167,43 +180,6 @@ export class BookService {
       }
     } catch {
       // 元数据同步失败不影响主流程
-    }
-  }
-
-  // 从 books.sync 发现所有书（含 Koofr PROPFIND 截断漏掉的书），缺失的补导入
-  async syncMissingBooksFromMoon(userId: string, webdavService: WebDAVService): Promise<void> {
-    try {
-      const metaMap = await webdavService.getMoonPlusBookMeta(userId);
-      if (metaMap.size === 0) return;
-      const config = await this.db.getWebDAVConfigByUserId(userId);
-      const basePath = (config?.base_path || '/Apps/Books').replace(/\/$/, '');
-      const existing = await this.db.getBooksByUserId(userId);
-      const existingPaths = new Set(existing.map(b => b.webdav_path));
-      const { parseBookName } = await import('../services/webdav.service');
-      for (const [fileName] of metaMap) {
-        const path = `${basePath}/${fileName}`;
-        if (existingPaths.has(path)) continue;
-        const parsed = parseBookName(fileName);
-        const bookId = generateUUID();
-        await this.db.createBook({
-          id: bookId,
-          user_id: userId,
-          webdav_path: path,
-          title: parsed.title || fileName.replace(/\.[^.]+$/, ''),
-          author: parsed.author || '',
-          format: (fileName.toLowerCase().split('.').pop() || 'epub') as Book['format'],
-          file_size: 0,
-          cached_at: new Date().toISOString()
-        });
-        // 立即后台下载+缓存 raw/封面（解析在首次打开时惰性进行）
-        this.backgroundLoadBook(userId, bookId, webdavService, {
-          id: bookId, user_id: userId, webdav_path: path, title: parsed.title || fileName,
-          author: parsed.author || '', format: (fileName.toLowerCase().split('.').pop() || 'epub') as Book['format'],
-          cached_at: new Date().toISOString()
-        }).catch(() => {});
-      }
-    } catch {
-      // 补导入失败不影响主流程
     }
   }
 
