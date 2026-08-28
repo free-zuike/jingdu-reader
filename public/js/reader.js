@@ -665,11 +665,13 @@ async function loadMoonPrefs() {
         synced.push('行距');
       }
     }
-    // 字体：App pFontName → 正文字体（覆盖 --font-serif，含系统字体回退）
+    // 字体：App pFontName → 正文字体（泛型字体如 sans-serif 不引号）
     if (d.fontName) {
       const name = d.fontName.trim();
       if (name) {
-        document.body.style.setProperty('--font-serif', `'${name}', 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
+        const generic = ['serif','sans-serif','monospace','cursive','fantasy'];
+        const fam = generic.includes(name) ? name : `'${name}'`;
+        document.body.style.setProperty('--font-serif', `${fam}, 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
         localStorage.setItem('readerCustomFont', name);
         synced.push('字体');
       }
@@ -792,10 +794,12 @@ function loadSettings() {
   const savedFontSize = normalizeFontSize(localStorage.getItem('readerFontSize') || '1.1');
   applyFontSize(savedFontSize);
 
-  // 重新应用 App 同步的字体
+  // 重新应用 App 同步的字体（泛型字体不引号）
   const customFont = localStorage.getItem('readerCustomFont');
   if (customFont) {
-    document.body.style.setProperty('--font-serif', `'${customFont}', 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
+    const generic = ['serif','sans-serif','monospace','cursive','fantasy'];
+    const fam = generic.includes(customFont) ? customFont : `'${customFont}'`;
+    document.body.style.setProperty('--font-serif', `${fam}, 'Noto Serif SC', Georgia, 'Songti SC', SimSun, serif`);
   }
 
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';
