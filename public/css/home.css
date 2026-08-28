@@ -314,9 +314,10 @@
   color: var(--gold);
   margin-left: 4px;
 }
-/* 列表视图封面很小，隐藏角标（书名后缀已标识） */
-.books-list .cloud-missing-badge { display: none; }
-.books-list .book-card.cloud-missing .book-title::after { display: inline; }
+/* 列表视图封面很小，隐藏角标（书名后缀已标识），确保占位符大小一致 */
+.books-list .cloud-missing-badge { display: none !important; }
+.books-list .book-card.cloud-missing .book-cover-placeholder { font-size: 1.3rem; }
+.books-list .book-card.cloud-missing .book-cover { overflow: hidden; }
 
 /* 删除钮（hover 出现） */
 .book-delete-btn {
