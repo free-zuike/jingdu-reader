@@ -453,7 +453,7 @@ export class BookService {
           readStatus,
           cachedAt: book.cached_at,
           fileName: (book.webdav_path || '').split('/').pop() || '',
-          cloudAvailable: book.cloud_available !== 0
+          cloudAvailable: book.cloud_available === 1
         });
       }
 
