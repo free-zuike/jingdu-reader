@@ -510,6 +510,7 @@ function escapeAttr(str) {
 function updateProgressBar() {
   const fill = document.getElementById('progressFill');
   const info = document.getElementById('pageInfo');
+  if (!fill && !info) return;
   let progress = 0;
   if (chapters.length > 0 && totalLength > 0) {
     progress = (chapters[currentChapterIndex].startIndex / totalLength) * 100;
@@ -522,8 +523,8 @@ function updateProgressBar() {
     }
   }
   progress = Math.min(100, Math.max(0, progress));
-  fill.style.width = `${progress}%`;
-  info.textContent = `${Math.round(progress)}%`;
+  if (fill) fill.style.width = `${progress}%`;
+  if (info) info.textContent = `${Math.round(progress)}%`;
 }
 
 // 保存进度（防抖）
