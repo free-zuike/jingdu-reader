@@ -570,12 +570,15 @@ function initEventListeners() {
       const theme = btn.dataset.theme;
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       document.body.classList.add(`theme-${theme}`);
-      // 清除 App 自定义颜色覆盖
+      // 清除 App 自定义颜色和背景图覆盖
       document.body.style.removeProperty('--r-bg');
       document.body.style.removeProperty('--r-paper');
       document.body.style.removeProperty('--r-ink');
+      document.body.style.backgroundImage = 'none';
+      document.body.style.backgroundSize = '';
       localStorage.removeItem('readerCustomBg');
       localStorage.removeItem('readerCustomFg');
+      localStorage.removeItem('readerAppBg');
       localStorage.setItem('readerTheme', theme);
       savePrefs();
     });
@@ -699,12 +702,43 @@ async function loadMoonPrefs() {
       document.body.classList.toggle('justify-off', d.justify === 'false' || d.justify === '0');
       synced.push('两端对齐');
     }
+    // 背景图：App pBackgroundImage(如 readbg204) + pUseBackgroundImage(true) → 应用对应内置背景图
+    if (d.useBgImage === 'true' && d.bgImage && APP_BG[d.bgImage]) {
+      applyAppBackground(d.bgImage);
+      synced.push('背景图');
+    }
     savePrefs();
     showReaderToast(`已同步：${synced.join('、')}`);
   } catch (e) {
     console.error('同步偏好失败:', e);
     showReaderToast('同步 App 偏好失败');
   }
+}
+
+// Moon+ 内置背景图映射：bgImage 编号 → 文件名（图片部署在 /backgrounds/）
+const APP_BG = {
+  'day161':'day161.png','night161':'night161.png','p_line':'p_line.png',
+  'page0':'page0.jpg','page3':'page3.jpg','page205':'page205.jpg','page222':'page222.jpg',
+  'page301':'page301.png','page302':'page302.png','page303':'page303.png','page305':'page305.png','page306':'page306.png','pagefb':'pagefb.jpg',
+  'readbg201':'readbg201.jpg','readbg202':'readbg202.jpg','readbg203':'readbg203.png','readbg204':'readbg204.png','readbg205':'readbg205.jpg',
+  'readbg221':'readbg221.jpg','readbg222':'readbg222.jpg','readbg223':'readbg223.jpg',
+  'readbg_00':'readbg_00.png','readbg_01':'readbg_01.png','readbg_02':'readbg_02.png','readbg_03':'readbg_03.png','readbg_04':'readbg_04.png','readbg_05':'readbg_05.png','readbg_06':'readbg_06.png',
+  'readbg_11':'readbg_11.jpg','readbg_12':'readbg_12.png','readbg_13':'readbg_13.jpg','readbg_14':'readbg_14.jpg','readbg_15':'readbg_15.jpg'
+};
+
+// 应用 App 背景图到阅读页整体背景
+function applyAppBackground(bgName) {
+  const file = APP_BG[bgName];
+  if (!file) return;
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.body.style.setProperty('--r-bg', 'transparent');
+  document.body.style.backgroundImage = `url('/backgrounds/${file}')`;
+  document.body.style.backgroundSize = 'cover';
+  document.body.style.backgroundPosition = 'center';
+  document.body.style.backgroundRepeat = 'no-repeat';
+  localStorage.setItem('readerTheme', 'custom');
+  localStorage.setItem('readerAppBg', bgName);
 }
 
 // App 颜色值(ARGB int) → CSS color
@@ -803,10 +837,19 @@ function loadSettings() {
   }
 
   const savedTheme = localStorage.getItem('readerTheme') || 'dark';
-  // 自定义主题（App 同步的颜色）重新应用
+  // 自定义主题（App 同步的颜色/背景图）重新应用
+  const appBg = localStorage.getItem('readerAppBg');
   const customBg = localStorage.getItem('readerCustomBg');
   const customFg = localStorage.getItem('readerCustomFg');
-  if (savedTheme === 'custom' && (customBg || customFg)) {
+  if (savedTheme === 'custom' && appBg && APP_BG[appBg]) {
+    // 优先背景图
+    document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+    document.body.style.setProperty('--r-bg', 'transparent');
+    document.body.style.backgroundImage = `url('/backgrounds/${APP_BG[appBg]}')`;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundRepeat = 'no-repeat';
+  } else if (savedTheme === 'custom' && (customBg || customFg)) {
     document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
     if (customBg) { document.body.style.setProperty('--r-bg', customBg); document.body.style.setProperty('--r-paper', customBg); }
     if (customFg) document.body.style.setProperty('--r-ink', customFg);
@@ -831,9 +874,17 @@ function loadSettings() {
       const pg = r.data.pagingMode || savedPaging;
       const cbg = localStorage.getItem('readerCustomBg');
       const cfg = localStorage.getItem('readerCustomFg');
+      const abg = localStorage.getItem('readerAppBg');
       document.querySelectorAll('.paging-btn').forEach(b => b.classList.toggle('active', b.dataset.paging === pg));
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
-      if (th === 'custom' && (cbg || cfg)) {
+      if (th === 'custom' && abg && APP_BG[abg]) {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        document.body.style.setProperty('--r-bg', 'transparent');
+        document.body.style.backgroundImage = `url('/backgrounds/${APP_BG[abg]}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundRepeat = 'no-repeat';
+      } else if (th === 'custom' && (cbg || cfg)) {
         document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
         if (cbg) { document.body.style.setProperty('--r-bg', cbg); document.body.style.setProperty('--r-paper', cbg); }
         if (cfg) document.body.style.setProperty('--r-ink', cfg);
