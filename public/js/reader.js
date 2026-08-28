@@ -657,17 +657,15 @@ async function loadMoonPrefs() {
   }
 }
 
-// 重新解析本书（同步模式，下载+解析完成后自动刷新）
+// 重新解析本书（后台队列模式，立即返回不卡顿，解析完成后刷新）
 async function reparseCurrentBook() {
   if (!currentBookId) return;
-  if (!confirm('重新解析本书？将重新下载并解析，耗时视书籍大小而定，期间页面可能卡顿。')) return;
+  if (!confirm('重新解析本书？将后台重新下载并解析，约1-2分钟后刷新页面即可看到新排版。')) return;
   closeSettings();
-  showReaderToast('正在下载解析，请稍候...');
   try {
-    const r = await request(`/api/books/${currentBookId}/reparse?sync=true`, { method: 'POST' });
-    if (!r.success) { showReaderToast('解析失败：' + (r.error || '')); return; }
-    showReaderToast('✅ 解析完成，正在刷新...');
-    setTimeout(() => location.reload(), 1500);
+    const r = await reparseBook(currentBookId);
+    if (!r.success) { showReaderToast('入队失败：' + (r.error || '')); return; }
+    showReaderToast('✅ 重新解析已入队，约1-2分钟后刷新页面');
   } catch (e) {
     console.error('重新解析失败:', e);
     showReaderToast('重新解析失败');
