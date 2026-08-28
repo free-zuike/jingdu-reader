@@ -20,7 +20,7 @@ interface ZipEntry {
   compressionMethod: number;
 }
 
-function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
+export function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   const view = new DataView(data);
   const entries: ZipEntry[] = [];
 
@@ -64,7 +64,7 @@ function parseZipEntries(data: ArrayBuffer): ZipEntry[] {
   return entries;
 }
 
-async function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Promise<Uint8Array> {
+export async function readZipEntry(data: ArrayBuffer, entry: ZipEntry): Promise<Uint8Array> {
   const bytes = new Uint8Array(data, entry.offset, entry.compressedSize);
   if (entry.compressionMethod === 0) return bytes;
   if (entry.compressionMethod !== 8) return bytes;

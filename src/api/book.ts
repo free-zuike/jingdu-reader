@@ -415,6 +415,32 @@ book.get('/:id/epub-structure', authMiddleware, async (c) => {
   return c.json({ success: true, data: info });
 });
 
+// 诊断：列出 EPUB 内所有文件 + 打印 main.css/fonts.css 内容（排查背景图/字体 file:// 路径）
+book.get('/:id/files', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const db = new Database(c.env.DB);
+  const bookData = await db.getBookById(bookId);
+  if (!bookData || bookData.user_id !== userId) {
+    return c.json({ success: false, error: '书籍不存在' }, 404);
+  }
+  const rawObj = await c.env.BOOKS.get(`raw/${bookId}`);
+  const raw = rawObj ? await rawObj.arrayBuffer() : null;
+  if (!raw) return c.json({ success: false, error: '文件尚未缓存' });
+  const { parseZipEntries, readZipEntry } = await import('../utils/epub');
+  const entries = parseZipEntries(raw);
+  const files = entries.map(e => e.name);
+  const cssFiles = files.filter(f => /\.css$/i.test(f));
+  const cssContent: Record<string, string> = {};
+  for (const f of cssFiles) {
+    try {
+      const bytes = await readZipEntry(raw, entries.find(e => e.name === f)!);
+      cssContent[f] = new TextDecoder().decode(bytes);
+    } catch {}
+  }
+  return c.json({ success: true, data: { files, cssContent } });
+});
+
 // 重新解析书籍内容（入队后由队列后台串行下载+解析；?sync=true 时同步执行，跳过队列）
 book.post('/:id/reparse', authMiddleware, async (c) => {
   const userId = c.get('userId');
@@ -547,8 +573,9 @@ book.get('/:id/:resource{.*}', async (c) => {
       }
       data = buf;
     }
+    const cacheControl = mime === 'text/css' ? 'no-cache, no-store' : 'public, max-age=86400';
     return new Response(data, {
-      headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' }
+      headers: { 'Content-Type': mime, 'Cache-Control': cacheControl }
     });
   } catch {
     return c.json({ success: false, error: '资源读取失败' }, 500);
