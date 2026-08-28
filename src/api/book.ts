@@ -208,6 +208,28 @@ book.get('/webdav-ls', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：对比 books.sync 书名、WebDAV 云端文件名、DB 记录状态（排查全标未上传）
+book.get('/cloud-check', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const metaMap = await webdavService.getMoonPlusBookMeta(userId);
+  const cloudResult = await webdavService.listFiles(userId);
+  const cloudNames = ((cloudResult.data as any)?.files || []).map((f: any) => f.name);
+  const dbBooks = await db.getBooksByUserId(userId);
+  return c.json({
+    success: true,
+    data: {
+      syncCount: metaMap.size,
+      syncNames: Array.from(metaMap.keys()),
+      cloudCount: cloudNames.length,
+      cloudNames,
+      dbCount: dbBooks.length,
+      dbBooks: dbBooks.map((b: any) => ({ id: b.id, title: b.title, fileName: (b.webdav_path || '').split('/').pop(), cloud_available: b.cloud_available, file_size: b.file_size }))
+    }
+  });
+});
+
 // 获取书籍详情
 book.get('/:id', authMiddleware, async (c) => {
   const userId = c.get('userId');
