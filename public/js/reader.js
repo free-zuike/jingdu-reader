@@ -305,15 +305,30 @@ function keepChromeVisible() {
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
   if (currentChapterHtml) {
-    // 把 EPUB 章节的 <body class> 应用到阅读器真实 body，使 body.xxx 的背景图等 CSS 规则生效
+    // 章节 <body> class → EPUB 背景图（仅特殊页如制作说明/内容介绍有背景，正文不设背景用阅读主题）
+    const bgMap = { zzsm: 'back0.jpg', qmp00: 'back2.jpg', qmp0: 'c1.jpg', qmp1: 'c2.jpg', qmp3: 'c3.jpg', qmp4: 'c4.jpg', qmp5: 'c5.jpg', qmp6: 'c6.jpg' };
     const bodyMatch = currentChapterHtml.match(/<body([^>]*)>/i);
     const clsMatch = bodyMatch && bodyMatch[1].match(/class=["']([^"']+)["']/i);
     const epubBodyClass = clsMatch ? clsMatch[1] : '';
-    const known = ['bg','head','head3','zzsm','u1','qmp0','qmp1','qmp3','qmp4','qmp5','qmp6','qmp00'];
-    known.forEach(c => document.body.classList.remove(c));
-    if (epubBodyClass) epubBodyClass.split(/\s+/).forEach(c => { if (c) document.body.classList.add(c); });
+    const bgFile = bgMap[epubBodyClass];
+    const bid = getBookId();
+    if (bgFile && bid) {
+      const enc = bgFile.split('/').map(encodeURIComponent).join('/');
+      textContainer.style.backgroundImage = `url('/api/books/${bid}/OEBPS/Images/${enc}')`;
+      textContainer.style.backgroundSize = 'cover';
+      textContainer.style.backgroundPosition = 'center';
+      textContainer.style.backgroundAttachment = 'fixed';
+      textContainer.style.backgroundRepeat = 'no-repeat';
+    } else {
+      textContainer.style.backgroundImage = 'none';
+      textContainer.style.backgroundSize = '';
+      textContainer.style.backgroundPosition = '';
+      textContainer.style.backgroundAttachment = '';
+      textContainer.style.backgroundRepeat = '';
+    }
     textContainer.innerHTML = htmlWithUrls(currentChapterHtml);
   } else {
+    textContainer.style.backgroundImage = 'none';
     textContainer.innerHTML = formatText(currentChapterText);
   }
   updateNavButtons();
