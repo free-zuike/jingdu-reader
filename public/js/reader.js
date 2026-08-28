@@ -36,6 +36,7 @@ async function initReader(bookId) {
 
   initEventListeners();
   loadSettings();
+  renderBgPicker();
   startAutoHide();
 }
 
@@ -739,6 +740,47 @@ function applyAppBackground(bgName) {
   document.body.style.backgroundRepeat = 'no-repeat';
   localStorage.setItem('readerTheme', 'custom');
   localStorage.setItem('readerAppBg', bgName);
+  // 同步更新选择器高亮
+  document.querySelectorAll('.bg-opt').forEach(b => b.classList.toggle('active', b.dataset.bg === bgName));
+  document.querySelectorAll('.bg-none').forEach(b => b.classList.remove('active'));
+}
+
+// 渲染背景图选择器（网页手动选择，不需 App）
+function renderBgPicker() {
+  const grid = document.getElementById('bgGrid');
+  if (!grid) return;
+  const current = localStorage.getItem('readerAppBg') || '';
+  let html = '<button class="bg-none' + (!current ? ' active' : '') + '" data-bg="" title="无背景（用主题色）">无</button>';
+  for (const [key, file] of Object.entries(APP_BG)) {
+    html += `<button class="bg-opt${key === current ? ' active' : ''}" data-bg="${key}" style="background-image:url('/backgrounds/${file}')" title="${key}"></button>`;
+  }
+  grid.innerHTML = html;
+  grid.querySelectorAll('.bg-opt, .bg-none').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bgName = btn.dataset.bg || '';
+      if (!bgName) {
+        // 无背景：清除背景图，回主题色
+        document.body.style.backgroundImage = 'none';
+        document.body.style.backgroundSize = '';
+        document.body.style.removeProperty('--r-bg');
+        document.body.style.removeProperty('--r-paper');
+        document.body.style.removeProperty('--r-ink');
+        localStorage.removeItem('readerAppBg');
+        localStorage.removeItem('readerCustomBg');
+        localStorage.removeItem('readerCustomFg');
+        const theme = localStorage.getItem('readerTheme') || 'dark';
+        document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+        document.body.classList.add(`theme-${theme === 'custom' ? 'dark' : theme}`);
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === (theme === 'custom' ? 'dark' : theme)));
+        localStorage.setItem('readerTheme', theme === 'custom' ? 'dark' : theme);
+        grid.querySelectorAll('.bg-opt, .bg-none').forEach(x => x.classList.toggle('active', x === btn));
+        savePrefs();
+      } else {
+        applyAppBackground(bgName);
+        savePrefs();
+      }
+    });
+  });
 }
 
 // App 颜色值(ARGB int) → CSS color

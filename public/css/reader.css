@@ -511,6 +511,41 @@
   accent-color: var(--gold);
   cursor: pointer;
 }
+/* 背景图选择网格 */
+.bg-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.bg-grid::-webkit-scrollbar { display: none; }
+.bg-opt {
+  aspect-ratio: 3/4;
+  border: 2px solid var(--r-line);
+  border-radius: 6px;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color var(--t-fast);
+}
+.bg-opt:hover { border-color: var(--gold); }
+.bg-opt.active { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+.bg-none {
+  aspect-ratio: 3/4;
+  border: 2px solid var(--r-line);
+  border-radius: 6px;
+  background: var(--r-paper);
+  color: var(--r-ink-soft);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 .font-size-controls,
 .theme-options,
