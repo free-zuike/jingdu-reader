@@ -305,6 +305,13 @@ function keepChromeVisible() {
 function renderTextContent() {
   const textContainer = document.getElementById('bookText');
   if (currentChapterHtml) {
+    // 把 EPUB 章节的 <body class> 应用到阅读器真实 body，使 body.xxx 的背景图等 CSS 规则生效
+    const bodyMatch = currentChapterHtml.match(/<body([^>]*)>/i);
+    const clsMatch = bodyMatch && bodyMatch[1].match(/class=["']([^"']+)["']/i);
+    const epubBodyClass = clsMatch ? clsMatch[1] : '';
+    const known = ['bg','head','head3','zzsm','u1','qmp0','qmp1','qmp3','qmp4','qmp5','qmp6','qmp00'];
+    known.forEach(c => document.body.classList.remove(c));
+    if (epubBodyClass) epubBodyClass.split(/\s+/).forEach(c => { if (c) document.body.classList.add(c); });
     textContainer.innerHTML = htmlWithUrls(currentChapterHtml);
   } else {
     textContainer.innerHTML = formatText(currentChapterText);
