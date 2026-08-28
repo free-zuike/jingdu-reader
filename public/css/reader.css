@@ -118,7 +118,11 @@
   box-shadow: 0 1px 6px rgba(43, 39, 36, 0.08), 0 24px 60px rgba(43, 39, 36, 0.10);
   padding: 56px 64px 72px;
   position: relative;
+  /* 内部滚动但不显示滚动条 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
+.content-wrapper::-webkit-scrollbar { display: none; }
 
 /* 书页发丝边（仿装订） */
 .content-wrapper::before,
