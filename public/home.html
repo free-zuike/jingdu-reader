@@ -305,6 +305,27 @@
         else if (val === '') batchUpdateBooks({ rate: '' });
       });
       document.getElementById('batchDelete').addEventListener('click', batchDeleteBooks);
+
+      // 键盘快捷键
+      document.addEventListener('keydown', (e) => {
+        if (!selectMode) return;
+        if (e.ctrlKey && e.key === 'a') {
+          e.preventDefault();
+          document.querySelectorAll('.book-card').forEach(card => {
+            const id = card.querySelector('.book-select-check')?.dataset.bookId;
+            if (id && !selectedIds.has(id)) {
+              selectedIds.add(id);
+              card.classList.add('selected');
+              card.querySelector('.book-select-check').textContent = '✓';
+            }
+          });
+          updateBatchBar();
+        }
+        if (e.ctrlKey && e.key === 'x') {
+          e.preventDefault();
+          batchDeleteBooks();
+        }
+      });
     });
   </script>
 </body>
