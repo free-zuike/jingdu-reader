@@ -194,6 +194,24 @@ book.get('/sync/history', authMiddleware, async (c) => {
   return c.json({ success: true, data: history });
 });
 
+// 获取冲突列表（网页和 App 同时编辑的书籍）
+book.get('/sync/conflicts', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const key = `conflicts:${userId}`;
+  const data = await c.env.CACHE.get(key);
+  let conflicts: any[] = [];
+  if (data) { try { conflicts = JSON.parse(data); } catch {} }
+  return c.json({ success: true, data: conflicts });
+});
+
+// 清除冲突列表
+book.delete('/sync/conflicts', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const key = `conflicts:${userId}`;
+  await c.env.CACHE.delete(key);
+  return c.json({ success: true });
+});
+
 // 诊断：读取 Moon+ .po 进度文件原始内容（确认格式）
 // 参数: fileName 如 乡村教师 (刘慈欣) (Z-Library).epub
 book.get('/moonplus/po/:name', authMiddleware, async (c) => {

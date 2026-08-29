@@ -158,12 +158,26 @@ export class BookService {
       const metaMap = await webdavService.getMoonPlusBookMeta(userId);
       if (metaMap.size === 0) return;
       const books = await this.db.getBooksByUserId(userId);
+      const conflicts: Array<{ bookId: string; title: string }> = [];
       for (const book of books) {
         // 用文件名匹配（webdav_path 最后一段）
         const fileName = (book.webdav_path || '').split('/').pop() || '';
         const meta = metaMap.get(fileName);
         if (!meta) continue;
+        // 冲突检测：检查网页是否在本轮同步后更新过
+        const key = `meta-updated:${userId}:${book.id}`;
+        const webUpdated = await this.cache.get(key).catch(() => null);
+        if (webUpdated) {
+          // 网页更新过，但 Moon+ 也有数据 → 记录冲突
+          conflicts.push({ bookId: book.id, title: book.title });
+          // 清除网页更新时间戳（已同步）
+          await this.cache.delete(key).catch(() => {});
+        }
         await this.db.updateBookMoonMeta(book.id, meta);
+      }
+      // 保存冲突列表（保留最近一次同步的冲突）
+      if (conflicts.length > 0) {
+        await this.cache.put(`conflicts:${userId}`, JSON.stringify(conflicts), { expirationTtl: 7 * 24 * 60 * 60 }).catch(() => {});
       }
     } catch {
       // 元数据同步失败不影响主流程
@@ -670,6 +684,10 @@ export class BookService {
         const moonResult = await webdavService.updateMoonPlusBookMeta(userId, fileName, moonPatch);
         moonSync = { success: moonResult.success, error: moonResult.error };
       }
+
+      // 3. 记录网页更新时间戳（用于冲突检测）
+      const key = `meta-updated:${userId}:${bookId}`;
+      await this.cache.put(key, new Date().toISOString(), { expirationTtl: 30 * 24 * 60 * 60 }).catch(() => {});
 
       return { success: true, data: { bookId, patch, moonSync } };
     } catch (e: any) {

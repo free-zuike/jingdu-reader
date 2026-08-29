@@ -42,6 +42,18 @@ async function loadSyncHistory() {
       }
     }
   } catch (e) { /* 忽略 */ }
+  // 检查冲突
+  loadSyncConflicts();
+}
+
+// 加载冲突提示
+async function loadSyncConflicts() {
+  try {
+    const result = await getSyncConflicts();
+    if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+      showToast(`⚠️ ${result.data.length} 本书在网页和 App 同时编辑过，已以 App 为准`, 'warning');
+    }
+  } catch (e) { /* 忽略 */ }
 }
 
 // 加载书籍列表

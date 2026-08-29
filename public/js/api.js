@@ -181,6 +181,14 @@ async function getSyncHistory() {
   return request('/api/books/sync/history');
 }
 
+async function getSyncConflicts() {
+  return request('/api/books/sync/conflicts');
+}
+
+async function clearSyncConflicts() {
+  return request('/api/books/sync/conflicts', { method: 'DELETE' });
+}
+
 async function getBook(bookId) {
   return request(`/api/books/${bookId}`);
 }
