@@ -1608,40 +1608,79 @@ export class WebDAVService {
         return { success: false, error: '不是 SQLite 数据库' };
       }
 
-      // 解析 SQLite 数据库
-      const db = this.parseSQLite(content);
-      if (!db) return { success: false, error: 'SQLite 解析失败' };
+      // 提取所有可读字符串
+      const strings: string[] = [];
+      let current = '';
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+        const code = char.charCodeAt(0);
+        if ((code >= 0x20 && code < 0x7f) || (code >= 0x4e00 && code <= 0x9fff)) {
+          current += char;
+        } else {
+          if (current.length >= 3) strings.push(current);
+          current = '';
+        }
+      }
+      if (current.length >= 3) strings.push(current);
 
-      // 查找 statistics 表
-      const statsTable = db.tables.find(t => t.name === 'statistics');
-      if (!statsTable) {
-        return {
-          success: true,
-          data: {
-            tables: db.tables.map(t => t.name),
-            error: '未找到 statistics 表'
+      // 查找 statistics 表数据
+      // 表结构：_id, filename, usedTime, readWords, dates
+      // 数据特征：filename 包含 .epub/.txt 等扩展名，usedTime/readWords 是数字，dates 是日期或时间戳
+      const statsRows: Array<{ filename: string; usedTime: number; readWords: number; dates: string }> = [];
+
+      for (let i = 0; i < strings.length; i++) {
+        const s = strings[i];
+
+        // 查找包含书籍文件名的字符串
+        if (s.includes('.epub') || s.includes('.txt') || s.includes('.mobi') || s.includes('.azw')) {
+          // 查找紧跟的数字（可能是 usedTime 和 readWords）
+          const nextStrings = strings.slice(i + 1, Math.min(i + 10, strings.length));
+
+          // 查找数字模式
+          let usedTime = 0;
+          let readWords = 0;
+          let dates = '';
+
+          for (const ns of nextStrings) {
+            // 纯数字可能是 usedTime 或 readWords
+            if (/^\d+$/.test(ns) && !/^\d{10,}$/.test(ns)) {
+              if (!usedTime) usedTime = parseInt(ns, 10);
+              else if (!readWords) readWords = parseInt(ns, 10);
+            }
+            // 日期或时间戳
+            if (/^\d{10,13}$/.test(ns) || ns.includes('-')) {
+              dates = ns;
+              break;
+            }
           }
-        };
+
+          if (usedTime > 0 || readWords > 0) {
+            statsRows.push({
+              filename: s.replace(/\d{10,}/g, '').trim(),
+              usedTime,
+              readWords,
+              dates
+            });
+          }
+        }
       }
 
-      // 提取 statistics 表数据
-      const statsRows = statsTable.rows.map(row => {
-        // statistics 表结构：_id, filename, usedTime, readWords, dates
-        return {
-          id: row[0],
-          filename: row[1],
-          usedTime: row[2],
-          readWords: row[3],
-          dates: row[4]
-        };
-      });
+      // 提取日期数据
+      const dateStrings = strings.filter(s =>
+        /^\d{10,13}$/.test(s) || s.match(/^\d{4}-\d{2}-\d{2}/)
+      );
+
+      // 提取百分比数据（可能是阅读进度）
+      const percentages = strings.filter(s => s.includes('%') && s.includes('#'));
 
       return {
         success: true,
         data: {
-          tableCount: db.tables.length,
-          tables: db.tables.map(t => ({ name: t.name, rowCount: t.rows.length })),
-          statisticsRows: statsRows
+          totalStrings: strings.length,
+          statsRows: statsRows.slice(0, 50),
+          dateStrings: dateStrings.slice(0, 30),
+          percentages: percentages.slice(0, 20),
+          sampleStrings: strings.filter(s => s.includes('.epub') || s.includes('.txt')).slice(0, 30)
         }
       };
     } catch (e: any) {
@@ -1702,14 +1741,22 @@ export class WebDAVService {
   // 解析 B-tree 页（表叶节点）
   private parseBTreePage(dbContent: string, pageOffset: number, pageSize: number): { rows: any[][] } | null {
     try {
+      // Page 1 有 100 字节数据库头部，B-tree 头部从 offset 100 开始
       const offset = pageOffset + (pageOffset === 0 ? 100 : 0);
       const pageType = dbContent.charCodeAt(offset);
 
-      // 表叶节点 = 13 (0x0d)
-      if (pageType !== 13) return null;
+      // 表叶节点 = 13 (0x0d), 内部页 = 5 (0x05)
+      if (pageType !== 13 && pageType !== 5) return null;
 
-      const headerSize = 5 + (dbContent.charCodeAt(offset + 4) >= 0x80 ? 4 : 0);
+      // 读取页头部
       const cellCount = (dbContent.charCodeAt(offset + 3) << 8) | dbContent.charCodeAt(offset + 4);
+
+      // cell 指针数组从 offset + 5 开始（如果是内部页，头部有额外 4 字节）
+      let headerSize = 5;
+      if (pageType === 5) {
+        // 内部页有右指针（4字节）
+        headerSize = 9;
+      }
 
       const cellPointersOffset = offset + headerSize;
       const rows: any[][] = [];
@@ -1717,7 +1764,8 @@ export class WebDAVService {
       for (let i = 0; i < cellCount; i++) {
         const cellPtrOffset = cellPointersOffset + i * 2;
         const cellPtr = (dbContent.charCodeAt(cellPtrOffset) << 8) | dbContent.charCodeAt(cellPtrOffset + 1);
-        const cellOffset = pageOffset + (cellPtr * pageSize / 100);
+        // Cell 指针是相对于页起始的偏移
+        const cellOffset = pageOffset + cellPtr;
 
         // 解析 cell
         const row = this.parseCell(dbContent, cellOffset);
