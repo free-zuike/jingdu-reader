@@ -189,6 +189,10 @@ async function clearSyncConflicts() {
   return request('/api/books/sync/conflicts', { method: 'DELETE' });
 }
 
+async function getSyncTimestamps() {
+  return request('/api/books/sync/timestamps');
+}
+
 async function getBook(bookId) {
   return request(`/api/books/${bookId}`);
 }

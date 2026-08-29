@@ -16,6 +16,18 @@ let selectMode = false;        // 批量选择模式
 let selectedIds = new Set();   // 批量选择中的 book id 集合
 let batchCancelled = false;    // 批量操作取消标志
 
+// 加载每本书的同步时间戳
+async function loadSyncTimestamps() {
+  try {
+    const result = await getSyncTimestamps();
+    if (result.success && result.data) {
+      for (const book of allBooks) {
+        if (result.data[book.id]) book.syncedAt = result.data[book.id];
+      }
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
 // 加载同步历史
 async function loadSyncHistory() {
   try {
@@ -82,6 +94,9 @@ async function loadBooks() {
 
   // 加载同步历史
   loadSyncHistory();
+
+  // 加载每本书的同步时间戳
+  loadSyncTimestamps();
 
   // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序 + 手动排序位置）
   try {
@@ -415,6 +430,19 @@ function openEditBookModal(book) {
   document.getElementById('editCategory').value = book.category || '';
   document.getElementById('editFavorite').checked = !!book.favorite;
   renderEditStars();
+
+  // 显示同步时间戳
+  const hint = document.querySelector('.form-hint');
+  if (hint && book.syncedAt) {
+    const d = new Date(book.syncedAt);
+    const diff = Date.now() - d.getTime();
+    let timeStr;
+    if (diff < 60000) timeStr = '刚刚';
+    else if (diff < 3600000) timeStr = Math.floor(diff / 60000) + ' 分钟前';
+    else if (diff < 86400000) timeStr = Math.floor(diff / 3600000) + ' 小时前';
+    else timeStr = d.toLocaleDateString('zh-CN');
+    hint.textContent = `上次同步: ${timeStr}（保存后将回写到 Moon+）`;
+  }
 
   const modal = document.getElementById('editBookModal');
   modal.style.display = 'flex';

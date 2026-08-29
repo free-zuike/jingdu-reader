@@ -162,6 +162,9 @@ book.post('/sync', authMiddleware, async (c) => {
     errors: (result.data as any)?.errors || []
   }));
 
+  // 记录每本书的同步时间戳
+  c.executionCtx.waitUntil(recordBookSyncTimestamps(c.env, userId, cloudNames));
+
   return c.json({
     ...result,
     data: {
@@ -182,6 +185,14 @@ function recordSyncHistory(env: Env, userId: string, data: { totalFiles: number;
     if (items.length > 20) items = items.slice(0, 20);
     return env.CACHE.put(key, JSON.stringify(items), { expirationTtl: 365 * 24 * 60 * 60 });
   }).catch(() => {});
+}
+
+// 记录每本书的同步时间戳
+function recordBookSyncTimestamps(env: Env, userId: string, bookNames: string[]) {
+  const now = new Date().toISOString();
+  return Promise.all(
+    bookNames.map(name => env.CACHE.put(`book-synced:${userId}:${name}`, now, { expirationTtl: 365 * 24 * 60 * 60 }))
+  ).catch(() => {});
 }
 
 // 获取同步历史
@@ -210,6 +221,22 @@ book.delete('/sync/conflicts', authMiddleware, async (c) => {
   const key = `conflicts:${userId}`;
   await c.env.CACHE.delete(key);
   return c.json({ success: true });
+});
+
+// 获取每本书的同步时间戳
+book.get('/sync/timestamps', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const books = await db.getBooksByUserId(userId);
+  const timestamps: Record<string, string> = {};
+  for (const book of books) {
+    const fileName = (book.webdav_path || '').split('/').pop() || '';
+    if (!fileName) continue;
+    const key = `book-synced:${userId}:${fileName}`;
+    const ts = await c.env.CACHE.get(key);
+    if (ts) timestamps[book.id] = ts;
+  }
+  return c.json({ success: true, data: timestamps });
 });
 
 // 诊断：读取 Moon+ .po 进度文件原始内容（确认格式）
