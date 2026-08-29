@@ -132,6 +132,17 @@ book.get('/moonplus/backup/:name', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：从 .mrpro 备份中提取指定条目（SQLite 数据库等）
+book.get('/moonplus/backup/:name/entry/:entry', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const entry = c.req.param('entry');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.extractMrproEntry(userId, name, entry);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');

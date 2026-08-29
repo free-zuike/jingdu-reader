@@ -1479,6 +1479,43 @@ export class WebDAVService {
       return { success: false, error: e?.message || '检查备份失败' };
     }
   }
+
+  // 从 .mrpro 备份中提取指定条目（返回 base64 编码，用于下载 SQLite 数据库等二进制文件）
+  async extractMrproEntry(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const result = await this.getMoonPlusDataFile(userId, relPath);
+      if (!result.success || !result.data) return { success: false, error: '读取备份失败' };
+
+      const data = result.data as any;
+
+      // 小 ZIP：直接返回条目内容
+      if (data.entries) {
+        const entriesObj = data.entries as Record<string, string>;
+        const content = entriesObj[entryName];
+        if (content === undefined) return { success: false, error: `条目不存在: ${entryName}` };
+
+        // 如果是 SQLite 数据库，返回 base64
+        const isSqlite = content.startsWith('SQLite format');
+        const base64 = btoa(content);
+
+        return {
+          success: true,
+          data: {
+            name: entryName,
+            size: content.length,
+            isSqlite: isSqlite,
+            base64: base64.substring(0, 5000), // 只返回前 5KB 预览
+            base64Full: isSqlite ? base64 : undefined // SQLite 返回完整 base64
+          }
+        };
+      }
+
+      return { success: false, error: '备份不是可解压格式' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '提取条目失败' };
+    }
+  }
 }
 
 // 辅助函数：从书名提取标题和作者
