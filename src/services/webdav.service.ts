@@ -1020,6 +1020,82 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ tags.txt（标签定义，格式：标签名\n书1;书2;书3\n）
+  // 返回: Map<filename, string[]> (书名 → 标签列表)
+  async getMoonPlusTags(userId: string): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    try {
+      const result = await this.getMoonPlusDataFile(userId, 'tags.txt');
+      if (!result.success || !result.data) return map;
+      const data = result.data as { content?: string };
+      if (!data.content) return map;
+
+      const lines = data.content.split('\n').map(l => l.trim()).filter(Boolean);
+      let currentTag = '';
+      for (const line of lines) {
+        if (!line.includes(';') && !line.includes('\t') && !line.includes(' ')) {
+          // 可能是标签名（单独一行，无分隔符）
+          if (!currentTag) currentTag = line;
+          // 也可能是上一标签的书籍列表（无分隔符 = 单个书籍）
+          else {
+            map.set(line, [...(map.get(currentTag) || []), currentTag]);
+            currentTag = '';
+          }
+        } else if (line.includes(';')) {
+          // 书籍列表（分号分隔）
+          if (currentTag) {
+            const books = line.split(';').map(b => b.trim()).filter(Boolean);
+            for (const book of books) {
+              map.set(book, [...(map.get(book) || []), currentTag]);
+            }
+            currentTag = '';
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[getMoonPlusTags] 解析失败:', e);
+    }
+    return map;
+  }
+
+  // 读取 Moon+ series.txt（系列定义，格式：系列名\n书1;书2;书3\n）
+  // 返回: Map<filename, string> (书名 → 系列名)
+  async getMoonPlusSeries(userId: string): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    try {
+      const result = await this.getMoonPlusDataFile(userId, 'series.txt');
+      if (!result.success || !result.data) return map;
+      const data = result.data as { content?: string };
+      if (!data.content) return map;
+
+      const lines = data.content.split('\n').map(l => l.trim()).filter(Boolean);
+      let currentSeries = '';
+      for (const line of lines) {
+        if (!line.includes(';') && !line.includes('\t') && !line.includes(' ')) {
+          // 可能是系列名（单独一行，无分隔符）
+          if (!currentSeries) currentSeries = line;
+          // 也可能是上一系列的书籍列表（无分隔符 = 单个书籍）
+          else {
+            map.set(line, currentSeries);
+            currentSeries = '';
+          }
+        } else if (line.includes(';')) {
+          // 书籍列表（分号分隔）
+          if (currentSeries) {
+            const books = line.split(';').map(b => b.trim()).filter(Boolean);
+            for (const book of books) {
+              map.set(book, currentSeries);
+            }
+            currentSeries = '';
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[getMoonPlusSeries] 解析失败:', e);
+    }
+    return map;
+  }
+
   // 读取 Moon+ 书籍元数据（books.sync，zlib 压缩的 JSON 数组）
   // 返回: Map<filename, { category, favorite, series, rate }>
   async getMoonPlusBookMeta(userId: string): Promise<Map<string, { category: string; favorite: boolean; series: string; rate: string }>> {

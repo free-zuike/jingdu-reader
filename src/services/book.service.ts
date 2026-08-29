@@ -156,14 +156,16 @@ export class BookService {
   async syncMoonPlusMeta(userId: string, webdavService: WebDAVService): Promise<void> {
     try {
       const metaMap = await webdavService.getMoonPlusBookMeta(userId);
-      if (metaMap.size === 0) return;
+      // 读取 tags.txt 和 series.txt（legacy 文件，可能不存在）
+      const tagsMap = await webdavService.getMoonPlusTags(userId);
+      const seriesMap = await webdavService.getMoonPlusSeries(userId);
+      if (metaMap.size === 0 && tagsMap.size === 0 && seriesMap.size === 0) return;
       const books = await this.db.getBooksByUserId(userId);
       const conflicts: Array<{ bookId: string; title: string }> = [];
       for (const book of books) {
         // 用文件名匹配（webdav_path 最后一段）
         const fileName = (book.webdav_path || '').split('/').pop() || '';
         const meta = metaMap.get(fileName);
-        if (!meta) continue;
         // 冲突检测：检查网页是否在本轮同步后更新过
         const key = `meta-updated:${userId}:${book.id}`;
         const webUpdated = await this.cache.get(key).catch(() => null);
@@ -173,7 +175,20 @@ export class BookService {
           // 清除网页更新时间戳（已同步）
           await this.cache.delete(key).catch(() => {});
         }
-        await this.db.updateBookMoonMeta(book.id, meta);
+        if (meta) {
+          await this.db.updateBookMoonMeta(book.id, meta);
+        }
+        // 合并 tags.txt 数据（如果 books.sync 没有 category，用 tags.txt 补充）
+        const tags = tagsMap.get(fileName);
+        if (tags && tags.length > 0) {
+          const category = tags.join(';');
+          await this.db.updateBookMoonMeta(book.id, { category });
+        }
+        // 合并 series.txt 数据（如果 books.sync 没有 series，用 series.txt 补充）
+        const series = seriesMap.get(fileName);
+        if (series) {
+          await this.db.updateBookMoonMeta(book.id, { series });
+        }
       }
       // 保存冲突列表（保留最近一次同步的冲突）
       if (conflicts.length > 0) {
