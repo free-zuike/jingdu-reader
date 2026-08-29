@@ -401,6 +401,12 @@
   color: #a89f8b;
 }
 
+.book-reading-time {
+  font-size: 0.7rem;
+  color: #c4a882;
+  margin-top: 1px;
+}
+
 .book-last-synced {
   font-size: 0.7rem;
   color: #8fbf8f;
@@ -919,6 +925,21 @@
 .sync-status span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reading-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #c4a882;
+  padding: 4px 10px;
+  background: var(--light-paper);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  max-width: 140px;
+  overflow: hidden;
   white-space: nowrap;
 }
 

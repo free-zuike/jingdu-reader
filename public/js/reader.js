@@ -3,10 +3,14 @@
 let currentBookId = null;
 let autoHideTimer = null;
 let saveTimer = null;
+let sessionStartTime = null; // 本次阅读 session 开始时间
+let sessionLastSaveTime = null; // 上次 saveProgress 时间（用于计算本次 session 阅读时长）
 
 // 初始化阅读器
 async function initReader(bookId) {
   currentBookId = bookId;
+  sessionStartTime = Date.now(); // 记录本次阅读开始时间
+  flushReadingStats(); // 上报上次未上报的阅读时长（后台）
 
   // 加载书籍信息
   const bookResult = await getBook(bookId);
@@ -560,7 +564,60 @@ async function saveProgress() {
   try {
     const pos = chapters.length > 0 ? chapters[currentChapterIndex].startIndex : 0;
     await updateReadingProgress(currentBookId, pos, totalLength, undefined, undefined, currentChapterIndex);
+
+    // 累积本次 session 阅读时长
+    const now = Date.now();
+    if (sessionStartTime && !sessionLastSaveTime) {
+      sessionLastSaveTime = now;
+    } else if (sessionLastSaveTime) {
+      const elapsed = now - sessionLastSaveTime;
+      sessionLastSaveTime = now;
+      accumulateReadingTime(currentBookId, elapsed);
+    }
   } catch (e) { console.error('保存进度失败:', e); }
+}
+
+// 在 localStorage 中累积每本书的阅读时长（ms）
+function accumulateReadingTime(bookId, elapsedMs) {
+  if (elapsedMs < 1000) return; // 过滤短间隔
+  try {
+    const key = `reading_time:${bookId}`;
+    const total = parseInt(localStorage.getItem(key) || '0', 10) + elapsedMs;
+    localStorage.setItem(key, String(total));
+    // 同时累加总阅读时长
+    const allKey = 'reading_time_all';
+    const allTotal = parseInt(localStorage.getItem(allKey) || '0', 10) + elapsedMs;
+    localStorage.setItem(allKey, String(allTotal));
+    // 标记有未上报的时长
+    localStorage.setItem('reading_time_dirty', '1');
+  } catch {}
+}
+
+// 上报阅读时长到后端（后台调用，不阻塞 UI）
+async function flushReadingStats() {
+  if (localStorage.getItem('reading_time_dirty') !== '1') return;
+  localStorage.removeItem('reading_time_dirty');
+  try {
+    // 收集所有有阅读时长的书籍
+    const bookIds = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('reading_time:') && key !== 'reading_time_all') {
+        const id = key.replace('reading_time:', '');
+        bookIds.push(id);
+      }
+    }
+    for (const id of bookIds) {
+      const totalMs = parseInt(localStorage.getItem(`reading_time:${id}`) || '0', 10);
+      if (totalMs > 0) {
+        await saveReadingStats(id, totalMs);
+      }
+    }
+  } catch (e) {
+    // 上报失败，标记 dirty 下次重试
+    localStorage.setItem('reading_time_dirty', '1');
+    console.error('上报阅读时长失败:', e);
+  }
 }
 
 // 事件监听
@@ -624,7 +681,17 @@ function initEventListeners() {
     });
   });
 
-  window.addEventListener('beforeunload', saveProgress);
+  window.addEventListener('beforeunload', () => {
+    saveProgress();
+    flushReadingStats();
+  });
+
+  // 每 60 秒定期上报阅读时长（后台）
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      flushReadingStats();
+    }
+  }, 60000);
 }
 
 // 应用字号（连续值，rem），返回数值
@@ -1035,6 +1102,8 @@ async function syncCurrentBook() {
   btn.disabled = true;
   btn.textContent = '同步中...';
   try {
+    // 0. 先上报阅读时长
+    await flushReadingStats();
     // 1. 同步进度
     if (totalLength > 0) {
       const pos = currentChapterIndex * (totalLength / Math.max(1, chapters.length));

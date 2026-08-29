@@ -310,3 +310,16 @@ async function reparseBook(bookId) {
 async function getBookCacheStatus(bookId) {
   return request(`/api/books/${bookId}/cache-status`);
 }
+
+// 上报阅读时长（毫秒）
+async function saveReadingStats(bookId, totalMs) {
+  return request(`/api/books/${bookId}/reading-stats`, {
+    method: 'PUT',
+    body: JSON.stringify({ totalMs })
+  });
+}
+
+// 获取全部阅读统计
+async function getAllReadingStats() {
+  return request(`/api/moonplus/reading-stats`);
+}
