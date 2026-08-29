@@ -177,6 +177,10 @@ async function getSyncStatus() {
   return request('/api/books/sync/status');
 }
 
+async function getSyncHistory() {
+  return request('/api/books/sync/history');
+}
+
 async function getBook(bookId) {
   return request(`/api/books/${bookId}`);
 }

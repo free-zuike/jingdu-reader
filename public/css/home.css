@@ -881,6 +881,36 @@
 .select-mode-btn:hover { color: var(--ink); border-color: var(--gold); }
 .select-mode-btn.active { background: var(--ink); color: var(--paper-white); }
 
+/* 同步状态指示器 */
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--soft);
+  padding: 4px 10px;
+  background: var(--light-paper);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  cursor: default;
+  max-width: 200px;
+  overflow: hidden;
+}
+.sync-status .sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex-shrink: 0;
+}
+.sync-status .sync-dot.success { background: #4caf50; }
+.sync-status .sync-dot.error { background: var(--seal); }
+.sync-status span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 768px) {

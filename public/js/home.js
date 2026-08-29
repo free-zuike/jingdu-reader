@@ -16,6 +16,34 @@ let selectMode = false;        // 批量选择模式
 let selectedIds = new Set();   // 批量选择中的 book id 集合
 let batchCancelled = false;    // 批量操作取消标志
 
+// 加载同步历史
+async function loadSyncHistory() {
+  try {
+    const result = await getSyncHistory();
+    if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+      const last = result.data[0];
+      const text = document.getElementById('syncStatusText');
+      const dot = document.querySelector('.sync-status .sync-dot');
+      if (text) {
+        const d = new Date(last.at);
+        const now = new Date();
+        const diff = now - d;
+        let timeStr;
+        if (diff < 60000) timeStr = '刚刚';
+        else if (diff < 3600000) timeStr = Math.floor(diff / 60000) + ' 分钟前';
+        else if (diff < 86400000) timeStr = Math.floor(diff / 3600000) + ' 小时前';
+        else timeStr = d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+        text.textContent = `同步于 ${timeStr}`;
+      }
+      if (dot) {
+        dot.classList.remove('success', 'error');
+        if (last.errors && last.errors.length > 0) dot.classList.add('error');
+        else dot.classList.add('success');
+      }
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
 // 加载书籍列表
 async function loadBooks() {
   try {
@@ -39,6 +67,9 @@ async function loadBooks() {
     console.error('加载书籍失败:', error);
     showToast('加载书籍失败', 'error');
   }
+
+  // 加载同步历史
+  loadSyncHistory();
 
   // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序 + 手动排序位置）
   try {
@@ -523,6 +554,7 @@ async function handleSync() {
       }
       // 等待后台元数据/封面同步完成后再刷新
       setTimeout(loadBooks, 3000);
+      setTimeout(loadSyncHistory, 3500);
     } else {
       showToast(result.error || '同步失败', 'error');
     }

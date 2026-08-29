@@ -155,6 +155,13 @@ book.post('/sync', authMiddleware, async (c) => {
   c.executionCtx.waitUntil(bookService.syncMoonPlusProgress(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonPlusAnnotations(userId, webdavService));
 
+  // 记录同步历史
+  c.executionCtx.waitUntil(recordSyncHistory(c.env, userId, {
+    totalFiles, matchedFiles,
+    added: (result.data as any)?.added || 0,
+    errors: (result.data as any)?.errors || []
+  }));
+
   return c.json({
     ...result,
     data: {
@@ -163,6 +170,28 @@ book.post('/sync', authMiddleware, async (c) => {
       matchedFiles
     }
   });
+});
+
+// 记录同步历史（在 sync 完成后调用）
+function recordSyncHistory(env: Env, userId: string, data: { totalFiles: number; matchedFiles: number; added: number; errors: string[] }) {
+  const key = `sync-history:${userId}`;
+  return env.CACHE.get(key).then(old => {
+    let items: any[] = [];
+    if (old) { try { items = JSON.parse(old); } catch {} }
+    items.unshift({ at: new Date().toISOString(), ...data });
+    if (items.length > 20) items = items.slice(0, 20);
+    return env.CACHE.put(key, JSON.stringify(items), { expirationTtl: 365 * 24 * 60 * 60 });
+  }).catch(() => {});
+}
+
+// 获取同步历史
+book.get('/sync/history', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const key = `sync-history:${userId}`;
+  const data = await c.env.CACHE.get(key);
+  let history: any[] = [];
+  if (data) { try { history = JSON.parse(data); } catch {} }
+  return c.json({ success: true, data: history });
 });
 
 // 诊断：读取 Moon+ .po 进度文件原始内容（确认格式）
