@@ -898,9 +898,14 @@
   background: var(--light-paper);
   border: 1px solid var(--line-soft);
   border-radius: 12px;
-  cursor: default;
+  cursor: pointer;
   max-width: 200px;
   overflow: hidden;
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.sync-status:hover {
+  border-color: var(--gold);
+  background: var(--light-paper);
 }
 .sync-status .sync-dot {
   width: 6px;

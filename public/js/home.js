@@ -86,6 +86,50 @@ function closeConflictModal() {
   clearSyncConflicts().catch(() => {});
 }
 
+// 打开同步日志弹窗
+async function openSyncLogModal() {
+  const modal = document.getElementById('syncLogModal');
+  const list = document.getElementById('syncLogList');
+  if (!modal || !list) return;
+  try {
+    const result = await getSyncHistory();
+    if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--soft);">暂无同步记录</div>';
+    } else {
+      const filter = document.getElementById('syncLogFilter')?.value || 'all';
+      const filtered = filter === 'all' ? result.data :
+        filter === 'success' ? result.data.filter(h => !h.errors || h.errors.length === 0) :
+        result.data.filter(h => h.errors && h.errors.length > 0);
+      list.innerHTML = filtered.map(h => {
+        const d = new Date(h.at);
+        const dateStr = d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const hasError = h.errors && h.errors.length > 0;
+        const statusIcon = hasError ? '⚠️' : '✅';
+        const statusClass = hasError ? 'color:#c0392b;' : 'color:#27ae60;';
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--line-soft);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="${statusClass}font-weight:600;">${statusIcon}</span>
+            <span style="font-size:0.75rem;color:var(--soft);">${dateStr}</span>
+          </div>
+          <div style="margin-top:4px;font-size:0.8rem;">
+            扫描 ${h.totalFiles || 0} 个文件，匹配 ${h.matchedFiles || 0} 本，新增 ${h.added || 0} 本
+            ${hasError ? `，<span style="color:#c0392b;">${h.errors.length} 个错误</span>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  } catch (e) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--soft);">加载失败</div>';
+  }
+  modal.style.display = 'flex';
+}
+
+// 关闭同步日志弹窗
+function closeSyncLogModal() {
+  const modal = document.getElementById('syncLogModal');
+  if (modal) modal.style.display = 'none';
+}
+
 // 加载书籍列表
 async function loadBooks() {
   try {

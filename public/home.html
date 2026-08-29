@@ -201,6 +201,29 @@
     </div>
   </div>
 
+  <!-- 同步日志弹窗 -->
+  <div class="modal-overlay" id="syncLogModal" style="display:none;">
+    <div class="modal-box" style="max-width:600px;">
+      <div class="modal-header">
+        <h3>📊 同步日志</h3>
+        <button class="modal-close" id="syncLogClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <select id="syncLogFilter" style="flex:1;padding:6px 10px;border:1px solid var(--line);border-radius:4px;font-size:0.85rem;">
+            <option value="all">全部</option>
+            <option value="success">成功</option>
+            <option value="error">有错误</option>
+          </select>
+        </div>
+        <div id="syncLogList" style="max-height:400px;overflow-y:auto;font-size:0.85rem;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="syncLogDismiss">关闭</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/home.js"></script>
@@ -330,6 +353,17 @@
       document.getElementById('conflictModal').addEventListener('click', (e) => {
         if (e.target.id === 'conflictModal') closeConflictModal();
       });
+
+      // 同步日志弹窗
+      document.getElementById('syncLogClose').addEventListener('click', closeSyncLogModal);
+      document.getElementById('syncLogDismiss').addEventListener('click', closeSyncLogModal);
+      document.getElementById('syncLogModal').addEventListener('click', (e) => {
+        if (e.target.id === 'syncLogModal') closeSyncLogModal();
+      });
+      document.getElementById('syncLogFilter').addEventListener('change', openSyncLogModal);
+
+      // 点击同步状态指示器打开日志
+      document.getElementById('syncStatus').addEventListener('click', openSyncLogModal);
 
       // 键盘快捷键
       document.addEventListener('keydown', (e) => {
