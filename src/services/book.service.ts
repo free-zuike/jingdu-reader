@@ -194,8 +194,24 @@ export class BookService {
       if (conflicts.length > 0) {
         await this.cache.put(`conflicts:${userId}`, JSON.stringify(conflicts), { expirationTtl: 7 * 24 * 60 * 60 }).catch(() => {});
       }
+      // 同步完成后重建 favorites.txt（确保与 books.sync 一致）
+      await this.rebuildFavoritesFile(userId, webdavService);
     } catch {
       // 元数据同步失败不影响主流程
+    }
+  }
+
+  // 重建 Moon+ favorites.txt（从 DB 读取所有 favorite 书籍，写入 favorites.txt）
+  private async rebuildFavoritesFile(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const books = await this.db.getBooksByUserId(userId);
+      const favoriteFiles = books
+        .filter(b => b.favorite === 1)
+        .map(b => (b.webdav_path || '').split('/').pop() || '')
+        .filter(Boolean);
+      await webdavService.writeMoonPlusFavorites(userId, favoriteFiles);
+    } catch (e) {
+      console.error('[rebuildFavoritesFile] 失败:', e);
     }
   }
 
@@ -698,6 +714,11 @@ export class BookService {
       if (fileName && Object.keys(moonPatch).length > 0) {
         const moonResult = await webdavService.updateMoonPlusBookMeta(userId, fileName, moonPatch);
         moonSync = { success: moonResult.success, error: moonResult.error };
+      }
+
+      // 2b. 如果 favorite 改变，重建 favorites.txt
+      if (patch.favorite !== undefined) {
+        await this.rebuildFavoritesFile(userId, webdavService);
       }
 
       // 3. 记录网页更新时间戳（用于冲突检测）

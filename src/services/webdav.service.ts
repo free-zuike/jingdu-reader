@@ -1096,6 +1096,51 @@ export class WebDAVService {
     return map;
   }
 
+  // 读取 Moon+ favorites.txt（收藏夹，每行一个文件名）
+  // 返回: string[] (文件名列表)
+  async getMoonPlusFavorites(userId: string): Promise<string[]> {
+    try {
+      const result = await this.getMoonPlusDataFile(userId, 'favorites.txt');
+      if (!result.success || !result.data) return [];
+      const data = result.data as { content?: string };
+      if (!data.content) return [];
+      return data.content.split('\n').map(l => l.trim()).filter(Boolean);
+    } catch (e) {
+      console.error('[getMoonPlusFavorites] 读取失败:', e);
+      return [];
+    }
+  }
+
+  // 写入 Moon+ favorites.txt（收藏夹文件，每行一个文件名）
+  async writeMoonPlusFavorites(userId: string, filenames: string[]): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return { success: false, error: 'WebDAV配置不存在' };
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/favorites.txt`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
+
+      const content = filenames.join('\n') + (filenames.length > 0 ? '\n' : '');
+      const bytes = new TextEncoder().encode(content);
+      const resp = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'text/plain; charset=utf-8',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: bytes
+      });
+      if (!resp.ok && resp.status !== 201 && resp.status !== 204) {
+        return { success: false, error: `写入失败 (状态码: ${resp.status})` };
+      }
+      return { success: true, data: { path: filePath, count: filenames.length } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '写入 favorites.txt 失败' };
+    }
+  }
+
   // 读取 Moon+ 书籍元数据（books.sync，zlib 压缩的 JSON 数组）
   // 返回: Map<filename, { category, favorite, series, rate }>
   async getMoonPlusBookMeta(userId: string): Promise<Map<string, { category: string; favorite: boolean; series: string; rate: string }>> {
