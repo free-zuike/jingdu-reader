@@ -3,17 +3,6 @@
 import { encrypt, decrypt, generateUUID } from '../utils/crypto';
 import type { Database } from '../utils/db';
 import type { WebDAVConfig, WebDAVFile, ApiResponse } from '../types';
-import initSqlJs from 'sql.js';
-import type { SqlJsInstance } from 'sql.js';
-
-let sqlJsInstance: SqlJsInstance | null = null;
-
-async function getSqlJs() {
-  if (!sqlJsInstance) {
-    sqlJsInstance = await initSqlJs();
-  }
-  return sqlJsInstance;
-}
 
 export class WebDAVService {
   private db: Database;
@@ -1619,63 +1608,78 @@ export class WebDAVService {
         return { success: false, error: '不是 SQLite 数据库' };
       }
 
-      // 使用 sql.js 解析 SQLite 数据库
-      const SQL = await getSqlJs();
-      if (!SQL) return { success: false, error: 'sql.js 初始化失败' };
-      const uint8 = new TextEncoder().encode(content);
-      const db = new SQL.Database(uint8);
+      // 提取所有可读字符串
+      const strings: string[] = [];
+      let current = '';
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+        const code = char.charCodeAt(0);
+        if ((code >= 0x20 && code < 0x7f) || (code >= 0x4e00 && code <= 0x9fff)) {
+          current += char;
+        } else {
+          if (current.length >= 3) strings.push(current);
+          current = '';
+        }
+      }
+      if (current.length >= 3) strings.push(current);
 
-      // 查询所有表
-      const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
-      const tables: string[] = tablesResult.length > 0 ? tablesResult[0].values.map((v: any[]) => v[0] as string) : [];
+      // 查找 statistics 表数据
+      // 表结构：_id, filename, usedTime, readWords, dates
+      const statsRows: Array<{ filename: string; usedTime: number; readWords: number; dates: string }> = [];
 
-      // 检查是否有 statistics 表
-      const statsTable = tables.find((t: string) => t.toLowerCase() === 'statistics');
+      for (let i = 0; i < strings.length; i++) {
+        const s = strings[i];
 
-      let statsRows: any[] = [];
-      if (statsTable) {
-        // 查询 statistics 表数据
-        const statsResult = db.exec(`SELECT * FROM ${statsTable}`);
-        if (statsResult.length > 0) {
-          const columns = statsResult[0].columns;
-          for (const row of statsResult[0].values) {
-            const obj: any = {};
-            for (let i = 0; i < columns.length; i++) {
-              obj[columns[i]] = row[i];
+        // 查找包含书籍文件名的字符串
+        if (s.includes('.epub') || s.includes('.txt') || s.includes('.mobi') || s.includes('.azw')) {
+          // 查找紧跟的数字（可能是 usedTime 和 readWords）
+          const nextStrings = strings.slice(i + 1, Math.min(i + 10, strings.length));
+
+          // 查找数字模式
+          let usedTime = 0;
+          let readWords = 0;
+          let dates = '';
+
+          for (const ns of nextStrings) {
+            // 纯数字可能是 usedTime 或 readWords
+            if (/^\d+$/.test(ns) && !/^\d{10,}$/.test(ns)) {
+              if (!usedTime) usedTime = parseInt(ns, 10);
+              else if (!readWords) readWords = parseInt(ns, 10);
             }
-            statsRows.push(obj);
+            // 日期或时间戳
+            if (/^\d{10,13}$/.test(ns) || ns.includes('-')) {
+              dates = ns;
+              break;
+            }
+          }
+
+          if (usedTime > 0 || readWords > 0) {
+            statsRows.push({
+              filename: s.replace(/\d{10,}/g, '').trim(),
+              usedTime,
+              readWords,
+              dates
+            });
           }
         }
       }
 
-      // 查询 books 表（包含书籍元数据）
-      const booksTable = tables.find((t: string) => t.toLowerCase() === 'books');
-      let booksRows: any[] = [];
-      if (booksTable) {
-        const booksResult = db.exec(`SELECT * FROM ${booksTable} LIMIT 50`);
-        if (booksResult.length > 0) {
-          const columns = booksResult[0].columns;
-          for (const row of booksResult[0].values) {
-            const obj: any = {};
-            for (let i = 0; i < columns.length; i++) {
-              obj[columns[i]] = row[i];
-            }
-            booksRows.push(obj);
-          }
-        }
-      }
+      // 提取日期数据
+      const dateStrings = strings.filter(s =>
+        /^\d{10,13}$/.test(s) || s.match(/^\d{4}-\d{2}-\d{2}/)
+      );
 
-      db.close();
+      // 提取百分比数据（可能是阅读进度）
+      const percentages = strings.filter(s => s.includes('%') && s.includes('#'));
 
       return {
         success: true,
         data: {
-          tableCount: tables.length,
-          tables: tables,
-          statsRowCount: statsRows.length,
-          statsRows: statsRows,
-          booksRowCount: booksRows.length,
-          booksRows: booksRows.slice(0, 20)
+          totalStrings: strings.length,
+          statsRows: statsRows.slice(0, 50),
+          dateStrings: dateStrings.slice(0, 30),
+          percentages: percentages.slice(0, 20),
+          sampleStrings: strings.filter(s => s.includes('.epub') || s.includes('.txt')).slice(0, 30)
         }
       };
     } catch (e: any) {
