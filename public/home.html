@@ -84,6 +84,7 @@
           </select>
         </div>
         <div class="view-toggle">
+          <button class="select-mode-btn" id="selectModeBtn" title="批量选择">☑ 批量</button>
           <button class="view-btn active" data-view="grid" title="三本一行">⊞ 网格</button>
           <button class="view-btn" data-view="list" title="列表">☰ 列表</button>
           <button class="view-btn" data-view="single" title="单本滑动">◫ 单本</button>
@@ -163,6 +164,17 @@
         <button class="btn-primary" id="editBookSave">保存</button>
       </div>
     </div>
+  </div>
+
+  <!-- 批量操作栏 -->
+  <div class="batch-bar" id="batchBar">
+    <span class="count">已选 <b id="batchCount">0</b> 本</span>
+    <button id="batchFavorite">★ 珍藏</button>
+    <button id="batchUnfavorite">☆ 取消</button>
+    <button id="batchTag">标签...</button>
+    <button id="batchSeries">系列...</button>
+    <button id="batchDelete" style="margin-left:8px;">🗑 删除</button>
+    <button id="batchCancel">取消</button>
   </div>
 
   <script src="/js/api.js"></script>
@@ -258,6 +270,27 @@
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeEditBookModal();
       });
+
+      // 批量选择模式
+      document.getElementById('selectModeBtn').addEventListener('click', toggleSelectMode);
+      document.getElementById('batchCancel').addEventListener('click', () => {
+        selectMode = false; selectedIds.clear();
+        document.body.classList.remove('select-mode');
+        document.getElementById('selectModeBtn').classList.remove('active');
+        updateBatchBar();
+        renderShelf();
+      });
+      document.getElementById('batchFavorite').addEventListener('click', () => batchUpdateBooks({ favorite: true }));
+      document.getElementById('batchUnfavorite').addEventListener('click', () => batchUpdateBooks({ favorite: false }));
+      document.getElementById('batchTag').addEventListener('click', () => {
+        const val = prompt('输入标签（用 ; 分隔多个）：', '');
+        if (val != null && val.trim()) batchUpdateBooks({ category: val.trim() });
+      });
+      document.getElementById('batchSeries').addEventListener('click', () => {
+        const val = prompt('输入系列名：', '');
+        if (val != null && val.trim()) batchUpdateBooks({ series: val.trim() });
+      });
+      document.getElementById('batchDelete').addEventListener('click', batchDeleteBooks);
     });
   </script>
 </body>

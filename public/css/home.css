@@ -778,32 +778,107 @@
 .star-rating .star.active { color: var(--gold); }
 .star-rating .star:hover { color: var(--gold); }
 
-/* 书籍卡片右上角编辑按钮 */
+/* 书籍卡片右上角编辑按钮（常显，弱化样式） */
 .book-edit-btn {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 24px;
-  height: 24px;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(43, 39, 36, 0.72);
+  background: rgba(43, 39, 36, 0.55);
   color: var(--paper-white);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   border-radius: 50%;
-  opacity: 0;
-  transition: opacity var(--t-fast);
+  opacity: 0.55;
+  transition: opacity var(--t-fast), background var(--t-fast);
   z-index: 2;
   cursor: pointer;
+  padding: 0;
+  border: none;
 }
-.book-card:hover .book-edit-btn { opacity: 1; }
+.book-card:hover .book-edit-btn,
+.book-edit-btn:hover { opacity: 1; background: var(--gold); }
 .book-edit-btn:hover { background: var(--gold); }
 /* 有 format-badge 时，编辑钮移到左上，避开右上角 */
-.book-card .book-format-badge { top: 10px; right: 40px; }
+.book-card .book-format-badge { top: 10px; right: 36px; }
 /* 列表视图按钮位置 */
 .books-list .book-edit-btn { top: 8px; right: 8px; }
 .books-list .book-format-badge { display: none; }
+
+/* 批量选择模式 */
+.book-card.selectable { cursor: pointer; }
+.book-select-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(43, 39, 36, 0.55);
+  color: var(--paper-white);
+  font-size: 0.85rem;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity var(--t-fast), background var(--t-fast);
+  z-index: 3;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+.select-mode .book-select-check { opacity: 1; }
+.book-card.selected .book-select-check { opacity: 1; background: var(--seal); color: var(--paper-white); }
+.book-card.selected { box-shadow: 0 0 0 2px var(--seal); }
+/* 批量操作栏 */
+.batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(120px);
+  background: var(--ink);
+  color: var(--paper-white);
+  padding: 10px 18px;
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--shadow-lift);
+  z-index: 9990;
+  transition: transform var(--t-norm);
+  font-size: 0.88rem;
+}
+.batch-bar.show { transform: translateX(-50%) translateY(0); }
+.batch-bar .count { opacity: 0.85; }
+.batch-bar button {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: var(--paper-white);
+  padding: 6px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all var(--t-fast);
+}
+.batch-bar button:hover { background: rgba(255,255,255,0.12); }
+.batch-bar button.primary { background: var(--seal); border-color: var(--seal); }
+.batch-bar button.primary:hover { background: var(--seal-deep); }
+/* 批量选择入口按钮（工具栏） */
+.select-mode-btn {
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  color: var(--soft);
+  letter-spacing: 0.05em;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-right: none;
+  transition: all var(--t-fast);
+}
+.select-mode-btn:hover { color: var(--ink); border-color: var(--gold); }
+.select-mode-btn.active { background: var(--ink); color: var(--paper-white); }
 
 /* ---------- 响应式 ---------- */
 

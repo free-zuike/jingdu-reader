@@ -12,6 +12,8 @@ let currentLayout = 'grid';    // grid/list/single
 let searchQuery = '';
 let singleIndex = 0;           // 单本布局当前索引
 let moonManualSort = {};       // Moon+ 手动排序位置 {fileName: pos}
+let selectMode = false;        // 批量选择模式
+let selectedIds = new Set();   // 批量选择中的 book id 集合
 
 // 加载书籍列表
 async function loadBooks() {
@@ -282,20 +284,26 @@ async function loadBookCover(book, card) {
 // 创建书籍卡片
 function createBookCard(book, layout) {
   const card = document.createElement('div');
-  card.className = 'book-card' + (book.cloudAvailable === false ? ' cloud-missing' : '');
-  card.onclick = () => {
+  card.className = 'book-card' + (book.cloudAvailable === false ? ' cloud-missing' : '') + (selectedIds.has(book.id) ? ' selected' : '');
+  card.onclick = (e) => {
+    if (selectMode) {
+      toggleSelect(book.id, card);
+      return;
+    }
     if (book.cloudAvailable === false) { showToast('云端无此文件（未上传到 WebDAV）', 'error'); return; }
     window.location.href = `/reader?id=${book.id}`;
   };
 
   const progress = book.progress || 0;
   const lastRead = book.lastReadAt ? formatDate(book.lastReadAt) : '';
+  const checked = selectedIds.has(book.id) ? ' checked' : '';
 
   card.innerHTML = `
     <div class="book-cover">
       <span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>
       <span class="book-format-badge">${book.format.toUpperCase()}</span>
       ${book.cloudAvailable === false ? '<span class="cloud-missing-badge" title="未上传到WebDAV，云端无此文件">未上传</span>' : ''}
+      <button class="book-select-check" data-book-id="${book.id}" title="选择">${checked ? '✓' : ''}</button>
       <button class="book-delete-btn" data-book-id="${book.id}" title="删除">✕</button>
       <button class="book-edit-btn" data-book-id="${book.id}" title="编辑">✎</button>
     </div>
@@ -315,6 +323,12 @@ function createBookCard(book, layout) {
       ${lastRead ? `<div class="book-last-read">上次阅读: ${lastRead}</div>` : ''}
     </div>
   `;
+
+  const selectBtn = card.querySelector('.book-select-check');
+  selectBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSelect(book.id, card);
+  });
 
   const deleteBtn = card.querySelector('.book-delete-btn');
   deleteBtn.addEventListener('click', async (e) => {
@@ -558,4 +572,81 @@ function debounce(func, wait) {
     clearTimeout(timeout);
     timeout = setTimeout(later, wait);
   };
+}
+
+// ---- 批量选择 ----
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  if (!selectMode) { selectedIds.clear(); }
+  document.body.classList.toggle('select-mode', selectMode);
+  const btn = document.getElementById('selectModeBtn');
+  if (btn) btn.classList.toggle('active', selectMode);
+  updateBatchBar();
+  renderShelf();
+}
+
+function toggleSelect(id, card) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    if (card) { card.classList.remove('selected'); card.querySelector('.book-select-check').textContent = ''; }
+  } else {
+    selectedIds.add(id);
+    if (card) { card.classList.add('selected'); card.querySelector('.book-select-check').textContent = '✓'; }
+  }
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batchBar');
+  const countEl = document.getElementById('batchCount');
+  if (!bar || !countEl) return;
+  countEl.textContent = selectedIds.size;
+  bar.classList.toggle('show', selectMode && selectedIds.size > 0);
+}
+
+async function batchUpdateBooks(patch) {
+  if (selectedIds.size === 0) return;
+  const btns = document.querySelectorAll('.batch-bar button');
+  btns.forEach(b => b.disabled = true);
+  let ok = 0, fail = 0;
+  const results = await Promise.allSettled(
+    Array.from(selectedIds).map(id => updateBookMeta(id, patch))
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value?.success) ok++;
+    else fail++;
+  }
+  btns.forEach(b => b.disabled = false);
+  if (fail === 0) {
+    showToast(`已更新 ${ok} 本（已同步到 Moon+）`, 'success');
+  } else {
+    showToast(`成功 ${ok} 本，失败 ${fail} 本`, 'warning');
+  }
+  selectedIds.clear();
+  updateBatchBar();
+  loadBooks();
+}
+
+async function batchDeleteBooks() {
+  if (selectedIds.size === 0) return;
+  if (!confirm(`确定删除选中的 ${selectedIds.size} 本书吗？\n（仅从书架移除，不影响 WebDAV 原文件）`)) return;
+  const btns = document.querySelectorAll('.batch-bar button');
+  btns.forEach(b => b.disabled = true);
+  let ok = 0, fail = 0;
+  const results = await Promise.allSettled(
+    Array.from(selectedIds).map(id => deleteBook(id))
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value?.success) ok++;
+    else fail++;
+  }
+  btns.forEach(b => b.disabled = false);
+  if (fail === 0) {
+    showToast(`已删除 ${ok} 本`, 'success');
+  } else {
+    showToast(`成功 ${ok} 本，失败 ${fail} 本`, 'warning');
+  }
+  selectedIds.clear();
+  updateBatchBar();
+  loadBooks();
 }
