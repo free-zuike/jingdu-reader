@@ -143,6 +143,17 @@ book.get('/moonplus/backup/:name/entry/:entry', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：分析 SQLite 数据库内容（提取表名、数据等）
+book.get('/moonplus/backup/:name/analyze/:entry', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const entry = c.req.param('entry');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.analyzeSqliteDatabase(userId, name, entry);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');

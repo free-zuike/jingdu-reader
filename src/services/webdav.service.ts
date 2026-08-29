@@ -1505,8 +1505,8 @@ export class WebDAVService {
             name: entryName,
             size: content.length,
             isSqlite: isSqlite,
-            base64: base64.substring(0, 5000), // 只返回前 5KB 预览
-            base64Full: isSqlite ? base64 : undefined // SQLite 返回完整 base64
+            base64: base64.substring(0, 5000),
+            base64Full: isSqlite ? base64 : undefined
           }
         };
       }
@@ -1514,6 +1514,78 @@ export class WebDAVService {
       return { success: false, error: '备份不是可解压格式' };
     } catch (e: any) {
       return { success: false, error: e?.message || '提取条目失败' };
+    }
+  }
+
+  // 分析 SQLite 数据库内容（提取表名、可读字符串等）
+  async analyzeSqliteDatabase(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const result = await this.getMoonPlusDataFile(userId, relPath);
+      if (!result.success || !result.data) return { success: false, error: '读取备份失败' };
+
+      const data = result.data as any;
+      if (!data.entries) return { success: false, error: '备份不是可解压格式' };
+
+      const entriesObj = data.entries as Record<string, string>;
+      const content = entriesObj[entryName];
+      if (content === undefined) return { success: false, error: `条目不存在: ${entryName}` };
+
+      if (!content.startsWith('SQLite format')) {
+        return { success: false, error: '不是 SQLite 数据库' };
+      }
+
+      // 提取可读字符串（SQLite 字符串存储为 UTF-8）
+      const strings: string[] = [];
+      let current = '';
+      for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+        const code = char.charCodeAt(0);
+        // 可打印 ASCII 或中文字符
+        if ((code >= 0x20 && code < 0x7f) || (code >= 0x4e00 && code <= 0x9fff)) {
+          current += char;
+        } else {
+          if (current.length >= 4) {
+            strings.push(current);
+          }
+          current = '';
+        }
+      }
+      if (current.length >= 4) strings.push(current);
+
+      // 提取表名（SQLite 表名通常以 "CREATE TABLE" 开头）
+      const tables = strings.filter(s =>
+        s.includes('CREATE TABLE') || s.includes('create table') ||
+        s.includes('CREATE INDEX') || s.includes('CREATE TRIGGER')
+      );
+
+      // 提取可能的数据（日期、百分比、书名等）
+      const dates = strings.filter(s =>
+        s.match(/\d{4}-\d{2}-\d{2}/) || s.match(/\d{2}:\d{2}:\d{2}/) || s.match(/\d{10,}/)
+      );
+
+      const percentages = strings.filter(s => s.includes('%'));
+
+      // 提取前 1KB 的 hex 预览（SQLite 头部信息）
+      const headerHex = Array.from(content.substring(0, 256)).map(c =>
+        c.charCodeAt(0).toString(16).padStart(2, '0')
+      ).join(' ');
+
+      return {
+        success: true,
+        data: {
+          name: entryName,
+          size: content.length,
+          totalStrings: strings.length,
+          tables: tables,
+          dates: dates.slice(0, 50),
+          percentages: percentages.slice(0, 20),
+          headerHex: headerHex,
+          sampleStrings: strings.slice(0, 100)
+        }
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '分析失败' };
     }
   }
 }
