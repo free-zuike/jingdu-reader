@@ -1535,38 +1535,38 @@ export class WebDAVService {
         return { success: false, error: '不是 SQLite 数据库' };
       }
 
-      // 提取可读字符串（SQLite 字符串存储为 UTF-8）
+      // 提取可读字符串
       const strings: string[] = [];
       let current = '';
       for (let i = 0; i < content.length; i++) {
         const char = content[i];
         const code = char.charCodeAt(0);
-        // 可打印 ASCII 或中文字符
         if ((code >= 0x20 && code < 0x7f) || (code >= 0x4e00 && code <= 0x9fff)) {
           current += char;
         } else {
-          if (current.length >= 4) {
-            strings.push(current);
-          }
+          if (current.length >= 4) strings.push(current);
           current = '';
         }
       }
       if (current.length >= 4) strings.push(current);
 
-      // 提取表名（SQLite 表名通常以 "CREATE TABLE" 开头）
-      const tables = strings.filter(s =>
-        s.includes('CREATE TABLE') || s.includes('create table') ||
-        s.includes('CREATE INDEX') || s.includes('CREATE TRIGGER')
+      // 提取表名
+      const tables = strings.filter(s => s.includes('CREATE TABLE') || s.includes('create table'));
+
+      // 提取 statistics 表数据（格式：filename|usedTime|readWords|dates）
+      const statsData = strings.filter(s =>
+        s.includes('|') && (s.includes('.epub') || s.includes('.txt') || s.includes('.mobi') || s.includes('.azw'))
       );
 
-      // 提取可能的数据（日期、百分比、书名等）
+      // 提取 dates 字段（格式：2024-01-15 或时间戳）
       const dates = strings.filter(s =>
-        s.match(/\d{4}-\d{2}-\d{2}/) || s.match(/\d{2}:\d{2}:\d{2}/) || s.match(/\d{10,}/)
+        s.match(/\d{4}-\d{2}-\d{2}/) || s.match(/\d{10,13}/)
       );
 
+      // 提取百分比（阅读进度）
       const percentages = strings.filter(s => s.includes('%'));
 
-      // 提取前 1KB 的 hex 预览（SQLite 头部信息）
+      // 提取前 256 字节的 hex
       const headerHex = Array.from(content.substring(0, 256)).map(c =>
         c.charCodeAt(0).toString(16).padStart(2, '0')
       ).join(' ');
@@ -1578,7 +1578,8 @@ export class WebDAVService {
           size: content.length,
           totalStrings: strings.length,
           tables: tables,
-          dates: dates.slice(0, 50),
+          statsData: statsData.slice(0, 50),
+          dates: dates.slice(0, 30),
           percentages: percentages.slice(0, 20),
           headerHex: headerHex,
           sampleStrings: strings.slice(0, 100)
@@ -1587,6 +1588,297 @@ export class WebDAVService {
     } catch (e: any) {
       return { success: false, error: e?.message || '分析失败' };
     }
+  }
+
+  // 解析 SQLite 数据库，提取 statistics 表数据（阅读统计）
+  async parseSqliteStatistics(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const result = await this.getMoonPlusDataFile(userId, relPath);
+      if (!result.success || !result.data) return { success: false, error: '读取备份失败' };
+
+      const data = result.data as any;
+      if (!data.entries) return { success: false, error: '备份不是可解压格式' };
+
+      const entriesObj = data.entries as Record<string, string>;
+      const content = entriesObj[entryName];
+      if (content === undefined) return { success: false, error: `条目不存在: ${entryName}` };
+
+      if (!content.startsWith('SQLite format')) {
+        return { success: false, error: '不是 SQLite 数据库' };
+      }
+
+      // 解析 SQLite 数据库
+      const db = this.parseSQLite(content);
+      if (!db) return { success: false, error: 'SQLite 解析失败' };
+
+      // 查找 statistics 表
+      const statsTable = db.tables.find(t => t.name === 'statistics');
+      if (!statsTable) {
+        return {
+          success: true,
+          data: {
+            tables: db.tables.map(t => t.name),
+            error: '未找到 statistics 表'
+          }
+        };
+      }
+
+      // 提取 statistics 表数据
+      const statsRows = statsTable.rows.map(row => {
+        // statistics 表结构：_id, filename, usedTime, readWords, dates
+        return {
+          id: row[0],
+          filename: row[1],
+          usedTime: row[2],
+          readWords: row[3],
+          dates: row[4]
+        };
+      });
+
+      return {
+        success: true,
+        data: {
+          tableCount: db.tables.length,
+          tables: db.tables.map(t => ({ name: t.name, rowCount: t.rows.length })),
+          statisticsRows: statsRows
+        }
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '解析失败' };
+    }
+  }
+
+  // 解析 SQLite 数据库（简化版，只支持读取表数据）
+  private parseSQLite(dbContent: string): { tables: Array<{ name: string; rows: any[][] }> } | null {
+    try {
+      // 1. 读取数据库头部（100 字节）
+      let pageSize = (dbContent.charCodeAt(16) << 8) | dbContent.charCodeAt(17);
+      if (pageSize === 1) pageSize = 65536;
+
+      // 2. 总页数
+      const dbSize = dbContent.length;
+      const pageCount = Math.ceil(dbSize / pageSize);
+
+      // 3. 读取 sqlite_master 表（root page = 1）
+      const tables: Array<{ name: string; rows: any[][]; rootPage: number }> = [];
+
+      // 从 page 1 读取 sqlite_master
+      const page1Offset = 100; // page 1 从 offset 100 开始
+      const page1Type = dbContent.charCodeAt(page1Offset);
+
+      // 解析 sqlite_master 表（B-tree 结构）
+      if (page1Type === 0x0d || page1Type === 0x05) {
+        const masterData = this.parseBTreePage(dbContent, 0, pageSize);
+        if (masterData) {
+          for (const row of masterData.rows) {
+            // sqlite_master: type, name, tbl_name, rootpage, sql
+            const name = row[1];
+            const rootPage = row[3];
+            if (name && typeof rootPage === 'number') {
+              tables.push({ name: String(name), rows: [], rootPage });
+            }
+          }
+        }
+      }
+
+      // 4. 读取每个表的数据
+      for (const table of tables) {
+        if (table.rootPage && table.rootPage > 0) {
+          const tableData = this.parseBTreeTable(dbContent, table.rootPage, pageSize);
+          if (tableData) {
+            table.rows = tableData;
+          }
+        }
+      }
+
+      return { tables: tables.map(t => ({ name: t.name, rows: t.rows })) };
+    } catch (e) {
+      console.error('SQLite parse error:', e);
+      return null;
+    }
+  }
+
+  // 解析 B-tree 页（表叶节点）
+  private parseBTreePage(dbContent: string, pageOffset: number, pageSize: number): { rows: any[][] } | null {
+    try {
+      const offset = pageOffset + (pageOffset === 0 ? 100 : 0);
+      const pageType = dbContent.charCodeAt(offset);
+
+      // 表叶节点 = 13 (0x0d)
+      if (pageType !== 13) return null;
+
+      const headerSize = 5 + (dbContent.charCodeAt(offset + 4) >= 0x80 ? 4 : 0);
+      const cellCount = (dbContent.charCodeAt(offset + 3) << 8) | dbContent.charCodeAt(offset + 4);
+
+      const cellPointersOffset = offset + headerSize;
+      const rows: any[][] = [];
+
+      for (let i = 0; i < cellCount; i++) {
+        const cellPtrOffset = cellPointersOffset + i * 2;
+        const cellPtr = (dbContent.charCodeAt(cellPtrOffset) << 8) | dbContent.charCodeAt(cellPtrOffset + 1);
+        const cellOffset = pageOffset + (cellPtr * pageSize / 100);
+
+        // 解析 cell
+        const row = this.parseCell(dbContent, cellOffset);
+        if (row) rows.push(row);
+      }
+
+      return { rows };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 解析 B-tree 表（递归遍历所有页）
+  private parseBTreeTable(dbContent: string, rootPage: number, pageSize: number): any[][] | null {
+    try {
+      const rows: any[][] = [];
+      let page = rootPage;
+      const visited = new Set<number>();
+
+      while (page && !visited.has(page)) {
+        visited.add(page);
+        const pageOffset = (page - 1) * pageSize;
+        const pageData = this.parseBTreePage(dbContent, pageOffset, pageSize);
+
+        if (pageData) {
+          rows.push(...pageData.rows);
+        }
+
+        // 检查是否是根页（有右指针）
+        const pageTypeOffset = pageOffset + (page === 1 ? 100 : 0);
+        const pageType = dbContent.charCodeAt(pageTypeOffset);
+        if (pageType === 5) {
+          // 内部页，读取右指针
+          const rightPtr = (dbContent.charCodeAt(pageTypeOffset + 8) << 8) |
+                           (dbContent.charCodeAt(pageTypeOffset + 9) << 16) |
+                           (dbContent.charCodeAt(pageTypeOffset + 10) << 24);
+          page = rightPtr;
+        } else {
+          break;
+        }
+      }
+
+      return rows;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 解析单个 cell（行数据）
+  private parseCell(dbContent: string, cellOffset: number): any[] | null {
+    try {
+      let offset = cellOffset;
+      const payloadLen = this.readVarint(dbContent, offset);
+      offset += payloadLen.bytes;
+
+      let rowid = 0;
+      if (payloadLen.value < 12) {
+        // rowid 在 payload 前
+        rowid = this.readVarint(dbContent, offset).value;
+        offset += 1; // skip rowid bytes
+      }
+
+      // 读取 record header
+      const headerSize = this.readVarint(dbContent, offset).value;
+      offset += 1;
+      const bodyStart = offset + headerSize - 1;
+
+      // 读取列类型
+      const types: number[] = [];
+      while (offset < bodyStart) {
+        types.push(this.readVarint(dbContent, offset).value);
+        offset += 1;
+      }
+
+      // 读取列值
+      const values: any[] = [rowid]; // _id is rowid
+      for (const type of types) {
+        const val = this.readValue(dbContent, offset, type);
+        values.push(val.value);
+        offset += val.bytes;
+      }
+
+      return values;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // 读取 varint
+  private readVarint(dbContent: string, offset: number): { value: number; bytes: number } {
+    let value = 0;
+    let bytes = 0;
+    for (let i = 0; i < 9; i++) {
+      const byte = dbContent.charCodeAt(offset + i);
+      value = (value << 7) | (byte & 0x7f);
+      bytes++;
+      if ((byte & 0x80) === 0) break;
+    }
+    // Handle 9th byte (full 8 bits)
+    if (bytes === 9) {
+      value = (value << 8) | dbContent.charCodeAt(offset + 8);
+      bytes = 9;
+    }
+    return { value, bytes };
+  }
+
+  // 读取值
+  private readValue(dbContent: string, offset: number, type: number): { value: any; bytes: number } {
+    switch (type) {
+      case 0: // NULL
+        return { value: null, bytes: 0 };
+      case 1: // int8
+        return { value: dbContent.charCodeAt(offset), bytes: 1 };
+      case 2: // int16
+        return { value: (dbContent.charCodeAt(offset) << 8) | dbContent.charCodeAt(offset + 1), bytes: 2 };
+      case 3: // int24
+        return { value: (dbContent.charCodeAt(offset) << 16) | (dbContent.charCodeAt(offset + 1) << 8) | dbContent.charCodeAt(offset + 2), bytes: 3 };
+      case 4: // int32
+        return { value: (dbContent.charCodeAt(offset) << 24) | (dbContent.charCodeAt(offset + 1) << 16) | (dbContent.charCodeAt(offset + 2) << 8) | dbContent.charCodeAt(offset + 3), bytes: 4 };
+      case 5: // int48
+        return { value: this.readInt48(dbContent, offset), bytes: 6 };
+      case 6: // int64
+        return { value: this.readInt64(dbContent, offset), bytes: 8 };
+      case 7: // float64
+        return { value: this.readFloat64(dbContent, offset), bytes: 8 };
+      case 8: // int0
+        return { value: 0, bytes: 0 };
+      case 9: // int1
+        return { value: 1, bytes: 0 };
+      default: // text/blob (size = (type - 13) / 2)
+        if (type >= 13) {
+          const size = Math.floor((type - 13) / 2);
+          const text = dbContent.substring(offset, offset + size);
+          return { value: text, bytes: size };
+        }
+        return { value: null, bytes: 0 };
+    }
+  }
+
+  private readInt48(dbContent: string, offset: number): number {
+    let value = 0;
+    for (let i = 0; i < 6; i++) {
+      value = (value << 8) | dbContent.charCodeAt(offset + i);
+    }
+    return value;
+  }
+
+  private readInt64(dbContent: string, offset: number): number {
+    let value = 0;
+    for (let i = 0; i < 8; i++) {
+      value = (value << 8) | dbContent.charCodeAt(offset + i);
+    }
+    return value;
+  }
+
+  private readFloat64(dbContent: string, offset: number): number {
+    const view = new DataView(new Uint8Array(8).buffer);
+    for (let i = 0; i < 8; i++) {
+      view.setUint8(i, dbContent.charCodeAt(offset + i));
+    }
+    return view.getFloat64(0);
   }
 }
 
