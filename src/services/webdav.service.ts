@@ -1495,9 +1495,28 @@ export class WebDAVService {
         const content = entriesObj[entryName];
         if (content === undefined) return { success: false, error: `条目不存在: ${entryName}` };
 
-        // 如果是 SQLite 数据库，返回 base64
+        // 如果是 SQLite 数据库，返回 base64（正确处理二进制数据）
         const isSqlite = content.startsWith('SQLite format');
-        const base64 = btoa(content);
+        
+        // 将字符串转换为字节数组，然后编码为 base64
+        let base64: string;
+        if (isSqlite) {
+          // SQLite 是二进制数据，需要逐字符编码
+          const bytes = new Uint8Array(content.length);
+          for (let i = 0; i < content.length; i++) {
+            bytes[i] = content.charCodeAt(i) & 0xFF;
+          }
+          // 分块编码避免栈溢出
+          let binary = '';
+          const chunkSize = 8192;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode(...chunk);
+          }
+          base64 = btoa(binary);
+        } else {
+          base64 = btoa(content);
+        }
 
         return {
           success: true,
