@@ -865,12 +865,11 @@ async function loadSqlJs() {
 async function loadMoonReadingStats() {
   console.log('[MoonStats] 开始加载阅读统计...');
   try {
-    // 1. 找到最新备份文件
+    // 1. 找到备份文件列表
     const structResult = await fetch('/api/books/moonplus/structure', {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    console.log('[MoonStats] 目录结构:', structResult.success ? '成功' : '失败');
     if (!structResult.success || !structResult.data) {
       console.log('[MoonStats] 获取目录结构失败:', structResult.error);
       return;
@@ -878,27 +877,31 @@ async function loadMoonReadingStats() {
 
     const files = structResult.data;
     const backups = files.filter(f => f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
+    // 按日期倒序排序（最新的优先）
     backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
-    const backup = backups[0];
+    console.log('[MoonStats] 找到', backups.length, '个备份文件');
 
-    if (!backup) {
-      console.log('[MoonStats] 未找到备份文件');
-      return;
-    }
-    console.log('[MoonStats] 找到备份:', backup.name);
-
-    // 2. 提取 SQLite 数据库条目
+    // 2. 尝试每个备份，直到找到包含 SQLite 数据库的
     const entryName = 'com.flyersoft.moonreaderp%2F43.tag'; // SQLite 数据库
-    const extractResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${entryName}`, {
-      headers: { 'Authorization': 'Bearer ' + getToken() }
-    }).then(r => r.json());
+    let extractResult = null;
 
-    console.log('[MoonStats] 提取 SQLite:', extractResult.success ? '成功' : '失败');
-    if (!extractResult.success || !extractResult.data?.base64Full) {
-      console.log('[MoonStats] 提取失败:', extractResult.error);
+    for (const backup of backups) {
+      console.log('[MoonStats] 尝试备份:', backup.name);
+      const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${entryName}`, {
+        headers: { 'Authorization': 'Bearer ' + getToken() }
+      }).then(r => r.json());
+
+      if (result.success && result.data?.base64Full) {
+        extractResult = result;
+        console.log('[MoonStats] 找到 SQLite! 大小:', result.data.size, 'bytes');
+        break;
+      }
+    }
+
+    if (!extractResult) {
+      console.log('[MoonStats] 所有备份都未找到 SQLite 数据库');
       return;
     }
-    console.log('[MoonStats] SQLite 大小:', extractResult.data.size, 'bytes');
 
     // 3. 在浏览器端解析 SQLite
     const loaded = await loadSqlJs();
