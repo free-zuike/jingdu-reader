@@ -28,29 +28,6 @@ async function loadSyncTimestamps() {
   } catch (e) { /* 忽略 */ }
 }
 
-// 加载阅读时长统计
-async function loadReadingStats() {
-  try {
-    const result = await getAllReadingStats();
-    if (result.success && result.data) {
-      let totalMs = 0;
-      for (const book of allBooks) {
-        if (result.data[book.id]) {
-          book.readingMs = result.data[book.id].totalMs;
-          totalMs += result.data[book.id].totalMs;
-        }
-      }
-      // 更新工具栏总阅读时长
-      const statsEl = document.getElementById('readingStats');
-      const statsText = document.getElementById('readingStatsText');
-      if (statsEl && statsText && totalMs > 0) {
-        statsEl.style.display = '';
-        statsText.textContent = formatReadingTime(totalMs);
-      }
-    }
-  } catch (e) { /* 忽略 */ }
-}
-
 // 加载同步历史
 async function loadSyncHistory() {
   try {
@@ -182,9 +159,6 @@ async function loadBooks() {
 
   // 加载每本书的同步时间戳
   loadSyncTimestamps();
-
-  // 加载阅读时长
-  loadReadingStats();
 
   // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序 + 手动排序位置）
   try {
@@ -469,7 +443,6 @@ function createBookCard(book, layout) {
         ` : '<span class="new-badge">NEW</span>'}
       </div>
       ${lastRead ? `<div class="book-last-read">上次阅读: ${lastRead}</div>` : ''}
-      ${book.readingMs && book.readingMs > 0 ? `<div class="book-reading-time">阅读: ${formatReadingTime(book.readingMs)}</div>` : ''}
       ${lastSynced ? `<div class="book-last-synced" title="上次同步到 Moon+">同步: ${lastSynced}</div>` : ''}
     </div>
   `;
@@ -726,17 +699,6 @@ function formatDate(str) {
   const sameYear = d.getFullYear() === now.getFullYear();
   const opts = sameYear ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' };
   return d.toLocaleDateString('zh-CN', opts);
-}
-
-// 格式化阅读时长（ms → 可读文本）
-function formatReadingTime(ms) {
-  if (!ms || ms <= 0) return '';
-  const totalSec = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSec / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  if (hours > 0) return `${hours}小时${minutes > 0 ? minutes + '分' : ''}`;
-  if (minutes > 0) return `${minutes}分钟`;
-  return `${totalSec}秒`;
 }
 
 // 防抖

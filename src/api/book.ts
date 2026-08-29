@@ -571,31 +571,6 @@ book.put('/:id/progress', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 上报阅读时长（累积到 Moon+ reading_stats.json）
-book.put('/:id/reading-stats', authMiddleware, async (c) => {
-  const userId = c.get('userId');
-  const bookId = c.req.param('id');
-  const { totalMs } = await c.req.json();
-
-  if (typeof totalMs !== 'number' || totalMs < 0) {
-    return c.json({ success: false, error: '无效的阅读时长' }, 400);
-  }
-
-  const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const result = await webdavService.saveReadingStats(userId, bookId, totalMs);
-  return c.json(result);
-});
-
-// 获取全部阅读统计（从 Moon+ reading_stats.json）
-book.get('/moonplus/reading-stats', authMiddleware, async (c) => {
-  const userId = c.get('userId');
-  const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const result = await webdavService.getReadingStats(userId);
-  return c.json(result);
-});
-
 // 诊断：查看 EPUB 结构（spine 文件数、h 标题），用于定位章节切分问题
 book.get('/:id/epub-structure', authMiddleware, async (c) => {
   const userId = c.get('userId');

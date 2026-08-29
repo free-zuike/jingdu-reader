@@ -1422,45 +1422,6 @@ export class WebDAVService {
     return `${cacheDir}/${title}${author}.${fileExt}.po`;
   }
 
-  // 获取阅读统计（从 .Moon+/reading_stats.json）
-  // 格式: { "bookId": { "totalMs": 12345, "lastRead": "ISO时间" }, ... }
-  async getReadingStats(userId: string): Promise<ApiResponse> {
-    try {
-      const result = await this.getMoonPlusDataFile(userId, 'reading_stats.json');
-      if (!result.success || !result.data) {
-        return { success: true, data: {} };
-      }
-      const data = result.data as { content?: string };
-      if (!data.content) return { success: true, data: {} };
-      return { success: true, data: JSON.parse(data.content) };
-    } catch (e) {
-      return { success: true, data: {} };
-    }
-  }
-
-  // 保存阅读时长到 .Moon+/reading_stats.json（累积模式）
-  async saveReadingStats(userId: string, bookId: string, totalMs: number): Promise<ApiResponse> {
-    try {
-      const existing = await this.getReadingStats(userId);
-      let stats: Record<string, { totalMs: number; lastRead: string }> = {};
-      if (existing.success && existing.data && Object.keys(existing.data).length > 0) {
-        stats = existing.data as any;
-      }
-      const prev = stats[bookId] || { totalMs: 0, lastRead: '' };
-      stats[bookId] = {
-        totalMs: prev.totalMs + totalMs,
-        lastRead: new Date().toISOString()
-      };
-      const json = JSON.stringify(stats, null, 2);
-      const bytes = new TextEncoder().encode(json).buffer as ArrayBuffer;
-      const ok = await this.putMoonPlusRootFile(userId, 'reading_stats.json', bytes);
-      return ok
-        ? { success: true, data: { bookId, totalMs: stats[bookId].totalMs } }
-        : { success: false, error: '写入 reading_stats.json 失败' };
-    } catch (e: any) {
-      return { success: false, error: e?.message || '保存阅读统计失败' };
-    }
-  }
 }
 
 // 辅助函数：从书名提取标题和作者
