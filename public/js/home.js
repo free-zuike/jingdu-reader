@@ -64,8 +64,26 @@ async function loadSyncConflicts() {
     const result = await getSyncConflicts();
     if (result.success && Array.isArray(result.data) && result.data.length > 0) {
       showToast(`⚠️ ${result.data.length} 本书在网页和 App 同时编辑过，已以 App 为准`, 'warning');
+      // 显示冲突详情弹窗
+      openConflictModal(result.data);
     }
   } catch (e) { /* 忽略 */ }
+}
+
+// 打开冲突详情弹窗
+function openConflictModal(conflicts) {
+  const modal = document.getElementById('conflictModal');
+  const list = document.getElementById('conflictList');
+  if (!modal || !list) return;
+  list.innerHTML = conflicts.map(c => `<div style="padding:6px 0;border-bottom:1px solid var(--line-soft);">📖 ${escapeHtml(c.title || c.bookId)}</div>`).join('');
+  modal.style.display = 'flex';
+}
+
+// 关闭冲突弹窗
+function closeConflictModal() {
+  const modal = document.getElementById('conflictModal');
+  if (modal) modal.style.display = 'none';
+  clearSyncConflicts().catch(() => {});
 }
 
 // 加载书籍列表

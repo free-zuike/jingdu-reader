@@ -183,6 +183,24 @@
     <button id="batchCancel">取消</button>
   </div>
 
+  <!-- 冲突详情弹窗 -->
+  <div class="modal-overlay" id="conflictModal" style="display:none;">
+    <div class="modal-box" style="max-width:500px;">
+      <div class="modal-header">
+        <h3>⚠️ 同步冲突</h3>
+        <button class="modal-close" id="conflictClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.85rem;color:var(--soft);margin-bottom:12px;">以下书籍在网页和 App 同时编辑过，已以 App 数据为准：</p>
+        <div id="conflictList" style="max-height:300px;overflow-y:auto;font-size:0.85rem;"></div>
+        <div class="form-hint" style="margin-top:12px;">冲突已自动解决（App 优先）。如需保留网页编辑，请重新编辑。</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="conflictDismiss">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
   <script src="/js/home.js"></script>
@@ -305,6 +323,13 @@
         else if (val === '') batchUpdateBooks({ rate: '' });
       });
       document.getElementById('batchDelete').addEventListener('click', batchDeleteBooks);
+
+      // 冲突详情弹窗
+      document.getElementById('conflictClose').addEventListener('click', closeConflictModal);
+      document.getElementById('conflictDismiss').addEventListener('click', closeConflictModal);
+      document.getElementById('conflictModal').addEventListener('click', (e) => {
+        if (e.target.id === 'conflictModal') closeConflictModal();
+      });
 
       // 键盘快捷键
       document.addEventListener('keydown', (e) => {
