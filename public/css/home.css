@@ -401,6 +401,12 @@
   color: #a89f8b;
 }
 
+.book-last-synced {
+  font-size: 0.7rem;
+  color: #8fbf8f;
+  margin-top: 2px;
+}
+
 /* 列表视图卡片 */
 .books-list .book-card {
   flex-direction: row;

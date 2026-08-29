@@ -373,6 +373,7 @@ function createBookCard(book, layout) {
 
   const progress = book.progress || 0;
   const lastRead = book.lastReadAt ? formatDate(book.lastReadAt) : '';
+  const lastSynced = book.syncedAt ? formatDate(book.syncedAt) : '';
   const checked = selectedIds.has(book.id) ? ' checked' : '';
 
   card.innerHTML = `
@@ -398,6 +399,7 @@ function createBookCard(book, layout) {
         ` : '<span class="new-badge">NEW</span>'}
       </div>
       ${lastRead ? `<div class="book-last-read">上次阅读: ${lastRead}</div>` : ''}
+      ${lastSynced ? `<div class="book-last-synced" title="上次同步到 Moon+">同步: ${lastSynced}</div>` : ''}
     </div>
   `;
 
