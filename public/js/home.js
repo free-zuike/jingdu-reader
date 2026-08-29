@@ -882,14 +882,22 @@ async function loadMoonReadingStats() {
     console.log('[MoonStats] 找到', backups.length, '个备份文件');
 
     // 2. 尝试每个备份，直到找到包含 SQLite 数据库的
-    const entryName = 'com.flyersoft.moonreaderp%2F43.tag'; // SQLite 数据库
+    const entryName = 'com.flyersoft.moonreaderp/43.tag'; // SQLite 数据库（实际斜杠）
     let extractResult = null;
 
     for (const backup of backups) {
       console.log('[MoonStats] 尝试备份:', backup.name);
-      const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${entryName}`, {
+      const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${encodeURIComponent(entryName)}`, {
         headers: { 'Authorization': 'Bearer ' + getToken() }
       }).then(r => r.json());
+
+      console.log('[MoonStats] 响应:', JSON.stringify({
+        success: result.success,
+        error: result.error,
+        hasData: !!result.data,
+        hasBase64: !!result.data?.base64Full,
+        size: result.data?.size
+      }));
 
       if (result.success && result.data?.base64Full) {
         extractResult = result;
