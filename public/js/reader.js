@@ -567,6 +567,7 @@ async function saveProgress() {
 function initEventListeners() {
   document.getElementById('tocBtn').addEventListener('click', openToc);
   document.getElementById('bookmarkBtn').addEventListener('click', toggleBookmark);
+  document.getElementById('syncBookBtn').addEventListener('click', syncCurrentBook);
   const syncPrefsBtn = document.getElementById('syncPrefsBtn');
   if (syncPrefsBtn) syncPrefsBtn.addEventListener('click', loadMoonPrefs);
   const reparseBtn = document.getElementById('reparseBtn');
@@ -1025,6 +1026,29 @@ function loadSettings() {
 // 保存标记（书签/划线/笔记）到服务器
 function persistMarks() {
   saveMarks(currentBookId, marks.items).catch(() => {});
+}
+
+// 同步当前书到 Moon+（进度 + 标记）
+async function syncCurrentBook() {
+  const btn = document.getElementById('syncBookBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '同步中...';
+  try {
+    // 1. 同步进度
+    if (totalLength > 0) {
+      const pos = currentChapterIndex * (totalLength / Math.max(1, chapters.length));
+      await updateReadingProgress(currentBookId, pos, totalLength, undefined, undefined, currentChapterIndex);
+    }
+    // 2. 标记已在添加/删除时实时同步到 Moon+ .an
+    // 3. 提示完成
+    showReaderToast('已同步到 Moon+');
+  } catch (e) {
+    showReaderToast('同步失败: ' + (e.message || ''), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 同步';
+  }
 }
 
 // 切换当前章书签
