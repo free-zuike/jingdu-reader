@@ -863,20 +863,29 @@ async function loadSqlJs() {
 
 // 从 Moon+ 备份提取阅读统计
 async function loadMoonReadingStats() {
+  console.log('[MoonStats] 开始加载阅读统计...');
   try {
     // 1. 找到最新备份文件
     const structResult = await fetch('/api/books/moonplus/structure', {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    if (!structResult.success || !structResult.data) return;
+    console.log('[MoonStats] 目录结构:', structResult.success ? '成功' : '失败');
+    if (!structResult.success || !structResult.data) {
+      console.log('[MoonStats] 获取目录结构失败:', structResult.error);
+      return;
+    }
 
     const files = structResult.data;
     const backups = files.filter(f => f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
     backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
     const backup = backups[0];
 
-    if (!backup) return;
+    if (!backup) {
+      console.log('[MoonStats] 未找到备份文件');
+      return;
+    }
+    console.log('[MoonStats] 找到备份:', backup.name);
 
     // 2. 提取 SQLite 数据库条目
     const entryName = 'com.flyersoft.moonreaderp%2F43.tag'; // SQLite 数据库
@@ -884,11 +893,19 @@ async function loadMoonReadingStats() {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    if (!extractResult.success || !extractResult.data?.base64Full) return;
+    console.log('[MoonStats] 提取 SQLite:', extractResult.success ? '成功' : '失败');
+    if (!extractResult.success || !extractResult.data?.base64Full) {
+      console.log('[MoonStats] 提取失败:', extractResult.error);
+      return;
+    }
+    console.log('[MoonStats] SQLite 大小:', extractResult.data.size, 'bytes');
 
     // 3. 在浏览器端解析 SQLite
     const loaded = await loadSqlJs();
-    if (!loaded) return;
+    if (!loaded) {
+      console.log('[MoonStats] sql.js 加载失败');
+      return;
+    }
 
     const SQL = await initSqlJs();
     const uint8 = Uint8Array.from(atob(extractResult.data.base64Full), c => c.charCodeAt(0));
@@ -897,9 +914,11 @@ async function loadMoonReadingStats() {
     // 4. 查询 statistics 表
     const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
     const tables = tablesResult.length > 0 ? tablesResult[0].values.map(v => v[0]) : [];
+    console.log('[MoonStats] 数据库表:', tables.join(', '));
 
     if (tables.includes('statistics')) {
       const statsResult = db.exec("SELECT filename, usedTime, readWords, dates FROM statistics");
+      console.log('[MoonStats] statistics 行数:', statsResult[0]?.values?.length || 0);
       if (statsResult.length > 0) {
         for (const row of statsResult[0].values) {
           if (row[0]) {
@@ -910,16 +929,21 @@ async function loadMoonReadingStats() {
             };
           }
         }
+        console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
+        console.log('[MoonStats] 示例:', Object.entries(moonStatsData).slice(0, 3));
       }
+    } else {
+      console.log('[MoonStats] 未找到 statistics 表');
     }
 
     db.close();
 
     // 5. 更新书籍卡片显示阅读时长
     updateBookCardsWithStats();
+    console.log('[MoonStats] 完成');
 
   } catch (e) {
-    console.error('加载阅读统计失败:', e);
+    console.error('[MoonStats] 错误:', e);
   }
 }
 
