@@ -1422,6 +1422,63 @@ export class WebDAVService {
     return `${cacheDir}/${title}${author}.${fileExt}.po`;
   }
 
+  // 检查 .mrpro 备份文件内容（列出 ZIP 条目，识别 SQLite 数据库）
+  async inspectMrproBackup(userId: string, backupName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const result = await this.getMoonPlusDataFile(userId, relPath);
+      if (!result.success || !result.data) return { success: false, error: '读取备份失败' };
+
+      const data = result.data as any;
+
+      // 如果是大 ZIP（>3MB），只列条目名
+      if (data.isLarge && data.entryList) {
+        const dbEntries = data.entryList.filter((e: any) =>
+          e.name.endsWith('.db') || e.name.endsWith('.sqlite') || e.name.endsWith('.sqlite3') ||
+          e.name.includes('database') || e.name.includes('stats') || e.name.includes('history')
+        );
+        return {
+          success: true,
+          data: {
+            name: backupName,
+            size: data.size,
+            isZip: true,
+            isLarge: true,
+            totalEntries: data.entryList.length,
+            dbEntries: dbEntries,
+            entryList: data.entryList.slice(0, 100)
+          }
+        };
+      }
+
+      // 如果是小 ZIP（可解压），返回所有条目内容
+      if (data.entries) {
+        const entriesObj = data.entries as Record<string, string>;
+        const entries = Object.entries(entriesObj).map(([name, content]) => ({
+          name,
+          size: content.length,
+          preview: content.substring(0, 200)
+        }));
+        const sqliteEntries = Object.entries(entriesObj).filter(([_, content]) =>
+          content.startsWith('SQLite format') || content.startsWith('\x00')
+        ).map(([name]) => name);
+        return {
+          success: true,
+          data: {
+            name: backupName,
+            size: data.size,
+            isZip: true,
+            entries,
+            sqliteEntries
+          }
+        };
+      }
+
+      return { success: true, data };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '检查备份失败' };
+    }
+  }
 }
 
 // 辅助函数：从书名提取标题和作者

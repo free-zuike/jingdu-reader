@@ -122,6 +122,16 @@ book.get('/moonplus/file/:name', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：检查 .mrpro 备份文件内容（列出 ZIP 条目，识别 SQLite 数据库）
+book.get('/moonplus/backup/:name', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.inspectMrproBackup(userId, name);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');
