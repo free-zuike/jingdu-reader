@@ -301,6 +301,97 @@ export class BookService {
     }
   }
 
+  // 全量同步 Moon+ 阅读进度：读取所有 .po 文件，解析百分比，更新 KV
+  async syncMoonPlusProgress(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const cacheResult = await webdavService.listMoonPlusCache(userId);
+      const files = (cacheResult.success && Array.isArray((cacheResult.data as any)?.files)) ? (cacheResult.data as any).files : [];
+      if (!files.length) return;
+      const books = await this.db.getBooksByUserId(userId);
+      const bookByFile = new Map<string, Book>();
+      for (const b of books) bookByFile.set((b.webdav_path || '').split('/').pop() || '', b);
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
+      for (const f of files) {
+        if (!f.path) continue;
+        const baseName = (f.name || '').replace(/\.po$/, '');
+        let book = bookByFile.get(baseName);
+        if (!book && baseName) {
+          const target = norm(baseName);
+          book = books.find(b => {
+            const fn = norm((b.webdav_path || '').split('/').pop() || '');
+            return target && fn && (fn.includes(target) || target.includes(fn));
+          });
+        }
+        if (!book) continue;
+        // 读取 .po 内容
+        const poResult = await webdavService.getMoonPlusProgressFile(userId, f.path);
+        if (!poResult.success || !poResult.data) continue;
+        const poContent = (poResult.data as any).content || '';
+        const parsed = webdavService.parseMoonPlusProgress(poContent);
+        if (!parsed) continue;
+        const progressKey = `progress:${userId}:${book.id}`;
+        const existing = await this.cache.get(progressKey).catch(() => null);
+        try {
+          const p = existing ? JSON.parse(existing) : { bookId: book.id, currentPosition: 0, totalLength: 0 };
+          // Moon+ 进度优先（App 读得多），更新百分比和章节
+          p.percentage = parsed.percentage;
+          p.moonChapter = parsed.chapter;
+          p.fromMoon = true;
+          // 如果 .po 的 lastModified 更新，也更新 lastReadAt
+          if (f.lastModified) {
+            const poTime = new Date(f.lastModified).getTime();
+            const curTime = p.lastReadAt ? new Date(p.lastReadAt).getTime() : 0;
+            if (!isNaN(poTime) && poTime > curTime) {
+              p.lastReadAt = new Date(poTime).toISOString();
+            }
+          }
+          await this.cache.put(progressKey, JSON.stringify(p), { expirationTtl: 365 * 24 * 60 * 60 });
+        } catch {}
+      }
+    } catch (e) {
+      console.error('[syncMoonPlusProgress] 失败:', e);
+    }
+  }
+
+  // 全量同步 Moon+ 标注：读取所有 .an 文件，缓存到 KV（供阅读器快速加载）
+  async syncMoonPlusAnnotations(userId: string, webdavService: WebDAVService): Promise<void> {
+    try {
+      const cacheResult = await webdavService.listMoonPlusCache(userId);
+      const files = (cacheResult.success && Array.isArray((cacheResult.data as any)?.files)) ? (cacheResult.data as any).files : [];
+      if (!files.length) return;
+      const books = await this.db.getBooksByUserId(userId);
+      const bookByFile = new Map<string, Book>();
+      for (const b of books) bookByFile.set((b.webdav_path || '').split('/').pop() || '', b);
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
+      for (const f of files) {
+        if (!f.name || !f.name.endsWith('.an')) continue;
+        const baseName = f.name.replace(/\.an$/, '');
+        let book = bookByFile.get(baseName);
+        if (!book && baseName) {
+          const target = norm(baseName);
+          book = books.find(b => {
+            const fn = norm((b.webdav_path || '').split('/').pop() || '');
+            return target && fn && (fn.includes(target) || target.includes(fn));
+          });
+        }
+        if (!book) continue;
+        // 读取并解析 .an
+        const anResult = await webdavService.getMoonPlusAnnotations(userId, f.name);
+        if (!anResult.success || !anResult.data) continue;
+        const anData = anResult.data as any;
+        const key = `marks:${userId}:${book.id}`;
+        const existing = await this.cache.get(key).catch(() => null);
+        try {
+          const local = existing ? JSON.parse(existing) : { items: [] };
+          local.moonAnnotations = anData.items || anData.raw || null;
+          await this.cache.put(key, JSON.stringify(local), { expirationTtl: 365 * 24 * 60 * 60 });
+        } catch {}
+      }
+    } catch (e) {
+      console.error('[syncMoonPlusAnnotations] 失败:', e);
+    }
+  }
+
   // 按需下载并缓存单本书籍
   async downloadAndCacheBook(
     userId: string,

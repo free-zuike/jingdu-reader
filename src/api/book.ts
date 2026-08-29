@@ -141,6 +141,9 @@ book.post('/sync', authMiddleware, async (c) => {
   c.executionCtx.waitUntil(bookService.syncMoonPlusMeta(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncMoonRecentRead(userId, webdavService));
   c.executionCtx.waitUntil(bookService.syncBooksFromMoonPlus(userId, webdavService, cloudNames));
+  // 全量同步 Moon+ 阅读进度（读取所有 .po）和标注（读取所有 .an）
+  c.executionCtx.waitUntil(bookService.syncMoonPlusProgress(userId, webdavService));
+  c.executionCtx.waitUntil(bookService.syncMoonPlusAnnotations(userId, webdavService));
 
   return c.json({
     ...result,
