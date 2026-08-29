@@ -14,6 +14,7 @@ let singleIndex = 0;           // 单本布局当前索引
 let moonManualSort = {};       // Moon+ 手动排序位置 {fileName: pos}
 let selectMode = false;        // 批量选择模式
 let selectedIds = new Set();   // 批量选择中的 book id 集合
+let batchCancelled = false;    // 批量操作取消标志
 
 // 加载书籍列表
 async function loadBooks() {
@@ -606,47 +607,78 @@ function updateBatchBar() {
 
 async function batchUpdateBooks(patch) {
   if (selectedIds.size === 0) return;
+  batchCancelled = false;
   const btns = document.querySelectorAll('.batch-bar button');
-  btns.forEach(b => b.disabled = true);
-  let ok = 0, fail = 0;
-  const results = await Promise.allSettled(
-    Array.from(selectedIds).map(id => updateBookMeta(id, patch))
-  );
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value?.success) ok++;
-    else fail++;
+  const progressEl = document.getElementById('batchProgress');
+  const doneEl = document.getElementById('batchDone');
+  const totalEl = document.getElementById('batchTotal');
+  const ids = Array.from(selectedIds);
+  const total = ids.length;
+  let ok = 0, fail = 0, skipped = 0;
+  // 显示进度
+  if (progressEl) { progressEl.style.display = 'inline'; totalEl.textContent = total; doneEl.textContent = 0; }
+  btns.forEach(b => { if (b.id !== 'batchCancel') b.disabled = true; });
+  
+  for (let i = 0; i < ids.length; i++) {
+    if (batchCancelled) { skipped = total - i; break; }
+    try {
+      const r = await updateBookMeta(ids[i], patch);
+      if (r?.success) ok++; else fail++;
+    } catch { fail++; }
+    if (doneEl) doneEl.textContent = ok + fail;
   }
+  
   btns.forEach(b => b.disabled = false);
-  if (fail === 0) {
+  if (progressEl) progressEl.style.display = 'none';
+  if (batchCancelled) {
+    showToast(`已取消（完成 ${ok + fail}，跳过 ${skipped}）`, 'warning');
+  } else if (fail === 0) {
     showToast(`已更新 ${ok} 本（已同步到 Moon+）`, 'success');
   } else {
     showToast(`成功 ${ok} 本，失败 ${fail} 本`, 'warning');
   }
-  selectedIds.clear();
-  updateBatchBar();
+  if (!batchCancelled) {
+    selectedIds.clear();
+    updateBatchBar();
+  }
   loadBooks();
 }
 
 async function batchDeleteBooks() {
   if (selectedIds.size === 0) return;
   if (!confirm(`确定删除选中的 ${selectedIds.size} 本书吗？\n（仅从书架移除，不影响 WebDAV 原文件）`)) return;
+  batchCancelled = false;
   const btns = document.querySelectorAll('.batch-bar button');
-  btns.forEach(b => b.disabled = true);
-  let ok = 0, fail = 0;
-  const results = await Promise.allSettled(
-    Array.from(selectedIds).map(id => deleteBook(id))
-  );
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value?.success) ok++;
-    else fail++;
+  const progressEl = document.getElementById('batchProgress');
+  const doneEl = document.getElementById('batchDone');
+  const totalEl = document.getElementById('batchTotal');
+  const ids = Array.from(selectedIds);
+  const total = ids.length;
+  let ok = 0, fail = 0, skipped = 0;
+  if (progressEl) { progressEl.style.display = 'inline'; totalEl.textContent = total; doneEl.textContent = 0; }
+  btns.forEach(b => { if (b.id !== 'batchCancel') b.disabled = true; });
+  
+  for (let i = 0; i < ids.length; i++) {
+    if (batchCancelled) { skipped = total - i; break; }
+    try {
+      const r = await deleteBook(ids[i]);
+      if (r?.success) ok++; else fail++;
+    } catch { fail++; }
+    if (doneEl) doneEl.textContent = ok + fail;
   }
+  
   btns.forEach(b => b.disabled = false);
-  if (fail === 0) {
+  if (progressEl) progressEl.style.display = 'none';
+  if (batchCancelled) {
+    showToast(`已取消（完成 ${ok + fail}，跳过 ${skipped}）`, 'warning');
+  } else if (fail === 0) {
     showToast(`已删除 ${ok} 本`, 'success');
   } else {
     showToast(`成功 ${ok} 本，失败 ${fail} 本`, 'warning');
   }
-  selectedIds.clear();
-  updateBatchBar();
+  if (!batchCancelled) {
+    selectedIds.clear();
+    updateBatchBar();
+  }
   loadBooks();
 }

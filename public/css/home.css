@@ -853,6 +853,7 @@
 }
 .batch-bar.show { transform: translateX(-50%) translateY(0); }
 .batch-bar .count { opacity: 0.85; }
+.batch-bar .progress { opacity: 0.7; font-size: 0.8rem; }
 .batch-bar button {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.3);

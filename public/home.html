@@ -169,10 +169,12 @@
   <!-- 批量操作栏 -->
   <div class="batch-bar" id="batchBar">
     <span class="count">已选 <b id="batchCount">0</b> 本</span>
+    <span class="progress" id="batchProgress" style="display:none;">处理中 <b id="batchDone">0</b>/<b id="batchTotal">0</b></span>
     <button id="batchFavorite">★ 珍藏</button>
     <button id="batchUnfavorite">☆ 取消</button>
     <button id="batchTag">标签...</button>
     <button id="batchSeries">系列...</button>
+    <button id="batchRate">评分...</button>
     <button id="batchDelete" style="margin-left:8px;">🗑 删除</button>
     <button id="batchCancel">取消</button>
   </div>
@@ -274,6 +276,8 @@
       // 批量选择模式
       document.getElementById('selectModeBtn').addEventListener('click', toggleSelectMode);
       document.getElementById('batchCancel').addEventListener('click', () => {
+        batchCancelled = true; // 若正在执行则标记取消
+        if (!selectMode) return;
         selectMode = false; selectedIds.clear();
         document.body.classList.remove('select-mode');
         document.getElementById('selectModeBtn').classList.remove('active');
@@ -289,6 +293,12 @@
       document.getElementById('batchSeries').addEventListener('click', () => {
         const val = prompt('输入系列名：', '');
         if (val != null && val.trim()) batchUpdateBooks({ series: val.trim() });
+      });
+      document.getElementById('batchRate').addEventListener('click', () => {
+        const val = prompt('输入评分（1-5）：', '');
+        const n = parseInt(val, 10);
+        if (!isNaN(n) && n >= 1 && n <= 5) batchUpdateBooks({ rate: String(n) });
+        else if (val === '') batchUpdateBooks({ rate: '' });
       });
       document.getElementById('batchDelete').addEventListener('click', batchDeleteBooks);
     });
