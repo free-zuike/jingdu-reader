@@ -865,53 +865,38 @@ async function loadSqlJs() {
 async function loadMoonReadingStats() {
   console.log('[MoonStats] 开始加载阅读统计...');
   try {
-    // 1. 找到备份文件列表
-    const structResult = await fetch('/api/books/moonplus/structure', {
+    // 使用已知的备份名称（包含 SQLite 数据库）
+    const backupName = '2026-08-27 AUTO (PJE110).mrpro';
+    const entryName = 'com.flyersoft.moonreaderp/43.tag';
+
+    console.log('[MoonStats] 尝试备份:', backupName);
+    console.log('[MoonStats] 条目:', entryName);
+
+    // 1. 提取 SQLite 数据库
+    const extractResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/entry/${encodeURIComponent(entryName)}`, {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    if (!structResult.success || !structResult.data) {
-      console.log('[MoonStats] 获取目录结构失败:', structResult.error);
-      return;
-    }
+    console.log('[MoonStats] API 响应:', JSON.stringify({
+      success: extractResult.success,
+      error: extractResult.error,
+      hasData: !!extractResult.data,
+      hasBase64Full: !!extractResult.data?.base64Full,
+      size: extractResult.data?.size,
+      isSqlite: extractResult.data?.isSqlite
+    }, null, 2));
 
-    const files = structResult.data;
-    const backups = files.filter(f => f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
-    // 按日期倒序排序（最新的优先）
-    backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
-    console.log('[MoonStats] 找到', backups.length, '个备份文件');
-
-    // 2. 尝试每个备份，直到找到包含 SQLite 数据库的
-    const entryName = 'com.flyersoft.moonreaderp/43.tag'; // SQLite 数据库（实际斜杠）
-    let extractResult = null;
-
-    for (const backup of backups) {
-      console.log('[MoonStats] 尝试备份:', backup.name);
-      const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${encodeURIComponent(entryName)}`, {
+    if (!extractResult.success || !extractResult.data?.base64Full) {
+      console.log('[MoonStats] 提取失败，尝试列出备份条目...');
+      // 调试：列出备份的所有条目
+      const listResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}`, {
         headers: { 'Authorization': 'Bearer ' + getToken() }
       }).then(r => r.json());
-
-      console.log('[MoonStats] 响应:', JSON.stringify({
-        success: result.success,
-        error: result.error,
-        hasData: !!result.data,
-        hasBase64: !!result.data?.base64Full,
-        size: result.data?.size
-      }));
-
-      if (result.success && result.data?.base64Full) {
-        extractResult = result;
-        console.log('[MoonStats] 找到 SQLite! 大小:', result.data.size, 'bytes');
-        break;
-      }
-    }
-
-    if (!extractResult) {
-      console.log('[MoonStats] 所有备份都未找到 SQLite 数据库');
+      console.log('[MoonStats] 备份条目列表:', listResult.data?.entries?.slice(0, 10));
       return;
     }
 
-    // 3. 在浏览器端解析 SQLite
+    // 2. 在浏览器端解析 SQLite
     const loaded = await loadSqlJs();
     if (!loaded) {
       console.log('[MoonStats] sql.js 加载失败');
@@ -922,7 +907,7 @@ async function loadMoonReadingStats() {
     const uint8 = Uint8Array.from(atob(extractResult.data.base64Full), c => c.charCodeAt(0));
     const db = new SQL.Database(uint8);
 
-    // 4. 查询 statistics 表
+    // 3. 查询 statistics 表
     const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
     const tables = tablesResult.length > 0 ? tablesResult[0].values.map(v => v[0]) : [];
     console.log('[MoonStats] 数据库表:', tables.join(', '));
@@ -949,7 +934,7 @@ async function loadMoonReadingStats() {
 
     db.close();
 
-    // 5. 更新书籍卡片显示阅读时长
+    // 4. 更新书籍卡片显示阅读时长
     updateBookCardsWithStats();
     console.log('[MoonStats] 完成');
 
