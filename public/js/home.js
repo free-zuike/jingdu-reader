@@ -160,6 +160,9 @@ async function loadBooks() {
   // 加载每本书的同步时间戳
   loadSyncTimestamps();
 
+  // 加载 Moon+ 阅读统计（浏览器端 SQLite 解析）
+  loadMoonReadingStats();
+
   // 同步 Moon+ 书架排序偏好（books.sorts shelf_sort_by → 网页排序 + 手动排序位置）
   try {
     const ss = await getMoonShelfSort();
@@ -443,6 +446,7 @@ function createBookCard(book, layout) {
         ` : '<span class="new-badge">NEW</span>'}
       </div>
       ${lastRead ? `<div class="book-last-read">上次阅读: ${lastRead}</div>` : ''}
+      ${book.readingMs && book.readingMs > 0 ? `<div class="book-reading-time">阅读: ${formatReadingTime(book.readingMs)}</div>` : ''}
       ${lastSynced ? `<div class="book-last-synced" title="上次同步到 Moon+">同步: ${lastSynced}</div>` : ''}
     </div>
   `;
@@ -701,6 +705,17 @@ function formatDate(str) {
   return d.toLocaleDateString('zh-CN', opts);
 }
 
+// 格式化阅读时长（ms → 可读文本）
+function formatReadingTime(ms) {
+  if (!ms || ms <= 0) return '';
+  const totalSec = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  if (hours > 0) return `${hours}小时${minutes > 0 ? minutes + '分' : ''}`;
+  if (minutes > 0) return `${minutes}分钟`;
+  return `${totalSec}秒`;
+}
+
 // 防抖
 function debounce(func, wait) {
   let timeout;
@@ -817,4 +832,106 @@ async function batchDeleteBooks() {
     updateBatchBar();
   }
   loadBooks();
+}
+
+// ============================================
+// Moon+ 阅读统计解析（浏览器端 SQLite 解析）
+// ============================================
+
+let sqlJsLoaded = false;
+let moonStatsData = {}; // { filename: { usedTime, readWords, dates } }
+
+// 加载 sql.js
+async function loadSqlJs() {
+  if (sqlJsLoaded && typeof initSqlJs === 'function') return true;
+  try {
+    // sql.js 从 CDN 加载
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    sqlJsLoaded = true;
+    return true;
+  } catch (e) {
+    console.error('加载 sql.js 失败:', e);
+    return false;
+  }
+}
+
+// 从 Moon+ 备份提取阅读统计
+async function loadMoonReadingStats() {
+  try {
+    // 1. 找到最新备份文件
+    const structResult = await fetch('/api/books/moonplus/structure', {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(r => r.json());
+
+    if (!structResult.success || !structResult.data) return;
+
+    const files = structResult.data;
+    const backups = files.filter(f => f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
+    backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+    const backup = backups[0];
+
+    if (!backup) return;
+
+    // 2. 提取 SQLite 数据库条目
+    const entryName = 'com.flyersoft.moonreaderp%2F43.tag'; // SQLite 数据库
+    const extractResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backup.name)}/entry/${entryName}`, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(r => r.json());
+
+    if (!extractResult.success || !extractResult.data?.base64Full) return;
+
+    // 3. 在浏览器端解析 SQLite
+    const loaded = await loadSqlJs();
+    if (!loaded) return;
+
+    const SQL = await initSqlJs();
+    const uint8 = Uint8Array.from(atob(extractResult.data.base64Full), c => c.charCodeAt(0));
+    const db = new SQL.Database(uint8);
+
+    // 4. 查询 statistics 表
+    const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+    const tables = tablesResult.length > 0 ? tablesResult[0].values.map(v => v[0]) : [];
+
+    if (tables.includes('statistics')) {
+      const statsResult = db.exec("SELECT filename, usedTime, readWords, dates FROM statistics");
+      if (statsResult.length > 0) {
+        for (const row of statsResult[0].values) {
+          if (row[0]) {
+            moonStatsData[row[0]] = {
+              usedTime: row[1] || 0,
+              readWords: row[2] || 0,
+              dates: row[3] || ''
+            };
+          }
+        }
+      }
+    }
+
+    db.close();
+
+    // 5. 更新书籍卡片显示阅读时长
+    updateBookCardsWithStats();
+
+  } catch (e) {
+    console.error('加载阅读统计失败:', e);
+  }
+}
+
+// 更新书籍卡片显示阅读时长
+function updateBookCardsWithStats() {
+  for (const book of allBooks) {
+    const fileName = book.fileName || book.title;
+    if (moonStatsData[fileName] || moonStatsData[fileName + '.epub']) {
+      const stats = moonStatsData[fileName] || moonStatsData[fileName + '.epub'];
+      book.readingMs = stats.usedTime;
+      book.readingWords = stats.readWords;
+    }
+  }
+  renderShelf();
 }
