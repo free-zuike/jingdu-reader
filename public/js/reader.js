@@ -652,13 +652,20 @@ function applyLineHeight(val) {
   if (valEl) valEl.textContent = v.toFixed(2);
 }
 
-// 保存当前所有阅读偏好到服务器（字号/主题/行距/翻页方式）
+// 保存当前所有阅读偏好到服务器（字号/主题/行距/翻页方式），并同步到 Moon+
 function savePrefs() {
   const fontSize = localStorage.getItem('readerFontSize') || '1.1';
   const theme = localStorage.getItem('readerTheme') || 'dark';
   const lineHeight = localStorage.getItem('readerLineHeight') || '1.95';
   const paging = localStorage.getItem('readerPagingMode') || 'scroll';
   savePreferences(fontSize, theme, lineHeight, paging).catch(() => {});
+  // 同步到 Moon+ .Moon+/web-prefs.json（供 App 或其他工具读取）
+  saveMoonPlusPreferences({
+    fontSize, theme, lineHeight, pagingMode: paging,
+    fontFamily: localStorage.getItem('readerFontFamily') || 'default',
+    textColor: localStorage.getItem('readerTextColor') || '#333333',
+    bgColor: localStorage.getItem('readerBgColor') || '#fafafa'
+  }).catch(() => {});
 }
 
 // 从 Moon+ 备份(.mrpro 的 .tag)同步阅读偏好（字号/行距）应用到本页

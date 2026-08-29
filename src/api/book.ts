@@ -78,6 +78,16 @@ book.get('/moonplus/shelf-sort', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 保存网页阅读偏好吗到 Moon+（写到 .Moon+/web-prefs.json）
+book.put('/moonplus/preferences', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const prefs = await c.req.json();
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.saveMoonPlusPreferences(userId, prefs);
+  return c.json(result);
+});
+
 // 获取书籍列表
 book.get('/', authMiddleware, async (c) => {
   const userId = c.get('userId');

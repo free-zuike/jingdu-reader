@@ -215,6 +215,14 @@ async function getMoonShelfSort() {
   return request('/api/books/moonplus/shelf-sort');
 }
 
+// 保存网页阅读偏好到 Moon+（写到 .Moon+/web-prefs.json）
+async function saveMoonPlusPreferences(prefs) {
+  return request('/api/books/moonplus/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(prefs)
+  });
+}
+
 // 向 Moon+ .an 追加标注（网页→Moon+）
 async function addMoonAnnotation(anFileName, ann) {
   return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`, {

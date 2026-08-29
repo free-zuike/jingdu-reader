@@ -991,6 +991,35 @@ export class WebDAVService {
     }
   }
 
+  // 保存网页阅读偏好到 Moon+（写到 .Moon+/web-prefs.json，供 App 或其他工具读取）
+  async saveMoonPlusPreferences(userId: string, prefs: Record<string, unknown>): Promise<ApiResponse> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return { success: false, error: 'WebDAV配置不存在' };
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/web-prefs.json`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
+
+      const payload = JSON.stringify({ ...prefs, savedAt: new Date().toISOString() });
+      const resp = await fetch(fullUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${config.username}:${password}`),
+          'Content-Type': 'application/json; charset=utf-8',
+          'User-Agent': 'JingDu-Reader/1.0'
+        },
+        body: payload
+      });
+      if (!resp.ok && resp.status !== 201 && resp.status !== 204) {
+        return { success: false, error: `写入失败 (状态码: ${resp.status})` };
+      }
+      return { success: true, data: { path: filePath } };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '写入偏好失败' };
+    }
+  }
+
   // 读取 Moon+ 书籍元数据（books.sync，zlib 压缩的 JSON 数组）
   // 返回: Map<filename, { category, favorite, series, rate }>
   async getMoonPlusBookMeta(userId: string): Promise<Map<string, { category: string; favorite: boolean; series: string; rate: string }>> {
