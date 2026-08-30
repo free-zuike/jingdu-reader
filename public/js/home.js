@@ -856,20 +856,16 @@ async function loadMoonReadingStats() {
       return;
     }
 
-    console.log('[MoonStats] 原始 statsRows (前 5 条):', JSON.stringify(result.data.statsRows.slice(0, 5), null, 2));
-    console.log('[MoonStats] 表清单:', result.data.tables);
-
     for (const row of result.data.statsRows) {
-      if (row.filename) {
-        moonStatsData[row.filename] = {
-          usedTime: row.usedTime || 0,
-          readWords: row.readWords || 0,
-          dates: row.dates || ''
-        };
-      }
+      if (!row.filename) continue;
+      // Moon+ 存的是完整路径（如 /sdcard/Download/Turrit/x.epub），取 basename 匹配书架
+      const basename = row.filename.split('/').pop() || row.filename;
+      moonStatsData[basename] = {
+        usedTime: row.usedTime || 0,
+        readWords: row.readWords || 0,
+        dates: row.dates || ''
+      };
     }
-
-    console.log('[MoonStats] 书架文件名 (前 10):', JSON.stringify(allBooks.map(b => b.fileName || b.title).slice(0, 10)));
 
     console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
 
@@ -894,6 +890,6 @@ function updateBookCardsWithStats() {
       matched++;
     }
   }
-  console.log('[MoonStats] 匹配成功:', matched, '/', allBooks.length, '本书');
+  if (matched > 0) console.log('[MoonStats] 匹配成功:', matched, '/', allBooks.length, '本书');
   renderShelf();
 }
