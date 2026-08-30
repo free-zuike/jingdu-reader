@@ -1337,4 +1337,69 @@ export class BookService {
       return { success: false, error: e?.message || '同步失败' };
     }
   }
+
+  // 获取阅读日历数据（按日期聚合所有书的阅读统计）
+  // dates 字段格式：日期代码|阅读时长(ms)@阅读字数，如 "20038|17979909@157129"
+  // 日期代码是 YYMMDD 格式（2 位年 + 2 位月 + 1 位日？或者 2 位年 + 2 位月 + 2 位日？）
+  async getReadingCalendar(userId: string, year: number, month: number): Promise<ApiResponse> {
+    try {
+      const books = await this.db.getBooksByUserId(userId);
+      const calendarData: Record<string, { totalMs: number; totalWords: number; books: Array<{ title: string; ms: number; words: number }> }> = {};
+
+      for (const book of books) {
+        const key = `stats:${userId}:${book.id}`;
+        const statsData = await this.cache.get(key).catch(() => null);
+        if (!statsData) continue;
+        try {
+          const stats = JSON.parse(statsData);
+          if (!stats.dates) continue;
+          const lines = stats.dates.split('\n');
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const [dateCode, rest] = line.split('|');
+            if (!dateCode || !rest) continue;
+            const [ms, words] = rest.split('@');
+            const msNum = parseInt(ms) || 0;
+            const wordsNum = parseInt(words) || 0;
+
+            // 解析日期代码（假设 YYMMDD 格式）
+            const date = this.parseDateCode(dateCode, year, month);
+            if (!date) continue;
+
+            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${date}`;
+            if (!calendarData[dateKey]) {
+              calendarData[dateKey] = { totalMs: 0, totalWords: 0, books: [] };
+            }
+            calendarData[dateKey].totalMs += msNum;
+            calendarData[dateKey].totalWords += wordsNum;
+            calendarData[dateKey].books.push({ title: book.title, ms: msNum, words: wordsNum });
+          }
+        } catch {}
+      }
+
+      return { success: true, data: calendarData };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '获取日历失败' };
+    }
+  }
+
+  // 解析 Moon+ 日期代码（YYMMDD 格式）
+  private parseDateCode(dateCode: string, year: number, month: number): number | null {
+    try {
+      // 假设格式：YYMMDD（2 位年 + 2 位月 + 2 位日）
+      // 例如：20038 = 20 年 03 月 08 日
+      const yy = parseInt(dateCode.substring(0, 2));
+      const mm = parseInt(dateCode.substring(2, 4));
+      const dd = parseInt(dateCode.substring(4, 5)); // 1 位日
+
+      if (isNaN(yy) || isNaN(mm) || isNaN(dd)) return null;
+
+      // 验证月份和日期
+      if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+
+      return dd;
+    } catch {
+      return null;
+    }
+  }
 }

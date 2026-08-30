@@ -178,6 +178,17 @@ book.post('/moonplus/backup/:name/sync/:entry', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 阅读日历：按日期聚合所有书的阅读统计（从 KV stats 读取 dates 字段）
+book.get('/moonplus/calendar', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const year = parseInt(c.req.query('year') || new Date().getFullYear().toString());
+  const month = parseInt(c.req.query('month') || '0'); // 0-based
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.getReadingCalendar(userId, year, month);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');
