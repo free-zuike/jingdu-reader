@@ -1340,11 +1340,26 @@ export class BookService {
 
   // 获取阅读日历数据（按日期聚合所有书的阅读统计）
   // dates 字段格式：日期代码|阅读时长(ms)@阅读字数，如 "20038|17979909@157129"
-  // 日期代码是 YYMMDD 格式（2 位年 + 2 位月 + 1 位日？或者 2 位年 + 2 位月 + 2 位日？）
+  // 日期代码是 YYMMDD 格式（2 位年 + 2 位月 + 2 位日）
   async getReadingCalendar(userId: string, year: number, month: number): Promise<ApiResponse> {
     try {
       const books = await this.db.getBooksByUserId(userId);
-      const calendarData: Record<string, { totalMs: number; totalWords: number; books: Array<{ title: string; ms: number; words: number }> }> = {};
+      // book.id → title 映射
+      const bookById = new Map<string, { title: string; cover: string }>();
+      for (const b of books) {
+        bookById.set(b.id, { title: b.title, cover: `/api/books/${b.id}/cover` });
+      }
+      const calendarData: Record<string, {
+        totalMs: number;
+        totalWords: number;
+        books: Array<{
+          title: string;
+          cover: string;
+          ms: number;
+          words: number;
+          speed: number; // 字/分钟
+        }>;
+      }> = {};
 
       for (const book of books) {
         const key = `stats:${userId}:${book.id}`;
@@ -1372,9 +1387,22 @@ export class BookService {
             }
             calendarData[dateKey].totalMs += msNum;
             calendarData[dateKey].totalWords += wordsNum;
-            calendarData[dateKey].books.push({ title: book.title, ms: msNum, words: wordsNum });
+            // 计算阅读速度（字/分钟）
+            const speed = msNum > 0 ? Math.round(wordsNum / (msNum / 1000 / 60)) : 0;
+            calendarData[dateKey].books.push({
+              title: book.title,
+              cover: `/api/books/${book.id}/cover`,
+              ms: msNum,
+              words: wordsNum,
+              speed
+            });
           }
         } catch {}
+      }
+
+      // 按阅读时长降序排列每本书，方便前端显示主封面
+      for (const data of Object.values(calendarData)) {
+        data.books.sort((a, b) => b.ms - a.ms);
       }
 
       return { success: true, data: calendarData };

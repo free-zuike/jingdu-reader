@@ -1120,12 +1120,41 @@ function renderCalendar() {
     const data = calendarData[dateKey];
     if (data && data.totalMs > 0) {
       div.classList.add('has-data');
+      
+      // 显示主封面（读得最多的书）+ 其他封面缩略图
+      const mainBook = data.books[0];
+      const otherBooks = data.books.slice(1, 3); // 最多显示 2 个其他封面
+      
+      // 计算阅读速度（字/分钟）
+      const totalSpeed = data.totalMs > 0 ? Math.round(data.totalWords / (data.totalMs / 1000 / 60)) : 0;
       const hours = Math.floor(data.totalMs / 1000 / 60 / 60);
       const minutes = Math.floor(data.totalMs / 1000 / 60 % 60);
       const readingText = hours > 0 ? `${hours}h${minutes > 0 ? minutes + 'm' : ''}` : `${minutes}m`;
-      div.innerHTML = `<span>${day}</span><span class="day-reading">${readingText}</span>`;
+      
+      let coverHtml = '';
+      if (mainBook) {
+        coverHtml = `<div class="day-main-cover"><img src="${mainBook.cover}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`;
+        for (let i = 0; i < otherBooks.length; i++) {
+          const pos = i === 0 ? 'bottom-left' : 'bottom-right';
+          coverHtml += `<div class="day-mini-cover ${pos}"><img src="${otherBooks[i].cover}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`;
+        }
+        if (data.books.length > 3) {
+          coverHtml += `<div class="day-more-count">+${data.books.length - 3}</div>`;
+        }
+      }
+      
+      div.innerHTML = `
+        <div class="day-content">
+          <span class="day-number">${day}</span>
+          ${coverHtml}
+        </div>
+        <div class="day-info">
+          <span class="day-reading">${readingText}</span>
+          <span class="day-speed">${totalSpeed}字/分</span>
+        </div>
+      `;
     } else {
-      div.textContent = day;
+      div.innerHTML = `<div class="day-content"><span class="day-number">${day}</span></div>`;
     }
 
     // 判断是否选中
@@ -1158,21 +1187,28 @@ function showDayDetail(day) {
   
   const totalHours = (data.totalMs / 1000 / 60 / 60).toFixed(1);
   const totalWords = (data.totalWords / 10000).toFixed(1);
+  const totalSpeed = data.totalMs > 0 ? Math.round(data.totalWords / (data.totalMs / 1000 / 60)) : 0;
 
   let html = `
     <div class="calendar-detail-header">
       <div class="calendar-detail-date">${calendarMonth + 1}月${day}日</div>
-      <div class="calendar-detail-total">共 ${totalHours} 小时，${totalWords} 万字</div>
+      <div class="calendar-detail-total">共 ${totalHours} 小时，${totalWords} 万字，${totalSpeed} 字/分</div>
     </div>
   `;
 
   for (const book of data.books) {
     const hours = (book.ms / 1000 / 60 / 60).toFixed(1);
     const words = (book.words / 1000).toFixed(0);
+    const speed = book.speed || 0;
     html += `
       <div class="calendar-detail-book">
-        <div class="calendar-detail-book-title">${escapeHtml(book.title)}</div>
-        <div class="calendar-detail-book-stats">${hours}小时 · ${words}千字</div>
+        <div class="calendar-detail-book-cover">
+          <img src="${book.cover}" alt="" loading="lazy" onerror="this.style.display='none'">
+        </div>
+        <div class="calendar-detail-book-info">
+          <div class="calendar-detail-book-title">${escapeHtml(book.title)}</div>
+          <div class="calendar-detail-book-stats">${hours}小时 · ${words}千字 · ${speed}字/分</div>
+        </div>
       </div>
     `;
   }
