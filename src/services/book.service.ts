@@ -546,9 +546,11 @@ export class BookService {
       const books = await this.db.getBooksByUserId(userId);
       const bookList: BookListItem[] = [];
 
-      // 只读取进度（封面由前端按需通过 /cover 加载，这里不读大缓存值，避免拖慢接口）
+      // 只读取进度和阅读统计（封面由前端按需通过 /cover 加载，这里不读大缓存值，避免拖慢接口）
       const progressPromises = books.map(b => this.cache.get(`progress:${userId}:${b.id}`).catch(() => null));
+      const statsPromises = books.map(b => this.cache.get(`stats:${userId}:${b.id}`).catch(() => null));
       const progresses = await Promise.all(progressPromises);
+      const statsList = await Promise.all(statsPromises);
 
       for (let i = 0; i < books.length; i++) {
         const book = books[i];
@@ -563,6 +565,18 @@ export class BookService {
               progress = Math.round((p.currentPosition / p.totalLength) * 100);
             }
             lastReadAt = p.lastReadAt;
+          } catch {}
+        }
+
+        // 阅读统计（来自 Moon+ SQLite statistics 表）
+        let readingMs: number | undefined;
+        let readWords: number | undefined;
+        const statsData = statsList[i];
+        if (statsData) {
+          try {
+            const s = JSON.parse(statsData);
+            readingMs = s.usedTime;
+            readWords = s.readWords;
           } catch {}
         }
 
@@ -589,7 +603,9 @@ export class BookService {
           readStatus,
           cachedAt: book.cached_at,
           fileName: (book.webdav_path || '').split('/').pop() || '',
-          cloudAvailable: book.cloud_available === 1
+          cloudAvailable: book.cloud_available === 1,
+          readingMs,
+          readWords
         });
       }
 

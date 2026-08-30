@@ -843,13 +843,20 @@ let moonStatsData = {}; // { filename: { usedTime, readWords, dates } }
 
 // 从 Moon+ 备份同步所有数据（阅读统计、元数据、笔记等）
 async function loadMoonReadingStats() {
-  console.log('[MoonStats] 开始加载 Moon+ 数据...');
+  // 检查本地 KV 是否已经有阅读统计（通过 /api/books 返回的 readingMs 字段）
+  const hasLocalStats = allBooks.some(b => b.readingMs && b.readingMs > 0);
+  if (hasLocalStats) {
+    console.log('[MoonStats] 本地已有阅读统计，跳过 Moon+ SQLite 拉取');
+    return;
+  }
+
+  console.log('[MoonStats] 本地无阅读统计，从 Moon+ SQLite 拉取...');
   try {
     const backupName = '2026-08-27 AUTO (PJE110).mrpro';
     const entryName = 'com.flyersoft.moonreaderp/43.tag';
 
     const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/all/${encodeURIComponent(entryName)}`, {
-      headers: { 'Authorization': 'Bearer ' + getToken() }
+      headers: { 'Authorization': 'Bearer ' +getToken() }
     }).then(r => r.json());
 
     if (!result.success || !result.data) {

@@ -96,6 +96,8 @@ export interface BookListItem {
   readStatus?: 'unread' | 'reading' | 'read';
   fileName?: string; // webdav 文件名（匹配 Moon+ manualSort）
   cloudAvailable?: boolean; // 云端是否有文件（false=未上传到 WebDAV）
+  readingMs?: number; // 阅读时长（毫秒，来自 Moon+ SQLite statistics 表）
+  readWords?: number; // 阅读字数（来自 Moon+ SQLite statistics 表）
 }
 
 export interface BookContent {
