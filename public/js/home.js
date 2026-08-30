@@ -958,6 +958,21 @@ async function loadMoonReadingStats() {
     if (Object.keys(moonStatsData).length > 0 || metaSynced > 0) {
       updateBookCardsWithStats();
     }
+
+    // 持久化到后端（books 元数据 → books 表；notes → KV marks；statistics → KV stats）
+    try {
+      const syncResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/sync/${encodeURIComponent(entryName)}`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + getToken() }
+      }).then(r => r.json());
+      if (syncResult.success && syncResult.data) {
+        console.log('[MoonStats] 后端持久化:', JSON.stringify(syncResult.data));
+      } else {
+        console.warn('[MoonStats] 后端持久化失败:', syncResult.error);
+      }
+    } catch (e) {
+      console.error('[MoonStats] 后端持久化错误:', e);
+    }
   } catch (e) {
     console.error('[MoonStats] 错误:', e);
   }

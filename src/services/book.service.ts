@@ -1214,4 +1214,110 @@ export class BookService {
 
     return chapters;
   }
+
+  // 从 Moon+ SQLite 备份同步所有数据到本地（books 元数据 → books 表；notes → KV marks；statistics → KV stats）
+  async syncMoonPlusFromSQLite(userId: string, backupName: string, entryName: string, webdavService: WebDAVService): Promise<ApiResponse> {
+    try {
+      const result = await webdavService.parseSqliteAllTables(userId, backupName, entryName);
+      if (!result.success || !result.data) return { success: false, error: result.error || '解析失败' };
+
+      const data = result.data as any;
+      const localBooks = await this.db.getBooksByUserId(userId);
+      // basename → 本地 Book
+      const bookByBase = new Map<string, Book>();
+      for (const b of localBooks) {
+        const fn = (b.webdav_path || '').split('/').pop() || '';
+        if (fn) bookByBase.set(fn, b);
+      }
+      // 规范化模糊匹配
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
+      const findBook = (filename: string): Book | undefined => {
+        if (!filename) return undefined;
+        const base = filename.split('/').pop() || filename;
+        let hit = bookByBase.get(base);
+        if (!hit && base) {
+          const target = norm(base);
+          hit = localBooks.find(b => {
+            const fn = norm((b.webdav_path || '').split('/').pop() || '');
+            return target && fn && (fn.includes(target) || target.includes(fn));
+          });
+        }
+        return hit;
+      };
+
+      const summary: Record<string, number> = { meta: 0, notes: 0, stats: 0 };
+
+      // 1. books 表：分类、评分、收藏、简介、作者
+      if (Array.isArray(data.books)) {
+        for (const row of data.books) {
+          const book = findBook(row.filename);
+          if (!book) continue;
+          const meta: { category?: string; favorite?: boolean; rate?: string; series?: string } = {};
+          if (row.category && row.category.trim() && !book.category) {
+            meta.category = row.category.trim();
+            summary.meta++;
+          }
+          if (row.rate && !book.rate) {
+            const r = parseFloat(row.rate);
+            if (r >= 1 && r <= 5) { meta.rate = String(r); summary.meta++; }
+          }
+          if (row.favorite && !book.favorite) { meta.favorite = true; summary.meta++; }
+          if (Object.keys(meta).length > 0) {
+            await this.db.updateBookMoonMeta(book.id, meta);
+          }
+        }
+      }
+
+      // 2. notes 表：笔记/标注 → KV marks
+      if (Array.isArray(data.notes) && data.notes.length > 0) {
+        const notesByBook = new Map<string, any[]>();
+        for (const row of data.notes) {
+          const book = findBook(row.filename);
+          if (!book) continue;
+          if (!notesByBook.has(book.id)) notesByBook.set(book.id, []);
+          notesByBook.get(book.id)!.push({
+            lastChapter: row.lastChapter,
+            lastPosition: row.lastPosition,
+            highlightLength: row.highlightLength,
+            highlightColor: row.highlightColor,
+            bookmark: row.bookmark,
+            note: row.note,
+            original: row.original,
+            underline: row.underline,
+            strikethrough: row.strikethrough,
+            time: row.time
+          });
+        }
+        for (const [bookId, notes] of notesByBook) {
+          const key = `marks:${userId}:${bookId}`;
+          const existing = await this.cache.get(key).catch(() => null);
+          try {
+            const local = existing ? JSON.parse(existing) : { items: [] };
+            local.moonAnnotations = notes;
+            await this.cache.put(key, JSON.stringify(local), { expirationTtl: 365 * 24 * 60 * 60 });
+            summary.notes += notes.length;
+          } catch {}
+        }
+      }
+
+      // 3. statistics 表：阅读统计 → KV stats
+      if (Array.isArray(data.statistics)) {
+        for (const row of data.statistics) {
+          const book = findBook(row.filename);
+          if (!book) continue;
+          const key = `stats:${userId}:${book.id}`;
+          await this.cache.put(key, JSON.stringify({
+            usedTime: row.usedTime,
+            readWords: row.readWords,
+            dates: row.dates
+          }), { expirationTtl: 365 * 24 * 60 * 60 });
+          summary.stats++;
+        }
+      }
+
+      return { success: true, data: summary };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '同步失败' };
+    }
+  }
 }

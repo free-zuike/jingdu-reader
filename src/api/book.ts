@@ -165,6 +165,19 @@ book.get('/moonplus/backup/:name/all/:entry', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 同步：把 Moon+ SQLite 数据持久化到本地（books 元数据 → books 表；notes → KV marks；statistics → KV stats）
+book.post('/moonplus/backup/:name/sync/:entry', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const entry = c.req.param('entry');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  await db.ensureMoonMetaColumns();
+  const result = await bookService.syncMoonPlusFromSQLite(userId, name, entry, webdavService);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');
