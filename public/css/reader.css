@@ -131,6 +131,17 @@
 }
 .header-btn:hover { border-color: var(--r-line); color: var(--r-ink); }
 
+/* 夜间模式：压暗背景图（对应 App nightImageBright 夜间变暗） */
+.reader-page.night-mode::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  background: rgba(8, 6, 4, 0.55);
+  pointer-events: none;
+}
+.reader-page.night-mode .reader-content { position: relative; z-index: 2; }
+
 /* ---------- 书页（阅读区） ---------- */
 
 .reader-content {

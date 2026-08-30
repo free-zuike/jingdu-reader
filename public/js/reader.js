@@ -700,9 +700,24 @@ function checkNightMode() {
   const inNight = start <= end ? (cur >= start && cur < end) : (cur >= start || cur < end);
   if (inNight && !nightActive) {
     nightActive = true;
+    document.body.classList.add('night-mode');
     applyReaderTheme('dark');
   } else if (!inNight && nightActive) {
     nightActive = false;
+    document.body.classList.remove('night-mode');
+    restoreUserTheme();
+  }
+}
+
+// 强制进入/退出夜间（供日夜模式同步使用）
+function setNightMode(on) {
+  if (on && !nightActive) {
+    nightActive = true;
+    document.body.classList.add('night-mode');
+    applyReaderTheme('dark');
+  } else if (!on && nightActive) {
+    nightActive = false;
+    document.body.classList.remove('night-mode');
     restoreUserTheme();
   }
 }
