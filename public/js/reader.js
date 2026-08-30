@@ -1656,8 +1656,8 @@ function showMarkTooltip(e) {
   const text = sel.toString().trim();
   if (text.length < 1 || text.length > 500) return;
   const tip = document.getElementById('markTooltip');
-  const styleBtns = ['underline', 'highlight', 'wave', 'strike'].map(s =>
-    `<button class="mt-style${s === 'underline' ? ' active' : ''}" data-style="${s}">${s === 'underline' ? '下划线' : s === 'highlight' ? '高亮' : s === 'wave' ? '波浪线' : '删除线'}</button>`).join('');
+  const styleBtns = ['highlight', 'underline', 'wave', 'strike'].map(s =>
+    `<button class="mt-style${s === 'highlight' ? ' active' : ''}" data-style="${s}">${s === 'underline' ? '下划线' : s === 'highlight' ? '高亮' : s === 'wave' ? '波浪线' : '删除线'}</button>`).join('');
   const colorBtns = Object.entries(HIGHLIGHT_COLORS).map(([id, c]) =>
     `<button class="mt-color${id === 'red' ? ' active' : ''}" data-color="${id}" style="background:${c.hex}" title="${id}"></button>`).join('');
   tip.innerHTML = `
@@ -1674,7 +1674,7 @@ function showMarkTooltip(e) {
   tip.style.left = Math.min(rect.left + rect.width / 2 - 120, window.innerWidth - 260) + 'px';
   tip.style.top = Math.max(rect.top - 60, 64) + 'px';
 
-  let curStyle = 'underline', curColor = 'red';
+  let curStyle = 'highlight', curColor = 'red';
   tip.querySelectorAll('.mt-style').forEach(b => b.onclick = () => {
     curStyle = b.dataset.style;
     tip.querySelectorAll('.mt-style').forEach(x => x.classList.toggle('active', x === b));
@@ -1734,7 +1734,7 @@ function hideMarkTooltip() {
 }
 
 // 添加划线/笔记（按当前章文本匹配位置）；同步写回 Moon+ .an（含样式/颜色）
-function addHighlight(text, note, style = 'underline', colorId = 'red') {
+function addHighlight(text, note, style = 'highlight', colorId = 'red') {
   hideMarkTooltip();
   window.getSelection()?.removeAllRanges();
   const idx = currentChapterText.indexOf(text);
