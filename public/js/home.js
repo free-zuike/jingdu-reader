@@ -1167,53 +1167,59 @@ function renderCalendar() {
   }
 }
 
-// 显示日期详情
+// 显示日期详情（在日历网格里展开）
 function showDayDetail(day) {
   calendarSelectedDay = day;
   renderCalendar();
 
-  const detail = document.getElementById('calendarDetail');
-  if (!detail) return;
+  // 移除之前的展开行
+  const existingExpand = document.querySelector('.calendar-expand-row');
+  if (existingExpand) existingExpand.remove();
 
   const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
   const data = calendarData[dateKey];
 
-  if (!data || data.books.length === 0) {
-    detail.style.display = 'none';
-    return;
-  }
+  if (!data || data.books.length === 0) return;
 
-  detail.style.display = 'block';
-  
+  // 创建展开行
+  const grid = document.getElementById('calendarGrid');
+  if (!grid) return;
+
   const totalHours = (data.totalMs / 1000 / 60 / 60).toFixed(1);
   const totalWords = (data.totalWords / 10000).toFixed(1);
   const totalSpeed = data.totalMs > 0 ? Math.round(data.totalWords / (data.totalMs / 1000 / 60)) : 0;
 
-  let html = `
-    <div class="calendar-detail-header">
-      <div class="calendar-detail-date">${calendarMonth + 1}月${day}日</div>
-      <div class="calendar-detail-total">共 ${totalHours} 小时，${totalWords} 万字，${totalSpeed} 字/分</div>
-    </div>
-  `;
-
+  const expandRow = document.createElement('div');
+  expandRow.className = 'calendar-expand-row';
+  
+  let booksHtml = '';
   for (const book of data.books) {
     const hours = (book.ms / 1000 / 60 / 60).toFixed(1);
     const words = (book.words / 1000).toFixed(0);
     const speed = book.speed || 0;
-    html += `
-      <div class="calendar-detail-book">
-        <div class="calendar-detail-book-cover">
+    booksHtml += `
+      <div class="calendar-expand-book">
+        <div class="calendar-expand-book-cover">
           <img src="${book.cover}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>
-        <div class="calendar-detail-book-info">
-          <div class="calendar-detail-book-title">${escapeHtml(book.title)}</div>
-          <div class="calendar-detail-book-stats">${hours}小时 · ${words}千字 · ${speed}字/分</div>
+        <div class="calendar-expand-book-info">
+          <div class="calendar-expand-book-title">${escapeHtml(book.title)}</div>
+          <div class="calendar-expand-book-stats">${hours}h · ${words}千字 · ${speed}字/分</div>
         </div>
       </div>
     `;
   }
 
-  detail.innerHTML = html;
+  expandRow.innerHTML = `
+    <div class="calendar-expand-header">
+      <span class="calendar-expand-date">${calendarMonth + 1}月${day}日</span>
+      <span class="calendar-expand-total">${totalHours}h · ${totalWords}万字 · ${totalSpeed}字/分</span>
+    </div>
+    ${booksHtml}
+  `;
+
+  // 插入到网格底部
+  grid.appendChild(expandRow);
 }
 
 // 上一月
