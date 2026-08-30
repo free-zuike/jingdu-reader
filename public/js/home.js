@@ -1000,3 +1000,229 @@ function updateBookCardsWithStats() {
   if (matched > 0) console.log('[MoonStats] 匹配成功:', matched, '/', allBooks.length, '本书');
   renderShelf();
 }
+
+// ============================================
+// 阅读日历
+// ============================================
+
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth(); // 0-based
+let calendarSelectedDay = null;
+let calendarData = {};
+
+// 打开日历弹窗
+function openCalendar() {
+  const modal = document.getElementById('calendarModal');
+  if (modal) modal.style.display = 'flex';
+  loadCalendarData();
+}
+
+// 关闭日历弹窗
+function closeCalendar() {
+  const modal = document.getElementById('calendarModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// 加载日历数据
+async function loadCalendarData() {
+  try {
+    const result = await fetch(`/api/books/moonplus/calendar?year=${calendarYear}&month=${calendarMonth}`, {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(r => r.json());
+    
+    if (result.success && result.data) {
+      calendarData = result.data;
+      renderCalendar();
+    }
+  } catch (e) {
+    console.error('[Calendar] 加载失败:', e);
+  }
+}
+
+// 渲染日历
+function renderCalendar() {
+  // 更新月份标签
+  const label = document.getElementById('calendarMonthLabel');
+  if (label) label.textContent = `${calendarYear}年${calendarMonth + 1}月`;
+
+  // 计算本月汇总
+  let totalMs = 0, totalWords = 0, readingDays = 0;
+  for (const [dateKey, data] of Object.entries(calendarData)) {
+    if (dateKey.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`)) {
+      totalMs += data.totalMs;
+      totalWords += data.totalWords;
+      readingDays++;
+    }
+  }
+
+  // 渲染汇总
+  const summary = document.getElementById('calendarSummary');
+  if (summary) {
+    summary.innerHTML = `
+      <div class="calendar-summary-item">
+        <div class="calendar-summary-value">${formatReadingTime(totalMs)}</div>
+        <div class="calendar-summary-label">总阅读时长</div>
+      </div>
+      <div class="calendar-summary-item">
+        <div class="calendar-summary-value">${(totalWords / 10000).toFixed(1)}万字</div>
+        <div class="calendar-summary-label">总阅读字数</div>
+      </div>
+      <div class="calendar-summary-item">
+        <div class="calendar-summary-value">${readingDays}天</div>
+        <div class="calendar-summary-label">阅读天数</div>
+      </div>
+    `;
+  }
+
+  // 渲染日历网格
+  const grid = document.getElementById('calendarGrid');
+  if (!grid) return;
+
+  grid.innerHTML = '';
+
+  // 星期表头
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  for (const wd of weekdays) {
+    const div = document.createElement('div');
+    div.className = 'calendar-weekday';
+    div.textContent = wd;
+    grid.appendChild(div);
+  }
+
+  // 计算本月第一天是星期几（0=周日，1=周一，...）
+  const firstDay = new Date(calendarYear, calendarMonth, 1);
+  let startOffset = firstDay.getDay();
+  startOffset = startOffset === 0 ? 6 : startOffset - 1; // 周一开头
+
+  // 计算本月天数
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+
+  // 空单元格
+  for (let i = 0; i < startOffset; i++) {
+    const div = document.createElement('div');
+    div.className = 'calendar-day empty';
+    grid.appendChild(div);
+  }
+
+  // 日期单元格
+  const today = new Date();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const div = document.createElement('div');
+    div.className = 'calendar-day';
+    
+    // 判断是否是今天
+    if (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate()) {
+      div.classList.add('today');
+    }
+    
+    // 判断是否有阅读数据
+    const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
+    const data = calendarData[dateKey];
+    if (data && data.totalMs > 0) {
+      div.classList.add('has-data');
+      const hours = Math.floor(data.totalMs / 1000 / 60 / 60);
+      const minutes = Math.floor(data.totalMs / 1000 / 60 % 60);
+      const readingText = hours > 0 ? `${hours}h${minutes > 0 ? minutes + 'm' : ''}` : `${minutes}m`;
+      div.innerHTML = `<span>${day}</span><span class="day-reading">${readingText}</span>`;
+    } else {
+      div.textContent = day;
+    }
+
+    // 判断是否选中
+    if (calendarSelectedDay === day) {
+      div.classList.add('selected');
+    }
+
+    div.addEventListener('click', () => showDayDetail(day));
+    grid.appendChild(div);
+  }
+}
+
+// 显示日期详情
+function showDayDetail(day) {
+  calendarSelectedDay = day;
+  renderCalendar();
+
+  const detail = document.getElementById('calendarDetail');
+  if (!detail) return;
+
+  const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
+  const data = calendarData[dateKey];
+
+  if (!data || data.books.length === 0) {
+    detail.style.display = 'none';
+    return;
+  }
+
+  detail.style.display = 'block';
+  
+  const totalHours = (data.totalMs / 1000 / 60 / 60).toFixed(1);
+  const totalWords = (data.totalWords / 10000).toFixed(1);
+
+  let html = `
+    <div class="calendar-detail-header">
+      <div class="calendar-detail-date">${calendarMonth + 1}月${day}日</div>
+      <div class="calendar-detail-total">共 ${totalHours} 小时，${totalWords} 万字</div>
+    </div>
+  `;
+
+  for (const book of data.books) {
+    const hours = (book.ms / 1000 / 60 / 60).toFixed(1);
+    const words = (book.words / 1000).toFixed(0);
+    html += `
+      <div class="calendar-detail-book">
+        <div class="calendar-detail-book-title">${escapeHtml(book.title)}</div>
+        <div class="calendar-detail-book-stats">${hours}小时 · ${words}千字</div>
+      </div>
+    `;
+  }
+
+  detail.innerHTML = html;
+}
+
+// 上一月
+function calendarPrevMonth() {
+  if (calendarMonth === 0) {
+    calendarMonth = 11;
+    calendarYear--;
+  } else {
+    calendarMonth--;
+  }
+  calendarSelectedDay = null;
+  loadCalendarData();
+}
+
+// 下一月
+function calendarNextMonth() {
+  if (calendarMonth === 11) {
+    calendarMonth = 0;
+    calendarYear++;
+  } else {
+    calendarMonth++;
+  }
+  calendarSelectedDay = null;
+  loadCalendarData();
+}
+
+// 初始化日历按钮
+function initCalendar() {
+  const calendarBtn = document.getElementById('calendarBtn');
+  if (calendarBtn) {
+    calendarBtn.addEventListener('click', openCalendar);
+  }
+
+  const calendarClose = document.getElementById('calendarClose');
+  if (calendarClose) {
+    calendarClose.addEventListener('click', closeCalendar);
+  }
+
+  const calendarPrev = document.getElementById('calendarPrev');
+  if (calendarPrev) {
+    calendarPrev.addEventListener('click', calendarPrevMonth);
+  }
+
+  const calendarNext = document.getElementById('calendarNext');
+  if (calendarNext) {
+    calendarNext.addEventListener('click', calendarNextMonth);
+  }
+}

@@ -29,6 +29,10 @@
           <span class="sync-icon">🔄</span>
           <span>同步</span>
         </button>
+        <button class="sync-btn" id="calendarBtn" title="阅读日历">
+          <span class="sync-icon">📅</span>
+          <span>日历</span>
+        </button>
         <div class="user-menu">
           <button class="user-btn" id="userBtn">
             <span class="user-avatar">👤</span>
@@ -126,6 +130,32 @@
   <!-- Toast提示 -->
   <div class="toast" id="toast">
     <span class="toast-message"></span>
+  </div>
+
+  <!-- 阅读日历弹窗 -->
+  <div class="modal-overlay" id="calendarModal" style="display:none;">
+    <div class="modal-box calendar-modal">
+      <div class="modal-header">
+        <h3>📅 阅读日历</h3>
+        <div class="calendar-nav">
+          <button id="calendarPrev" class="calendar-nav-btn">‹</button>
+          <span id="calendarMonthLabel">2026年8月</span>
+          <button id="calendarNext" class="calendar-nav-btn">›</button>
+        </div>
+        <button class="modal-close" id="calendarClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="calendar-summary" id="calendarSummary">
+          <!-- 本月汇总 -->
+        </div>
+        <div class="calendar-grid" id="calendarGrid">
+          <!-- 日历网格 -->
+        </div>
+        <div class="calendar-detail" id="calendarDetail" style="display:none;">
+          <!-- 日期详情 -->
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 编辑书籍元数据弹窗 -->
@@ -247,6 +277,9 @@
       // 加载书籍列表
       loadBooks();
       
+      // 初始化日历
+      initCalendar();
+
       // 用户菜单切换
       const userBtn = document.getElementById('userBtn');
       const dropdownMenu = document.getElementById('dropdownMenu');

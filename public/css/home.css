@@ -946,3 +946,186 @@
   .sync-btn span:last-child { display: none; }
   .books-list .book-info { flex-direction: column; align-items: flex-start; gap: 4px; }
 }
+
+/* ============================================
+   阅读日历弹窗
+   ============================================ */
+
+.calendar-modal {
+  max-width: 600px;
+  width: 95%;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.calendar-nav-btn {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+  transition: background 0.15s;
+}
+
+.calendar-nav-btn:hover {
+  background: var(--line-soft);
+}
+
+#calendarMonthLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 100px;
+  text-align: center;
+}
+
+.calendar-summary {
+  display: flex;
+  gap: 20px;
+  padding: 12px 16px;
+  background: var(--paper-2);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.calendar-summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.calendar-summary-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.calendar-summary-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-soft);
+  padding: 6px 0;
+  font-weight: 600;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+  color: var(--ink);
+  position: relative;
+}
+
+.calendar-day:hover {
+  background: var(--paper-2);
+}
+
+.calendar-day.empty {
+  cursor: default;
+}
+
+.calendar-day.today {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.calendar-day.has-data {
+  background: rgba(107, 142, 95, 0.1);
+  font-weight: 600;
+}
+
+.calendar-day.selected {
+  background: var(--accent);
+  color: #fff;
+}
+
+.calendar-day .day-reading {
+  font-size: 9px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.calendar-day.selected .day-reading {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.calendar-detail {
+  padding: 16px;
+  background: var(--paper-2);
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.calendar-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-detail-date {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.calendar-detail-total {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.calendar-detail-book {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.calendar-detail-book:last-child {
+  border-bottom: none;
+}
+
+.calendar-detail-book-title {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.calendar-detail-book-stats {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
