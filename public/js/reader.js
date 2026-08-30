@@ -1270,6 +1270,24 @@ async function loadMoonPrefs() {
       applyAppBackground(d.bgImage);
       synced.push('背景图');
     }
+    // 日夜模式：App autoThemeDay/Night + 切换时间 → 同步到网页夜间模式定时
+    try {
+      const dn = await getMoonPlusDayNight();
+      if (dn.success && dn.data) {
+        const { enabled, dayTime, nightTime, sysDarkFollow } = dn.data;
+        if (enabled) {
+          nightSchedule.enabled = true;
+          // App 时间 HHMM → "HH:MM"
+          const fmt = n => String(Math.floor(n / 100)).padStart(2, '0') + ':' + String(n % 100).padStart(2, '0');
+          if (typeof nightTime === 'number' && !isNaN(nightTime)) nightSchedule.start = fmt(nightTime);
+          if (typeof dayTime === 'number' && !isNaN(dayTime)) nightSchedule.end = fmt(dayTime);
+          localStorage.setItem('readerNight', JSON.stringify(nightSchedule));
+          syncNightUI();
+          checkNightMode();
+          synced.push('日夜模式');
+        }
+      }
+    } catch (e) { /* 昼夜同步失败不阻塞 */ }
     savePrefs();
     showReaderToast(`已同步：${synced.join('、')}`);
   } catch (e) {

@@ -961,6 +961,52 @@ export class WebDAVService {
     }
   }
 
+  // 读取 Moon+ 日夜模式字段（来自 .tag 的 autoTheme 系列；需先从主题 .tag 里解析）
+  async getMoonPlusDayNight(userId: string): Promise<ApiResponse> {
+    try {
+      const struct = await this.listMoonPlusStructure(userId);
+      const files = (struct.success && Array.isArray(struct.data)) ? struct.data as any[] : [];
+      const backups = files.filter(f => !f.isDirectory && f.name.endsWith('.mrpro') && f.name.includes('AUTO'));
+      backups.sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+      const target = backups[0];
+      if (!target) return { success: false, error: '没有找到备份文件' };
+
+      const relPath = target.path.includes('/.Moon+/') ? target.path.split('/.Moon+/')[1] : target.name;
+      const fileResult = await this.getMoonPlusDataFile(userId, relPath);
+      if (!fileResult.success || !fileResult.data) return { success: false, error: '读取备份失败' };
+      const data = fileResult.data as { entries?: Record<string, string> };
+      if (!data.entries) return { success: false, error: '备份不是可解析格式' };
+
+      // 扫描所有 .tag 找 autoTheme 相关字段（可能不在含 pFontSize 的那个 tag）
+      let day = true, night = true, dayTime = 600, nightTime = 2200, sysDark = false;
+      for (const [name, content] of Object.entries(data.entries)) {
+        if (!/\.tag$/i.test(name)) continue;
+        const g = (pat: RegExp) => { const m = content.match(pat); return m ? m[1] : undefined; };
+        const ad = g(/<boolean name="autoThemeDay" value="([^"]+)"\s*\/?>/i);
+        const an = g(/<boolean name="autoThemeNight" value="([^"]+)"\s*\/?>/i);
+        const dt = g(/<int name="autoThemeDayTime" value="([^"]+)"\s*\/?>/i);
+        const nt = g(/<int name="autoThemeNightTime" value="([^"]+)"\s*\/?>/i);
+        const sf = g(/<boolean name="sysDarkModeFollow" value="([^"]+)"\s*\/?>/i);
+        if (ad !== undefined) day = ad === 'true';
+        if (an !== undefined) night = an === 'true';
+        if (dt !== undefined && !isNaN(parseInt(dt, 10))) dayTime = parseInt(dt, 10);
+        if (nt !== undefined && !isNaN(parseInt(nt, 10))) nightTime = parseInt(nt, 10);
+        if (sf !== undefined) sysDark = sf === 'true';
+      }
+      return {
+        success: true,
+        data: {
+          enabled: day && night,          // 日夜自动切换总开关
+          dayTime,                        // HHMM，如 600 = 06:00
+          nightTime,                      // HHMM，如 2200 = 22:00
+          sysDarkFollow: sysDark
+        }
+      };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '读取日夜模式失败' };
+    }
+  }
+
   // 诊断：dump 阅读偏好 .tag 的所有字段（翻页方式等更多字段解析用）
   async dumpMoonPlusPrefsFields(userId: string): Promise<ApiResponse> {
     try {

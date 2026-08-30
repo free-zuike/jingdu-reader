@@ -221,6 +221,11 @@ async function getMoonPlusPreferences() {
   return request('/api/books/moonplus/preferences');
 }
 
+// 读取 Moon+ 日夜模式（autoThemeDay/Night + 切换时间）
+async function getMoonPlusDayNight() {
+  return request('/api/books/moonplus/daynight');
+}
+
 // 读取 Moon+ .an 标注文件
 async function getMoonAnnotations(anFileName) {
   return request(`/api/books/moonplus/annotations/${encodeURIComponent(anFileName)}`);
