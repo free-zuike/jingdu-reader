@@ -986,7 +986,17 @@ export class WebDAVService {
       while ((m = re.exec(tagXml)) !== null) fields[m[1]] = m[2];
       const strRe = /<string\s+name="([^"]+)">([^<]*)<\/string>/gi;
       while ((m = strRe.exec(tagXml)) !== null) fields[m[1]] = m[2];
-      return { success: true, data: fields };
+      // 额外：扫描备份内所有 .tag 条目，收集日/夜/主题相关的键（字段名可能在别的 tag）
+      const themeKeys: Record<string, string> = {};
+      for (const [ename, econtent] of Object.entries(data.entries)) {
+        if (!/\.tag$/i.test(ename)) continue;
+        const tr = /<(?:float|int|boolean|string)\s+name="([^"]+)"\s+value="([^"]*)"\s*\/?>/gi;
+        let tm: RegExpExecArray | null;
+        while ((tm = tr.exec(econtent)) !== null) {
+          if (/day|night|theme|auto|dark|light/i.test(tm[1])) themeKeys[tm[1]] = tm[2];
+        }
+      }
+      return { success: true, data: { fields, themeKeys } };
     } catch (e: any) {
       return { success: false, error: e?.message || '读取偏好字段失败' };
     }
