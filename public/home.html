@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>静读天下 - 我的书架</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/base.css?v=3">
-  <link rel="stylesheet" href="/css/home.css?v=3">
+  <link rel="stylesheet" href="/css/base.css?v=4">
+  <link rel="stylesheet" href="/css/home.css?v=4">
   <!-- sql.js for SQLite parsing -->
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
 </head>
@@ -99,6 +99,12 @@
           <button class="view-btn" data-view="list" title="列表">☰ 列表</button>
           <button class="view-btn" data-view="single" title="单本滑动">◫ 单本</button>
         </div>
+      </div>
+
+      <!-- 继续阅读（横滑区） -->
+      <div class="continue-reading" id="continueReading" style="display:none;">
+        <h3 class="continue-title">📖 继续阅读</h3>
+        <div class="continue-list" id="continueList"></div>
       </div>
 
       <!-- 分类子项（作者/标签/系列/目录/评分展开后的条目） -->

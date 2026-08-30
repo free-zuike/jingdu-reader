@@ -6,7 +6,7 @@
   <title>静读天下 - 阅读器</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/base.css">
-  <link rel="stylesheet" href="/css/reader.css">
+  <link rel="stylesheet" href="/css/reader.css?v=4">
 </head>
 <body class="reader-page">
   <!-- 阅读器头部 -->
@@ -116,6 +116,23 @@
         </div>
       </div>
       <div class="settings-section">
+        <label>自动翻页</label>
+        <div class="paging-controls">
+          <button class="autoturn-btn active" data-sec="0">关</button>
+          <button class="autoturn-btn" data-sec="8">8秒</button>
+          <button class="autoturn-btn" data-sec="15">15秒</button>
+          <button class="autoturn-btn" data-sec="30">30秒</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <label>自定义背景</label>
+        <div class="custom-bg-controls">
+          <input type="file" id="bgUploadInput" accept="image/*" style="display:none;">
+          <button class="mt-btn" id="bgUploadBtn">📁 上传图片</button>
+          <button class="mt-btn" id="bgClearBtn">清除</button>
+        </div>
+      </div>
+      <div class="settings-section">
         <label>夜间模式定时</label>
         <div class="night-controls">
           <input type="time" id="nightStart" value="22:00">
@@ -141,7 +158,7 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/auth.js"></script>
-  <script src="/js/reader.js?v=3"></script>
+  <script src="/js/reader.js?v=4"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (!checkAuth()) return;

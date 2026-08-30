@@ -443,6 +443,79 @@
 .books-list .book-author { flex: none; }
 .books-list .book-meta { margin-top: 4px; padding-top: 0; }
 
+/* ---------- 继续阅读（横滑区） ---------- */
+
+.continue-reading {
+  margin-bottom: var(--sp-lg);
+  padding-bottom: var(--sp-md);
+  border-bottom: 1px solid var(--line-soft);
+}
+.continue-title {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--sp-sm);
+}
+.continue-list {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.continue-list::-webkit-scrollbar { display: none; }
+.continue-card {
+  flex-shrink: 0;
+  width: 96px;
+  cursor: pointer;
+  transition: transform var(--t-fast);
+}
+.continue-card:hover { transform: translateY(-3px); }
+.continue-cover {
+  position: relative;
+  aspect-ratio: 3/4;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-ink);
+  margin-bottom: 8px;
+}
+.continue-cover .book-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.continue-info { padding: 0 2px; }
+.continue-name {
+  font-size: 0.78rem;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 5px;
+}
+.continue-bar {
+  height: 4px;
+  background: var(--line-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.continue-bar-fill {
+  height: 100%;
+  background: var(--seal);
+  border-radius: 2px;
+}
+.continue-pct {
+  font-size: 0.72rem;
+  color: var(--soft);
+  margin-top: 3px;
+  text-align: right;
+}
+
 /* ---------- 分类标签栏 ---------- */
 
 .category-bar {

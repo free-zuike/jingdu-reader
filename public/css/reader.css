@@ -265,7 +265,7 @@
 .mark-tooltip {
   position: fixed;
   z-index: 300;
-  width: 200px;
+  width: 240px;
   background: var(--r-paper);
   border: 1px solid var(--r-line);
   box-shadow: 0 6px 24px rgba(43, 39, 36, 0.18);
@@ -302,6 +302,43 @@
 }
 .mt-btn:hover { border-color: var(--gold); color: var(--r-ink); }
 .mt-btn.mt-del:hover { border-color: var(--seal); color: var(--seal); }
+
+/* 划线样式/颜色选择 */
+.mt-style-row, .mt-color-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.mt-style {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  background: transparent;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.mt-style:hover { border-color: var(--gold); color: var(--r-ink); }
+.mt-style.active { border-color: var(--seal); color: var(--seal); background: rgba(178, 58, 47, 0.06); }
+.mt-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--r-line);
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--t-fast);
+}
+.mt-color:hover { transform: scale(1.15); }
+.mt-color.active { border-color: var(--r-ink); box-shadow: 0 0 0 2px var(--gold); }
+.mt-translated {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--r-bg);
+  border: 1px solid var(--r-line);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--r-ink);
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
 
 /* 目录书签标记 */
 .toc-bm { color: var(--gold); margin-right: 6px; font-size: 0.8rem; }
@@ -409,6 +446,10 @@
 }
 .night-controls input[type="time"]:focus { border-color: var(--gold); outline: none; }
 .night-sep { color: var(--r-ink-soft); font-size: 0.8rem; }
+
+/* 自定义背景上传控件 */
+.custom-bg-controls { display: flex; gap: 8px; }
+.custom-bg-controls .mt-btn { flex: 1; }
 
 /* 书签按钮激活态 */
 .header-btn#bookmarkBtn.active { color: var(--gold); }
@@ -696,7 +737,8 @@
 .size-btn,
 .theme-btn,
 .spacing-btn,
-.paging-btn {
+.paging-btn,
+.autoturn-btn {
   flex: 1;
   padding: 9px;
   background: transparent;
@@ -709,11 +751,13 @@
 .size-btn:hover,
 .theme-btn:hover,
 .spacing-btn:hover,
-.paging-btn:hover { border-color: var(--gold); color: var(--r-ink); }
+.paging-btn:hover,
+.autoturn-btn:hover { border-color: var(--gold); color: var(--r-ink); }
 .size-btn.active,
 .theme-btn.active,
 .spacing-btn.active,
-.paging-btn.active {
+.paging-btn.active,
+.autoturn-btn.active {
   border-color: var(--seal);
   color: var(--seal);
   background: rgba(178, 58, 47, 0.06);

@@ -160,6 +160,9 @@ async function loadBooks() {
   // 加载每本书的同步时间戳
   loadSyncTimestamps();
 
+  // 渲染继续阅读
+  renderContinueReading();
+
   // 加载 Moon+ 阅读统计（浏览器端 SQLite 解析）
   loadMoonReadingStats();
 
@@ -236,6 +239,35 @@ function renderShelf() {
       loadBookCover(book, card);
     });
   }
+}
+
+// 继续阅读横滑面板（正在阅读且未读完，按最近阅读排序，取前 10）
+function renderContinueReading() {
+  const box = document.getElementById('continueReading');
+  const list = document.getElementById('continueList');
+  if (!box || !list) return;
+  const reading = allBooks
+    .filter(b => b.cloudAvailable !== false && b.progress > 0 && b.progress < 100)
+    .sort((a, b) => new Date(b.lastReadAt || 0) - new Date(a.lastReadAt || 0))
+    .slice(0, 10);
+  if (!reading.length) { box.style.display = 'none'; list.innerHTML = ''; return; }
+  box.style.display = 'block';
+  list.innerHTML = reading.map((book, i) => `
+    <div class="continue-card" data-i="${i}">
+      <div class="continue-cover">
+        <span class="book-cover-placeholder">${getFormatIcon(book.format)}</span>
+      </div>
+      <div class="continue-info">
+        <div class="continue-name" title="${escapeAttr(book.title)}">${escapeHtml(book.title)}</div>
+        <div class="continue-bar"><div class="continue-bar-fill" style="width:${book.progress}%"></div></div>
+        <div class="continue-pct">${Math.round(book.progress)}%</div>
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.continue-card').forEach((el, i) => {
+    el.addEventListener('click', () => { window.location.href = `/reader?id=${reading[i].id}`; });
+    loadBookCover(reading[i], { querySelector: () => el.querySelector('.continue-cover') });
+  });
 }
 
 // 排序（Moon+ 手动排序位置优先，其余按 currentSort）

@@ -18,6 +18,9 @@ let nightSchedule = (() => {
   try { return JSON.parse(localStorage.getItem('readerNight') || '{"enabled":false,"start":"22:00","end":"07:00"}'); }
   catch { return { enabled: false, start: '22:00', end: '07:00' }; }
 })();
+// 自动翻页（秒）
+let autoTurnSec = parseInt(localStorage.getItem('readerAutoTurn') || '0', 10);
+let autoTurnTimer = null;
 
 // 初始化阅读器
 async function initReader(bookId) {
@@ -58,6 +61,7 @@ async function initReader(bookId) {
   renderBgPicker();
   startAutoHide();
   startReminder();
+  startAutoTurn();
   setInterval(checkNightMode, 60000);
   checkNightMode();
 }
@@ -625,6 +629,26 @@ function startReminder() {
   }, 60000);
 }
 
+// ---------- 自动翻页 ----------
+
+function startAutoTurn() {
+  clearInterval(autoTurnTimer);
+  if (!autoTurnSec) return;
+  autoTurnTimer = setInterval(() => {
+    if (pagingMode === 'page') {
+      const sc = getScroller();
+      const max = sc.scrollHeight - sc.clientHeight;
+      if (sc.scrollTop < max - 10) {
+        sc.scrollTop = sc.scrollTop + sc.clientHeight;
+      } else if (currentChapterIndex < chapters.length - 1) {
+        nextChapter();
+      }
+    } else {
+      nextChapter();
+    }
+  }, autoTurnSec * 1000);
+}
+
 // ---------- 夜间模式定时 ----------
 
 function parseTimeToMin(s) {
@@ -679,7 +703,13 @@ function restoreUserTheme() {
   const appBg = localStorage.getItem('readerAppBg');
   const customBg = localStorage.getItem('readerCustomBg');
   const customFg = localStorage.getItem('readerCustomFg');
-  if (savedTheme === 'custom' && appBg && APP_BG[appBg]) {
+  const customBgImg = localStorage.getItem('readerCustomBgImg');
+  if (savedTheme === 'custom' && customBgImg && !appBg && !customBg) {
+    document.body.style.backgroundImage = `url(${customBgImg})`;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundRepeat = 'no-repeat';
+  } else if (savedTheme === 'custom' && appBg && APP_BG[appBg]) {
     applyReaderTheme('dark'); // 背景图会整体盖住，先置暗底
     document.body.style.setProperty('--r-bg', 'transparent');
     document.body.style.backgroundImage = `url('/backgrounds/${APP_BG[appBg]}')`;
@@ -799,7 +829,12 @@ function applyHighlights(p) {
   const all = [];
   for (const m of marks.items) {
     if (m.type === 'highlight' && m.chapterIndex === currentChapterIndex && m.text) {
-      all.push({ text: m.text, id: m.id, moon: false, styles: ['highlight'], colorHex: '', note: m.note || '' });
+      all.push({
+        text: m.text, id: m.id, moon: false,
+        styles: m.styles && m.styles.length ? m.styles : ['highlight'],
+        colorHex: m.colorHex || '',
+        note: m.note || ''
+      });
     }
   }
   for (const mn of (moonMarks || [])) {
@@ -861,6 +896,31 @@ function updateProgressBar() {
   progress = Math.min(100, Math.max(0, progress));
   if (fill) fill.style.width = `${progress}%`;
   if (info) info.textContent = `${Math.round(progress)}%`;
+}
+
+// 章内定位：跳到全书指定百分比位置（按章节文本比例滚动）
+async function jumpToPercent(pct) {
+  if (!chapters.length || !totalLength) return;
+  pct = Math.min(100, Math.max(0, pct));
+  const targetPos = Math.floor(totalLength * pct / 100);
+  const idx = findChapter(targetPos);
+
+  if (idx !== currentChapterIndex) {
+    await loadChapter(idx);
+    getScroller().scrollTop = 0;
+  } else {
+    renderTextContent();
+  }
+  keepChromeVisible();
+
+  // 章内偏移比例
+  const start = chapters[idx].startIndex;
+  const end = chapters[idx + 1] ? chapters[idx + 1].startIndex : totalLength;
+  const frac = end > start ? (targetPos - start) / (end - start) : 0;
+  const sc = getScroller();
+  sc.scrollTop = (sc.scrollHeight - sc.clientHeight) * Math.min(1, Math.max(0, frac));
+  updateProgressBar();
+  debounceSaveProgress();
 }
 
 // 保存进度（防抖）
@@ -934,6 +994,57 @@ function initEventListeners() {
       startReminder();
     });
   });
+
+  // 点击进度条 → 章内定位跳转
+  const pbar = document.querySelector('.progress-bar');
+  if (pbar) {
+    pbar.title = '点击跳转到该位置';
+    pbar.addEventListener('click', (e) => {
+      const rect = pbar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width * 100;
+      jumpToPercent(pct);
+    });
+  }
+
+  // 自动翻页
+  document.querySelectorAll('.autoturn-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.autoturn-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      autoTurnSec = parseInt(btn.dataset.sec, 10);
+      localStorage.setItem('readerAutoTurn', String(autoTurnSec));
+      startAutoTurn();
+    });
+  });
+
+  // 自定义背景上传
+  const bgUploadInput = document.getElementById('bgUploadInput');
+  const bgUploadBtn = document.getElementById('bgUploadBtn');
+  if (bgUploadInput && bgUploadBtn) {
+    bgUploadBtn.addEventListener('click', () => bgUploadInput.click());
+    bgUploadInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        localStorage.setItem('readerCustomBgImg', dataUrl);
+        applyCustomBgImg(dataUrl);
+        savePrefs();
+        showReaderToast('已应用自定义背景');
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  const bgClearBtn = document.getElementById('bgClearBtn');
+  if (bgClearBtn) {
+    bgClearBtn.addEventListener('click', () => {
+      localStorage.removeItem('readerCustomBgImg');
+      clearCustomBgImg();
+      savePrefs();
+      showReaderToast('已清除自定义背景');
+    });
+  }
 
   // 夜间模式定时
   const nightToggle = document.getElementById('nightToggle');
@@ -1192,9 +1303,36 @@ function applyAppBackground(bgName) {
   document.body.style.backgroundRepeat = 'no-repeat';
   localStorage.setItem('readerTheme', 'custom');
   localStorage.setItem('readerAppBg', bgName);
+  localStorage.removeItem('readerCustomBgImg');
   // 同步更新选择器高亮
   document.querySelectorAll('.bg-opt').forEach(b => b.classList.toggle('active', b.dataset.bg === bgName));
   document.querySelectorAll('.bg-none').forEach(b => b.classList.remove('active'));
+}
+
+// 应用自定义背景图（用户上传，dataURL）
+function applyCustomBgImg(dataUrl) {
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  document.body.style.setProperty('--r-bg', 'transparent');
+  document.body.style.backgroundImage = `url(${dataUrl})`;
+  document.body.style.backgroundSize = 'cover';
+  document.body.style.backgroundPosition = 'center';
+  document.body.style.backgroundRepeat = 'no-repeat';
+  localStorage.setItem('readerTheme', 'custom');
+  localStorage.setItem('readerCustomBgImg', dataUrl);
+  localStorage.removeItem('readerAppBg');
+  document.querySelectorAll('.bg-opt, .bg-none').forEach(b => b.classList.remove('active'));
+}
+
+// 清除自定义背景图
+function clearCustomBgImg() {
+  document.body.style.backgroundImage = 'none';
+  document.body.style.backgroundSize = '';
+  const savedTheme = localStorage.getItem('readerTheme') || 'dark';
+  const saved = savedTheme === 'custom' ? 'dark' : savedTheme;
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  document.body.classList.add(`theme-${saved}`);
+  document.querySelectorAll('.bg-none').forEach(b => b.classList.add('active'));
 }
 
 // 渲染背景图选择器（网页手动选择，不需 App）
@@ -1378,8 +1516,16 @@ function loadSettings() {
 
   // 阅读计时提醒按钮状态
   document.querySelectorAll('.reminder-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.min, 10) === reminderMinutes));
+  // 自动翻页按钮状态
+  document.querySelectorAll('.autoturn-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.sec, 10) === autoTurnSec));
   // 夜间模式定时 UI
   syncNightUI();
+
+  // 自定义背景图恢复
+  const customBgImg = localStorage.getItem('readerCustomBgImg');
+  if (savedTheme === 'custom' && customBgImg && !appBg && !customBg) {
+    applyCustomBgImg(customBgImg);
+  }
 
   // 异步从服务器加载偏好
   getPreferences().then(r => {
@@ -1391,6 +1537,7 @@ function loadSettings() {
       const cbg = localStorage.getItem('readerCustomBg');
       const cfg = localStorage.getItem('readerCustomFg');
       const abg = localStorage.getItem('readerAppBg');
+      const cbgImg = localStorage.getItem('readerCustomBgImg');
       document.querySelectorAll('.paging-btn').forEach(b => b.classList.toggle('active', b.dataset.paging === pg));
       document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
       if (th === 'custom' && abg && APP_BG[abg]) {
@@ -1400,6 +1547,8 @@ function loadSettings() {
         document.body.style.backgroundSize = 'cover';
         document.body.style.backgroundPosition = 'center';
         document.body.style.backgroundRepeat = 'no-repeat';
+      } else if (th === 'custom' && cbgImg && !cbg) {
+        applyCustomBgImg(cbgImg);
       } else if (th === 'custom' && (cbg || cfg)) {
         document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
         if (cbg) { document.body.style.setProperty('--r-bg', cbg); document.body.style.setProperty('--r-paper', cbg); }
@@ -1489,23 +1638,94 @@ function updateBookmarkBtn() {
   if (ribbon) ribbon.classList.toggle('show', has);
 }
 
-// 选中文字后弹出划线菜单
+// 划线颜色表（id → CSS 色 + Moon+ ARGB）
+const HIGHLIGHT_COLORS = {
+  red:    { hex: '#ff5555', argb: -65536 },
+  yellow: { hex: '#ffd94a', argb: -256 },
+  green:  { hex: '#6bc96b', argb: -16711936 },
+  blue:   { hex: '#5aa9ff', argb: -16776961 },
+  purple: { hex: '#b07bff', argb: -8388480 },
+};
+// 划线样式 → Moon+ .an type
+const STYLE_TYPES = { underline: 'underline', highlight: 'highlight', wave: 'wave', strike: 'strike' };
+
+// 选中文字后弹出划线菜单（样式 + 颜色 + 划线/翻译/笔记）
 function showMarkTooltip(e) {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
   const text = sel.toString().trim();
   if (text.length < 1 || text.length > 500) return;
   const tip = document.getElementById('markTooltip');
-  tip.innerHTML = `<span class="mt-text">${escapeHtml(text.substring(0, 60))}</span><button class="mt-btn" id="mtHighlight">划线</button><button class="mt-btn" id="mtNote">笔记</button>`;
+  const styleBtns = ['underline', 'highlight', 'wave', 'strike'].map(s =>
+    `<button class="mt-style${s === 'underline' ? ' active' : ''}" data-style="${s}">${s === 'underline' ? '下划线' : s === 'highlight' ? '高亮' : s === 'wave' ? '波浪线' : '删除线'}</button>`).join('');
+  const colorBtns = Object.entries(HIGHLIGHT_COLORS).map(([id, c]) =>
+    `<button class="mt-color${id === 'red' ? ' active' : ''}" data-color="${id}" style="background:${c.hex}" title="${id}"></button>`).join('');
+  tip.innerHTML = `
+    <div class="mt-text">${escapeHtml(text.substring(0, 60))}</div>
+    <div class="mt-style-row">${styleBtns}</div>
+    <div class="mt-color-row">${colorBtns}</div>
+    <div class="mt-actions">
+      <button class="mt-btn" id="mtHighlight">划线</button>
+      <button class="mt-btn" id="mtTranslate">翻译</button>
+      <button class="mt-btn" id="mtNote">笔记</button>
+    </div>`;
   tip.style.display = 'block';
   const rect = sel.getRangeAt(0).getBoundingClientRect();
-  tip.style.left = Math.min(rect.left + rect.width / 2 - 80, window.innerWidth - 180) + 'px';
-  tip.style.top = Math.max(rect.top - 46, 64) + 'px';
-  document.getElementById('mtHighlight').onclick = () => addHighlight(text, '');
+  tip.style.left = Math.min(rect.left + rect.width / 2 - 120, window.innerWidth - 260) + 'px';
+  tip.style.top = Math.max(rect.top - 60, 64) + 'px';
+
+  let curStyle = 'underline', curColor = 'red';
+  tip.querySelectorAll('.mt-style').forEach(b => b.onclick = () => {
+    curStyle = b.dataset.style;
+    tip.querySelectorAll('.mt-style').forEach(x => x.classList.toggle('active', x === b));
+  });
+  tip.querySelectorAll('.mt-color').forEach(b => b.onclick = () => {
+    curColor = b.dataset.color;
+    tip.querySelectorAll('.mt-color').forEach(x => x.classList.toggle('active', x === b));
+  });
+  document.getElementById('mtHighlight').onclick = () => addHighlight(text, '', curStyle, curColor);
+  document.getElementById('mtTranslate').onclick = () => translateText(text);
   document.getElementById('mtNote').onclick = () => {
     const note = prompt('添加笔记：');
-    if (note != null) addHighlight(text, note);
+    if (note != null) addHighlight(text, note, curStyle, curColor);
   };
+}
+
+// 翻译选中文字（MyMemory 免费翻译 API，自动检测中英方向）
+async function translateText(text) {
+  hideMarkTooltip();
+  window.getSelection()?.removeAllRanges();
+  const isZh = /[\u4e00-\u9fff]/.test(text);
+  const langpair = isZh ? 'zh-CN|en' : 'en|zh-CN';
+  showReaderToast('翻译中...');
+  let translated = '';
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.substring(0, 500))}&langpair=${langpair}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    translated = d && d.responseData && d.responseData.translatedText ? d.responseData.translatedText : '';
+  } catch (err) { /* 走空 */ }
+  showTranslatePanel(text, translated || '翻译失败');
+}
+
+// 显示翻译结果
+function showTranslatePanel(text, result) {
+  const tip = document.getElementById('markTooltip');
+  const sel = window.getSelection();
+  tip.innerHTML = `
+    <div class="mt-text">${escapeHtml(text.substring(0, 120))}</div>
+    <div class="mt-translated">${escapeHtml(result)}</div>
+    <div class="mt-actions"><button class="mt-btn" id="mtCloseTrans">关闭</button></div>`;
+  tip.style.display = 'block';
+  const rect = (sel && sel.rangeCount ? sel.getRangeAt(0) : null)?.getBoundingClientRect();
+  if (rect) {
+    tip.style.left = Math.min(rect.left, window.innerWidth - 240) + 'px';
+    tip.style.top = Math.max(rect.top - 20, 64) + 'px';
+  } else {
+    tip.style.left = '50%';
+    tip.style.top = '40%';
+  }
+  document.getElementById('mtCloseTrans').onclick = hideMarkTooltip;
 }
 
 function hideMarkTooltip() {
@@ -1513,27 +1733,30 @@ function hideMarkTooltip() {
   if (tip) tip.style.display = 'none';
 }
 
-// 添加划线/笔记（按当前章文本匹配位置）；同步写回 Moon+ .an
-function addHighlight(text, note) {
+// 添加划线/笔记（按当前章文本匹配位置）；同步写回 Moon+ .an（含样式/颜色）
+function addHighlight(text, note, style = 'underline', colorId = 'red') {
   hideMarkTooltip();
   window.getSelection()?.removeAllRanges();
   const idx = currentChapterText.indexOf(text);
   if (idx === -1) return;
+  const color = HIGHLIGHT_COLORS[colorId] || HIGHLIGHT_COLORS.red;
+  const styles = [style === 'highlight' ? 'highlight' : style];
   const newId = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   marks.items.push({
     id: newId,
     type: 'highlight', chapterIndex: currentChapterIndex,
-    start: idx, end: idx + text.length, text, note, created: Date.now()
+    start: idx, end: idx + text.length, text, note, created: Date.now(),
+    styles, colorHex: color.hex
   });
   renderTextContent();
   persistMarks();
-  // 同步到 Moon+ .an（默认下划线·红，含笔记），并记录返回的 Moon+ 标注 id 供删除时同步
+  // 同步到 Moon+ .an（样式 + 颜色），并记录返回的 Moon+ 标注 id 供删除时同步
   if (currentBookFileName) {
     addMoonAnnotation(currentBookFileName + '.an', {
       bookName: currentBookTitle,
       text: text.substring(0, 100),
-      colorArgb: -65536,
-      type: 'underline',
+      colorArgb: color.argb,
+      type: STYLE_TYPES[style] || 'underline',
       pos: idx,
       note: note || ''
     }).then(r => {
