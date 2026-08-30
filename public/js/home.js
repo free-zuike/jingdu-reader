@@ -678,6 +678,17 @@ async function handleSync() {
   }
 }
 
+// 自动同步（读取设置页保存的间隔，localStorage autoSyncInterval，单位分钟）
+let autoSyncTimer = null;
+function initAutoSync() {
+  clearInterval(autoSyncTimer);
+  const minutes = parseInt(localStorage.getItem('autoSyncInterval') || '0', 10);
+  if (!minutes) return;
+  autoSyncTimer = setInterval(() => {
+    if (!isSyncing) handleSync();
+  }, minutes * 60000);
+}
+
 // Toast
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');

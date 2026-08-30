@@ -5,6 +5,20 @@ let autoHideTimer = null;
 let saveTimer = null;
 let sessionStartTime = null; // 本次阅读 session 开始时间
 
+// 全文搜索状态
+let searchQuery = '';           // 当前搜索关键词（空 = 未搜索）
+let searchResults = [];         // [{chapterIndex, title, count}] 每章命中数
+let searchGlobalIdx = -1;       // 当前命中的全局序号（跨章累计）
+
+// 阅读计时提醒 + 夜间模式
+let reminderMinutes = parseInt(localStorage.getItem('readerReminder') || '0', 10);
+let reminderTimer = null;
+let nightActive = false;        // 当前是否处于夜间强制深色
+let nightSchedule = (() => {
+  try { return JSON.parse(localStorage.getItem('readerNight') || '{"enabled":false,"start":"22:00","end":"07:00"}'); }
+  catch { return { enabled: false, start: '22:00', end: '07:00' }; }
+})();
+
 // 初始化阅读器
 async function initReader(bookId) {
   currentBookId = bookId;
@@ -43,6 +57,9 @@ async function initReader(bookId) {
   loadSettings();
   renderBgPicker();
   startAutoHide();
+  startReminder();
+  setInterval(checkNightMode, 60000);
+  checkNightMode();
 }
 
 // TXT/EPUB 纯文本阅读器（按需加载章节）
@@ -91,12 +108,19 @@ async function initTextReader(bookId) {
       debounceSaveProgress();
     }, 1000), { passive: true });
 
-    // 点击阅读区：划线→查看/添加笔记，链接→正常跳转，其余切换顶栏/底栏
+    // 点击阅读区：划线→查看/添加笔记，链接→正常跳转；左右 30% 区域翻页，中间切换顶栏/底栏
     document.querySelector('.reader-content').addEventListener('click', (e) => {
       const hl = e.target.closest('.hl');
       if (hl) { showNoteTooltip(hl); return; }
       if (e.target.tagName === 'A' || e.target.closest('a')) return;
-      toggleHeaderFooter();
+      // 正在选中文字（划线菜单将弹出）时不翻页
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (x < rect.width * 0.3) { handlePrev(); keepChromeVisible(); }
+      else if (x > rect.width * 0.7) { handleNext(); keepChromeVisible(); }
+      else toggleHeaderFooter();
     });
     // 选中文字 → 弹出划线菜单
     document.querySelector('.reader-content').addEventListener('mouseup', (e) => {
@@ -379,9 +403,315 @@ function renderTextContent() {
     applyLayout('', '');
     textContainer.innerHTML = formatText(currentChapterText);
   }
+  applySearchHighlight(textContainer);
+  playChapterAnim(textContainer);
   updateNavButtons();
   updateProgressBar();
   updateBookmarkBtn();
+}
+
+// 章节切换淡入动画（每次渲染新内容触发）
+function playChapterAnim(el) {
+  el.classList.remove('chapter-anim');
+  void el.offsetWidth; // 强制重排以重新触发动画
+  el.classList.add('chapter-anim');
+}
+
+// ---------- 全文搜索 ----------
+
+function openSearch() {
+  const sidebar = document.getElementById('searchSidebar');
+  if (!sidebar) return;
+  sidebar.classList.add('show');
+  document.getElementById('overlay').classList.add('show');
+  const inp = document.getElementById('searchInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+  clearSearch();
+}
+
+function closeSearch() {
+  document.getElementById('searchSidebar').classList.remove('show');
+  document.getElementById('overlay').classList.remove('show');
+  clearSearch();
+}
+
+function clearSearch() {
+  searchQuery = '';
+  searchResults = [];
+  searchGlobalIdx = -1;
+  const list = document.getElementById('searchList');
+  if (list) list.innerHTML = '';
+  const status = document.getElementById('searchStatus');
+  if (status) status.textContent = '';
+  const nav = document.getElementById('searchNav');
+  if (nav) nav.style.display = 'none';
+  renderTextContent(); // 清除已渲染的搜索高亮
+}
+
+// 跨章节全文搜索（优先用章节缓存，缺失则按需加载）
+async function doSearch() {
+  const inp = document.getElementById('searchInput');
+  const q = (inp && inp.value.trim()) || '';
+  const list = document.getElementById('searchList');
+  const status = document.getElementById('searchStatus');
+  const nav = document.getElementById('searchNav');
+  if (!q) { clearSearch(); return; }
+
+  searchQuery = q;
+  searchResults = [];
+  searchGlobalIdx = -1;
+  status.textContent = '搜索中...';
+  list.innerHTML = '';
+  nav.style.display = 'none';
+
+  for (let i = 0; i < chapters.length; i++) {
+    let text;
+    if (chapterCache[i] !== undefined) {
+      text = chapterCache[i].text;
+    } else {
+      try {
+        const r = await getChapter(currentBookId, i);
+        if (r.success && r.data.text !== undefined) {
+          text = r.data.text;
+          chapterCache[i] = { text: r.data.text, html: r.data.html || '' };
+        }
+      } catch {}
+    }
+    if (!text) continue;
+    const count = countOccurrences(text, q);
+    if (count > 0) searchResults.push({ chapterIndex: i, title: chapters[i].title, count });
+  }
+
+  if (!searchResults.length) {
+    status.textContent = '未找到匹配';
+    renderTextContent();
+    return;
+  }
+
+  const total = searchResults.reduce((s, r) => s + r.count, 0);
+  status.textContent = `${searchResults.length} 章 / ${total} 处`;
+  list.innerHTML = searchResults.map((r, ri) => `
+    <div class="search-result${r.chapterIndex === currentChapterIndex ? ' active' : ''}" onclick="jumpToSearchResult(${ri})">
+      <span class="search-result-title">${escapeHtml(r.title)}</span>
+      <span class="search-result-count">${r.count}</span>
+    </div>
+  `).join('');
+
+  // 定位到当前章节的第一个命中（否则第一章）
+  let targetRi = searchResults.findIndex(r => r.chapterIndex === currentChapterIndex);
+  if (targetRi === -1) targetRi = 0;
+  searchGlobalIdx = searchResults.slice(0, targetRi).reduce((s, r) => s + r.count, 0);
+  renderTextContent();
+  updateSearchNav();
+  scrollToSearchMark();
+}
+
+function countOccurrences(text, q) {
+  const lower = text.toLowerCase();
+  const needle = q.toLowerCase();
+  let n = 0, idx = lower.indexOf(needle);
+  while (idx !== -1) { n++; idx = lower.indexOf(needle, idx + needle.length); }
+  return n;
+}
+
+// 点击搜索结果 → 跳转到该章
+async function jumpToSearchResult(ri) {
+  const r = searchResults[ri];
+  if (!r) return;
+  searchGlobalIdx = searchResults.slice(0, ri).reduce((s, x) => s + x.count, 0);
+  document.querySelectorAll('.search-result').forEach((el, i) => el.classList.toggle('active', i === ri));
+  if (r.chapterIndex !== currentChapterIndex) {
+    await loadChapter(r.chapterIndex);
+    getScroller().scrollTop = 0;
+    keepChromeVisible();
+  } else {
+    renderTextContent();
+  }
+  updateSearchNav();
+  scrollToSearchMark();
+}
+
+function updateSearchNav() {
+  const nav = document.getElementById('searchNav');
+  const total = searchResults.reduce((s, r) => s + r.count, 0);
+  if (!total) { nav.style.display = 'none'; return; }
+  nav.style.display = 'flex';
+  document.getElementById('searchCount').textContent = `${searchGlobalIdx + 1}/${total}`;
+  document.getElementById('searchPrevBtn').disabled = searchGlobalIdx <= 0;
+  document.getElementById('searchNextBtn').disabled = searchGlobalIdx >= total - 1;
+}
+
+function searchPrev() { moveSearch(-1); }
+function searchNext() { moveSearch(1); }
+
+async function moveSearch(dir) {
+  const total = searchResults.reduce((s, r) => s + r.count, 0);
+  if (!total) return;
+  const idx = searchGlobalIdx + dir;
+  if (idx < 0 || idx >= total) return;
+  searchGlobalIdx = idx;
+
+  // 找到 idx 落在哪一章
+  let acc = 0, ri = 0;
+  for (let i = 0; i < searchResults.length; i++) {
+    if (idx < acc + searchResults[i].count) { ri = i; break; }
+    acc += searchResults[i].count;
+  }
+  const r = searchResults[ri];
+  document.querySelectorAll('.search-result').forEach((el, i) => el.classList.toggle('active', i === ri));
+  if (r.chapterIndex !== currentChapterIndex) {
+    await loadChapter(r.chapterIndex);
+    getScroller().scrollTop = 0;
+    keepChromeVisible();
+  } else {
+    renderTextContent();
+  }
+  updateSearchNav();
+  scrollToSearchMark();
+}
+
+// 滚动到当前全局命中的那个 mark（计算当前章内局部序号）
+function scrollToSearchMark() {
+  let acc = 0;
+  for (const r of searchResults) {
+    if (r.chapterIndex === currentChapterIndex) break;
+    acc += r.count;
+  }
+  const local = searchGlobalIdx - acc;
+  const marks = document.querySelectorAll('.book-text mark.search-hl');
+  marks.forEach((m, i) => m.classList.toggle('search-hl-active', i === local));
+  if (marks[local]) {
+    try { marks[local].scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch {}
+  }
+}
+
+// 对渲染后的正文做搜索高亮（对文本节点逐个匹配全部命中）
+function applySearchHighlight(root) {
+  if (!root) return;
+  // 清除旧高亮（还原文本节点）
+  const oldMarks = root.querySelectorAll('mark.search-hl');
+  oldMarks.forEach(m => {
+    const t = document.createTextNode(m.textContent);
+    m.replaceWith(t);
+  });
+  if (!searchQuery) return;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  const needle = searchQuery.toLowerCase();
+  for (const node of textNodes) {
+    // 跳过搜索 mark 内部的文本节点
+    if (node.parentElement && node.parentElement.closest('mark.search-hl')) continue;
+    const text = node.nodeValue;
+    const lower = text.toLowerCase();
+    let idx = lower.indexOf(needle);
+    if (idx === -1) continue;
+    const parent = node.parentNode;
+    // 在原始节点前逐个插入 before/mark，最后 after 收尾
+    let cursor = node;
+    let remaining = text;
+    while (idx !== -1) {
+      const before = document.createTextNode(remaining.substring(0, idx));
+      const mark = document.createElement('mark');
+      mark.className = 'search-hl';
+      mark.appendChild(document.createTextNode(remaining.substring(idx, idx + searchQuery.length)));
+      parent.insertBefore(before, cursor);
+      parent.insertBefore(mark, cursor);
+      remaining = remaining.substring(idx + searchQuery.length);
+      idx = remaining.toLowerCase().indexOf(needle);
+    }
+    const after = document.createTextNode(remaining);
+    parent.insertBefore(after, cursor);
+    parent.removeChild(node);
+  }
+}
+
+// ---------- 阅读计时提醒 ----------
+
+function startReminder() {
+  clearInterval(reminderTimer);
+  if (!reminderMinutes) return;
+  let elapsed = 0;
+  reminderTimer = setInterval(() => {
+    elapsed++;
+    if (elapsed >= reminderMinutes) {
+      showReaderToast(`⏰ 已连续阅读 ${reminderMinutes} 分钟，休息一下吧`);
+      elapsed = 0;
+    }
+  }, 60000);
+}
+
+// ---------- 夜间模式定时 ----------
+
+function parseTimeToMin(s) {
+  const [h, m] = (s || '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function applyReaderTheme(theme) {
+  document.body.classList.remove('theme-dark', 'theme-light', 'theme-sepia');
+  document.body.classList.add('theme-' + theme);
+}
+
+function checkNightMode() {
+  if (!nightSchedule.enabled) {
+    // 未启用但之前强制过深色 → 恢复用户主题
+    if (nightActive) {
+      nightActive = false;
+      restoreUserTheme();
+    }
+    return;
+  }
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const start = parseTimeToMin(nightSchedule.start);
+  const end = parseTimeToMin(nightSchedule.end);
+  // 支持跨午夜（如 22:00 - 07:00）
+  const inNight = start <= end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+  if (inNight && !nightActive) {
+    nightActive = true;
+    applyReaderTheme('dark');
+  } else if (!inNight && nightActive) {
+    nightActive = false;
+    restoreUserTheme();
+  }
+}
+
+// 同步夜间模式定时控件 UI
+function syncNightUI() {
+  const toggle = document.getElementById('nightToggle');
+  if (!toggle) return;
+  toggle.textContent = nightSchedule.enabled ? '停用' : '启用';
+  toggle.classList.toggle('on', !!nightSchedule.enabled);
+  const ns = document.getElementById('nightStart');
+  const ne = document.getElementById('nightEnd');
+  if (ns) ns.value = nightSchedule.start || '22:00';
+  if (ne) ne.value = nightSchedule.end || '07:00';
+}
+
+// 恢复用户自己选择的主题（localStorage 优先，含 App 同步的自定义）
+function restoreUserTheme() {
+  const savedTheme = localStorage.getItem('readerTheme') || 'dark';
+  const appBg = localStorage.getItem('readerAppBg');
+  const customBg = localStorage.getItem('readerCustomBg');
+  const customFg = localStorage.getItem('readerCustomFg');
+  if (savedTheme === 'custom' && appBg && APP_BG[appBg]) {
+    applyReaderTheme('dark'); // 背景图会整体盖住，先置暗底
+    document.body.style.setProperty('--r-bg', 'transparent');
+    document.body.style.backgroundImage = `url('/backgrounds/${APP_BG[appBg]}')`;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundRepeat = 'no-repeat';
+  } else if (savedTheme === 'custom' && (customBg || customFg)) {
+    document.body.style.backgroundImage = 'none';
+    if (customBg) { document.body.style.setProperty('--r-bg', customBg); document.body.style.setProperty('--r-paper', customBg); }
+    if (customFg) document.body.style.setProperty('--r-ink', customFg);
+  } else {
+    document.body.style.backgroundImage = 'none';
+    applyReaderTheme(savedTheme);
+  }
 }
 
 // 确保 currentBookId 可用（从 URL 兜底）
@@ -590,6 +920,19 @@ function initEventListeners() {
   document.getElementById('tocBtn').addEventListener('click', openToc);
   document.getElementById('bookmarkBtn').addEventListener('click', toggleBookmark);
   document.getElementById('syncBookBtn').addEventListener('click', syncCurrentBook);
+  const searchBtn = document.getElementById('searchBtn');
+  if (searchBtn) searchBtn.addEventListener('click', openSearch);
+  const closeSearchBtn = document.getElementById('closeSearch');
+  if (closeSearchBtn) closeSearchBtn.addEventListener('click', closeSearch);
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', throttle(doSearch, 300));
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+  }
+  const searchPrevBtn = document.getElementById('searchPrevBtn');
+  if (searchPrevBtn) searchPrevBtn.addEventListener('click', searchPrev);
+  const searchNextBtn = document.getElementById('searchNextBtn');
+  if (searchNextBtn) searchNextBtn.addEventListener('click', searchNext);
   const syncPrefsBtn = document.getElementById('syncPrefsBtn');
   if (syncPrefsBtn) syncPrefsBtn.addEventListener('click', loadMoonPrefs);
   const reparseBtn = document.getElementById('reparseBtn');
@@ -597,7 +940,41 @@ function initEventListeners() {
   document.getElementById('closeToc').addEventListener('click', closeToc);
   document.getElementById('settingsBtn').addEventListener('click', openSettings);
   document.getElementById('closeSettings').addEventListener('click', closeSettings);
-  document.getElementById('overlay').addEventListener('click', () => { closeToc(); closeSettings(); });
+  document.getElementById('overlay').addEventListener('click', () => { closeToc(); closeSettings(); closeSearch(); });
+
+  // 阅读计时提醒
+  document.querySelectorAll('.reminder-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.reminder-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      reminderMinutes = parseInt(btn.dataset.min, 10);
+      localStorage.setItem('readerReminder', String(reminderMinutes));
+      startReminder();
+    });
+  });
+
+  // 夜间模式定时
+  const nightToggle = document.getElementById('nightToggle');
+  if (nightToggle) {
+    nightToggle.addEventListener('click', () => {
+      nightSchedule.enabled = !nightSchedule.enabled;
+      const ns = document.getElementById('nightStart');
+      const ne = document.getElementById('nightEnd');
+      if (ns) nightSchedule.start = ns.value || '22:00';
+      if (ne) nightSchedule.end = ne.value || '07:00';
+      localStorage.setItem('readerNight', JSON.stringify(nightSchedule));
+      syncNightUI();
+      checkNightMode();
+    });
+    document.getElementById('nightStart').addEventListener('change', () => {
+      nightSchedule.start = document.getElementById('nightStart').value || '22:00';
+      localStorage.setItem('readerNight', JSON.stringify(nightSchedule));
+    });
+    document.getElementById('nightEnd').addEventListener('change', () => {
+      nightSchedule.end = document.getElementById('nightEnd').value || '07:00';
+      localStorage.setItem('readerNight', JSON.stringify(nightSchedule));
+    });
+  }
 
   // 字体大小滑块（连续可调）
   const fsSlider = document.getElementById('fontSizeSlider');
@@ -647,6 +1024,12 @@ function initEventListeners() {
   });
 
   window.addEventListener('beforeunload', saveProgress);
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      openSearch();
+    }
+  });
 }
 
 // 应用字号（连续值，rem），返回数值
@@ -1010,6 +1393,11 @@ function loadSettings() {
   const savedPaging = localStorage.getItem('readerPagingMode') || 'scroll';
   document.querySelectorAll('.paging-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.paging === savedPaging));
   pagingMode = savedPaging;
+
+  // 阅读计时提醒按钮状态
+  document.querySelectorAll('.reminder-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.min, 10) === reminderMinutes));
+  // 夜间模式定时 UI
+  syncNightUI();
 
   // 异步从服务器加载偏好
   getPreferences().then(r => {

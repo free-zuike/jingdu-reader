@@ -306,6 +306,110 @@
 /* 目录书签标记 */
 .toc-bm { color: var(--gold); margin-right: 6px; font-size: 0.8rem; }
 
+/* ---------- 全文搜索 ---------- */
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  background: var(--r-bg);
+  color: var(--r-ink);
+  border: 1px solid var(--r-line);
+}
+.search-input:focus { border-color: var(--gold); outline: none; }
+
+.search-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--r-line);
+  flex-shrink: 0;
+}
+.search-status { font-size: 0.78rem; color: var(--r-ink-soft); }
+.search-nav { display: flex; align-items: center; gap: 8px; }
+.search-nav-btn {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  background: transparent;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.search-nav-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--r-ink); }
+.search-nav-btn:disabled { opacity: 0.32; cursor: default; }
+.search-count { font-size: 0.78rem; color: var(--gold); min-width: 48px; text-align: center; }
+
+.search-result {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  color: var(--r-ink-soft);
+  font-family: var(--font-serif);
+  font-size: 0.92rem;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all var(--t-fast);
+}
+.search-result:hover { background: var(--r-bg); color: var(--r-ink); }
+.search-result.active { color: var(--seal); border-left-color: var(--seal); background: var(--r-bg); }
+.search-result-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-count { font-size: 0.75rem; color: var(--gold); flex-shrink: 0; }
+
+/* 搜索命中高亮 */
+.book-text mark.search-hl {
+  background: rgba(255, 200, 60, 0.38);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.book-text mark.search-hl.search-hl-active {
+  background: rgba(255, 165, 30, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 165, 30, 0.35);
+}
+
+/* 章节切换淡入动画 */
+.book-text.chapter-anim { animation: chapterFadeIn 0.32s ease; }
+@keyframes chapterFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 阅读计时提醒 + 夜间模式定时控件 */
+.reminder-controls, .night-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.reminder-btn, .night-toggle {
+  flex: 1;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--r-ink-soft);
+  border: 1px solid var(--r-line);
+  font-size: 0.82rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.reminder-btn:hover, .night-toggle:hover { border-color: var(--gold); color: var(--r-ink); }
+.reminder-btn.active, .night-toggle.on {
+  border-color: var(--seal);
+  color: var(--seal);
+  background: rgba(178, 58, 47, 0.06);
+}
+.night-controls input[type="time"] {
+  flex: 1;
+  min-width: 0;
+  background: var(--r-bg);
+  color: var(--r-ink);
+  border: 1px solid var(--r-line);
+  padding: 6px;
+  font-size: 0.82rem;
+}
+.night-controls input[type="time"]:focus { border-color: var(--gold); outline: none; }
+.night-sep { color: var(--r-ink-soft); font-size: 0.8rem; }
+
 /* 书签按钮激活态 */
 .header-btn#bookmarkBtn.active { color: var(--gold); }
 

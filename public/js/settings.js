@@ -2,7 +2,7 @@
 
 let hasSavedConfig = false;
 let hasSavedSmtpConfig = false;
-let currentPrefs = { fontSize: 'medium', theme: 'dark' };
+let currentPrefs = { fontSize: 'medium', theme: 'dark', autoSync: '0' };
 
 // 初始化页面
 document.addEventListener('DOMContentLoaded', async () => {
@@ -91,9 +91,10 @@ async function loadPreferences() {
       currentPrefs.theme = result.data.theme || 'dark';
     }
 
-    // 同步到 localStorage（供阅读器使用）
+    // 同步到 localStorage（供阅读器/书架使用）
     localStorage.setItem('readerFontSize', currentPrefs.fontSize);
     localStorage.setItem('readerTheme', currentPrefs.theme);
+    currentPrefs.autoSync = localStorage.getItem('autoSyncInterval') || '0';
 
     // 更新按钮状态
     updatePrefButtons();
@@ -124,6 +125,7 @@ async function handleSavePreferences() {
       // 同步到 localStorage
       localStorage.setItem('readerFontSize', currentPrefs.fontSize);
       localStorage.setItem('readerTheme', currentPrefs.theme);
+      localStorage.setItem('autoSyncInterval', currentPrefs.autoSync || '0');
       showToast(result.message || '偏好设置已保存', 'success');
     } else {
       showToast(result.error || '保存失败', 'error');

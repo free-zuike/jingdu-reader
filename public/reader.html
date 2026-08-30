@@ -18,6 +18,7 @@
     <div class="reader-header-right">
       <button class="header-btn" id="bookmarkBtn" title="书签">★</button>
       <button class="header-btn" id="syncBookBtn" title="同步到 Moon+">🔄 同步</button>
+      <button class="header-btn" id="searchBtn" title="搜索">🔍</button>
       <button class="header-btn" id="tocBtn" title="目录">☰ 目录</button>
       <button class="header-btn" id="settingsBtn" title="设置">⚙️ 设置</button>
     </div>
@@ -54,6 +55,23 @@
     <div class="toc-list" id="tocList"></div>
   </aside>
 
+  <!-- 全文搜索侧边栏 -->
+  <aside class="toc-sidebar search-sidebar" id="searchSidebar">
+    <div class="toc-header">
+      <input type="text" id="searchInput" class="search-input" placeholder="搜索本书内容..." autocomplete="off">
+      <button class="close-btn" id="closeSearch">✕</button>
+    </div>
+    <div class="search-toolbar">
+      <span class="search-status" id="searchStatus"></span>
+      <span class="search-nav" id="searchNav" style="display:none;">
+        <button class="search-nav-btn" id="searchPrevBtn" title="上一个">↑</button>
+        <span class="search-count" id="searchCount"></span>
+        <button class="search-nav-btn" id="searchNextBtn" title="下一个">↓</button>
+      </span>
+    </div>
+    <div class="toc-list search-list" id="searchList"></div>
+  </aside>
+
   <!-- 设置面板 -->
   <div class="settings-panel" id="settingsPanel">
     <div class="settings-content">
@@ -86,6 +104,24 @@
         <div class="paging-controls">
           <button class="paging-btn active" data-paging="scroll">滚动</button>
           <button class="paging-btn" data-paging="page">翻页</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <label>阅读计时提醒</label>
+        <div class="reminder-controls">
+          <button class="reminder-btn active" data-min="0">关</button>
+          <button class="reminder-btn" data-min="15">15分</button>
+          <button class="reminder-btn" data-min="30">30分</button>
+          <button class="reminder-btn" data-min="60">60分</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <label>夜间模式定时</label>
+        <div class="night-controls">
+          <input type="time" id="nightStart" value="22:00">
+          <span class="night-sep">—</span>
+          <input type="time" id="nightEnd" value="07:00">
+          <button class="night-toggle" id="nightToggle">启用</button>
         </div>
       </div>
       <div class="settings-section">
