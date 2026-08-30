@@ -62,8 +62,30 @@ async function initReader(bookId) {
   startAutoHide();
   startReminder();
   startAutoTurn();
+  autoSyncDayNight();
   setInterval(checkNightMode, 60000);
   checkNightMode();
+}
+
+// 打开阅读器时自动读取 App 日夜模式并应用（不弹 toast，静默同步）
+async function autoSyncDayNight() {
+  try {
+    const dn = await getMoonPlusDayNight();
+    if (!dn.success || !dn.data) return;
+    const { enabled, dayTime, nightTime } = dn.data;
+    if (!enabled) return; // App 未开启日夜自动切换时保持网页当前设置
+    nightSchedule.enabled = true;
+    const fmt = n => {
+      const hh = String(Math.floor(n / 100)).padStart(2, '0');
+      const mm = String(n % 100).padStart(2, '0');
+      return hh + ':' + mm;
+    };
+    if (typeof nightTime === 'number' && !isNaN(nightTime)) nightSchedule.start = fmt(nightTime);
+    if (typeof dayTime === 'number' && !isNaN(dayTime)) nightSchedule.end = fmt(dayTime);
+    localStorage.setItem('readerNight', JSON.stringify(nightSchedule));
+    syncNightUI();
+    checkNightMode();
+  } catch (e) { /* 静默失败 */ }
 }
 
 // TXT/EPUB 纯文本阅读器（按需加载章节）
