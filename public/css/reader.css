@@ -238,11 +238,10 @@
 .reader-page.spacing-standard { --reader-line-height: 1.95; }
 .reader-page.spacing-loose { --reader-line-height: 2.4; }
 
-/* App 更多偏好：粗体/斜体/下划线/字间距/段间距 */
+/* App 更多偏好：粗体/斜体/字间距/段间距（下划线已停用，会导致全文加横线） */
 .reader-page { --reader-letter-space: 0px; --reader-paragraph-space: 0.7em; }
 .reader-page.font-bold .book-text { font-weight: 700; }
 .reader-page.font-italic .book-text { font-style: italic; }
-.reader-page.font-underline .book-text { text-decoration: underline; }
 .book-text { letter-spacing: var(--reader-letter-space); }
 .book-text p { margin-bottom: var(--reader-paragraph-space); }
 

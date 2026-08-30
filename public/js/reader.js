@@ -1206,14 +1206,13 @@ async function loadMoonPrefs() {
         synced.push('字体');
       }
     }
-    // 字体样式：粗体/斜体/下划线（App pFontBold/Italic/Underline）
+    // 字体样式：粗体/斜体（App pFontBold/Italic；下划线会导致全文加横线，不同步）
     document.body.classList.toggle('font-bold', d.fontBold === 'true');
     document.body.classList.toggle('font-italic', d.fontItalic === 'true');
-    document.body.classList.toggle('font-underline', d.fontUnderline === 'true');
     localStorage.setItem('readerFontBold', d.fontBold === 'true' ? '1' : '0');
     localStorage.setItem('readerFontItalic', d.fontItalic === 'true' ? '1' : '0');
-    localStorage.setItem('readerFontUnderline', d.fontUnderline === 'true' ? '1' : '0');
-    if (d.fontBold || d.fontItalic || d.fontUnderline) synced.push('字体样式');
+    localStorage.removeItem('readerFontUnderline');
+    if (d.fontBold || d.fontItalic) synced.push('字体样式');
     // 字间距（pFontSpace）
     if (d.fontSpace) {
       const n = parseFloat(d.fontSpace);
@@ -1471,7 +1470,8 @@ function loadSettings() {
   // 重新应用 App 字体样式/字间距/段间距/页边距
   document.body.classList.toggle('font-bold', localStorage.getItem('readerFontBold') === '1');
   document.body.classList.toggle('font-italic', localStorage.getItem('readerFontItalic') === '1');
-  document.body.classList.toggle('font-underline', localStorage.getItem('readerFontUnderline') === '1');
+  document.body.classList.remove('font-underline');
+  localStorage.removeItem('readerFontUnderline');
   const letterSpace = localStorage.getItem('readerFontSpace');
   if (letterSpace) document.body.style.setProperty('--reader-letter-space', parseFloat(letterSpace) + 'px');
   const paraSpace = localStorage.getItem('readerParagraphSpace');
