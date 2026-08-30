@@ -3,6 +3,7 @@
 import { encrypt, decrypt, generateUUID } from '../utils/crypto';
 import type { Database } from '../utils/db';
 import type { WebDAVConfig, WebDAVFile, ApiResponse } from '../types';
+import { getSQL } from '../utils/sqlite';
 
 export class WebDAVService {
   private db: Database;
@@ -1247,6 +1248,52 @@ export class WebDAVService {
     return list;
   }
 
+  // 从 ZIP 中提取单个条目的原始字节（不做 TextDecoder 转换，保留二进制）
+  // 支持 method=0（存储）和 method=8（deflate 压缩）
+  private async extractZipEntryRaw(zipBytes: ArrayBuffer, entryName: string): Promise<Uint8Array | null> {
+    const u8 = new Uint8Array(zipBytes);
+    let eocdOffset = -1;
+    for (let i = u8.length - 22; i >= 0 && eocdOffset === -1; i--) {
+      if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) eocdOffset = i;
+    }
+    if (eocdOffset === -1) return null;
+    const centralDirOffset = u8[eocdOffset + 16] | (u8[eocdOffset + 17] << 8) | (u8[eocdOffset + 18] << 16) | (u8[eocdOffset + 19] << 24);
+    let offset = centralDirOffset;
+    while (offset + 46 <= u8.length) {
+      if (!(u8[offset] === 0x50 && u8[offset + 1] === 0x4b && u8[offset + 2] === 0x01 && u8[offset + 3] === 0x02)) break;
+      const method = u8[offset + 10] | (u8[offset + 11] << 8);
+      const compSize = u8[offset + 20] | (u8[offset + 21] << 8) | (u8[offset + 22] << 16) | (u8[offset + 23] << 24);
+      const nameLen = u8[offset + 28] | (u8[offset + 29] << 8);
+      const extraLen = u8[offset + 30] | (u8[offset + 31] << 8);
+      const commentLen = u8[offset + 32] | (u8[offset + 33] << 8);
+      const localOffset = u8[offset + 42] | (u8[offset + 43] << 8) | (u8[offset + 44] << 16) | (u8[offset + 45] << 24);
+      const name = new TextDecoder().decode(u8.slice(offset + 46, offset + 46 + nameLen));
+
+      if (name === entryName) {
+        const localNameLen = u8[localOffset + 26] | (u8[localOffset + 27] << 8);
+        const localExtraLen = u8[localOffset + 28] | (u8[localOffset + 29] << 8);
+        const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+        const compData = u8.slice(dataStart, dataStart + compSize);
+
+        if (method === 0) return compData.slice();
+        if (method === 8) {
+          try {
+            const ds = new DecompressionStream('deflate-raw');
+            const stream = new Blob([compData]).stream().pipeThrough(ds);
+            const buf = await new Response(stream).arrayBuffer();
+            return new Uint8Array(buf);
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+
+      offset += 46 + nameLen + extraLen + commentLen;
+    }
+    return null;
+  }
+
   // 获取Moon+封面图片（从 .Moon+/Cover/ 目录）
   // bookFileName 是书籍的原始文件名（如 乡村教师.epub），用于直接构造封面路径
   // 列出 .Moon+/Cover/ 下所有封面文件（文件名可反推书籍：{书名}.epub_2.png）
@@ -1610,99 +1657,83 @@ export class WebDAVService {
   }
 
   // 解析 SQLite 数据库，提取 statistics 表数据（阅读统计）
+  // 用 cloudflare-worker-sqlite-wasm 真解析（旧实现用字符串扫描，SQLite 二进制经 TextDecoder 已损坏）
   async parseSqliteStatistics(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
     try {
       const relPath = `Backup/${backupName}`;
-      const result = await this.getMoonPlusDataFile(userId, relPath);
-      if (!result.success || !result.data) return { success: false, error: '读取备份失败' };
+      const zipBuf = await this.fetchMrproRaw(userId, relPath);
+      if (!zipBuf) return { success: false, error: '读取备份失败' };
 
-      const data = result.data as any;
-      if (!data.entries) return { success: false, error: '备份不是可解压格式' };
+      const dbBytes = await this.extractZipEntryRaw(zipBuf, entryName);
+      if (!dbBytes) return { success: false, error: `条目不存在或解压失败: ${entryName}` };
 
-      const entriesObj = data.entries as Record<string, string>;
-      const content = entriesObj[entryName];
-      if (content === undefined) return { success: false, error: `条目不存在: ${entryName}` };
+      const magic = new TextDecoder().decode(dbBytes.subarray(0, 15));
+      if (magic !== 'SQLite format 3') return { success: false, error: '不是 SQLite 数据库' };
 
-      if (!content.startsWith('SQLite format')) {
-        return { success: false, error: '不是 SQLite 数据库' };
-      }
+      const SQL = await getSQL();
+      const db = new SQL.Database(dbBytes);
+      try {
+        const tablesRes = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
+        const tables: string[] = tablesRes.length > 0 ? tablesRes[0].values.map(v => String(v[0])) : [];
 
-      // 提取所有可读字符串
-      const strings: string[] = [];
-      let current = '';
-      for (let i = 0; i < content.length; i++) {
-        const char = content[i];
-        const code = char.charCodeAt(0);
-        if ((code >= 0x20 && code < 0x7f) || (code >= 0x4e00 && code <= 0x9fff)) {
-          current += char;
-        } else {
-          if (current.length >= 3) strings.push(current);
-          current = '';
-        }
-      }
-      if (current.length >= 3) strings.push(current);
+        const statsRows: Array<{ filename: string; usedTime: number; readWords: number; dates: string }> = [];
 
-      // 查找 statistics 表数据
-      // 表结构：_id, filename, usedTime, readWords, dates
-      const statsRows: Array<{ filename: string; usedTime: number; readWords: number; dates: string }> = [];
-
-      for (let i = 0; i < strings.length; i++) {
-        const s = strings[i];
-
-        // 查找包含书籍文件名的字符串
-        if (s.includes('.epub') || s.includes('.txt') || s.includes('.mobi') || s.includes('.azw')) {
-          // 查找紧跟的数字（可能是 usedTime 和 readWords）
-          const nextStrings = strings.slice(i + 1, Math.min(i + 10, strings.length));
-
-          // 查找数字模式
-          let usedTime = 0;
-          let readWords = 0;
-          let dates = '';
-
-          for (const ns of nextStrings) {
-            // 纯数字可能是 usedTime 或 readWords
-            if (/^\d+$/.test(ns) && !/^\d{10,}$/.test(ns)) {
-              if (!usedTime) usedTime = parseInt(ns, 10);
-              else if (!readWords) readWords = parseInt(ns, 10);
-            }
-            // 日期或时间戳
-            if (/^\d{10,13}$/.test(ns) || ns.includes('-')) {
-              dates = ns;
-              break;
+        if (tables.includes('statistics')) {
+          let res;
+          try {
+            res = db.exec('SELECT filename, usedTime, readWords, dates FROM statistics');
+          } catch (e: any) {
+            const cols = db.exec('PRAGMA table_info(statistics)');
+            const colNames = cols.length > 0 ? cols[0].values.map(v => String(v[1])) : [];
+            return { success: false, error: `statistics 表存在但查询失败：${e?.message}；列名: ${colNames.join(',')}` };
+          }
+          if (res.length > 0) {
+            for (const row of res[0].values) {
+              if (!row[0]) continue;
+              statsRows.push({
+                filename: String(row[0]),
+                usedTime: Number(row[1]) || 0,
+                readWords: Number(row[2]) || 0,
+                dates: row[3] != null ? String(row[3]) : ''
+              });
             }
           }
+        }
 
-          if (usedTime > 0 || readWords > 0) {
-            statsRows.push({
-              filename: s.replace(/\d{10,}/g, '').trim(),
-              usedTime,
-              readWords,
-              dates
-            });
+        return {
+          success: true,
+          data: {
+            entryName,
+            size: dbBytes.length,
+            tables,
+            statsRows
           }
-        }
+        };
+      } finally {
+        db.close();
       }
-
-      // 提取日期数据
-      const dateStrings = strings.filter(s =>
-        /^\d{10,13}$/.test(s) || s.match(/^\d{4}-\d{2}-\d{2}/)
-      );
-
-      // 提取百分比数据（可能是阅读进度）
-      const percentages = strings.filter(s => s.includes('%') && s.includes('#'));
-
-      return {
-        success: true,
-        data: {
-          totalStrings: strings.length,
-          statsRows: statsRows.slice(0, 50),
-          dateStrings: dateStrings.slice(0, 30),
-          percentages: percentages.slice(0, 20),
-          sampleStrings: strings.filter(s => s.includes('.epub') || s.includes('.txt')).slice(0, 30)
-        }
-      };
     } catch (e: any) {
       return { success: false, error: e?.message || '解析失败' };
+    }
+  }
+
+  // 直接读取 .mrpro 备份的 ZIP 原始字节（不解压、不转字符串）
+  private async fetchMrproRaw(userId: string, relPath: string): Promise<ArrayBuffer | null> {
+    try {
+      const config = await this.db.getWebDAVConfigByUserId(userId);
+      if (!config) return null;
+      const password = await decrypt(config.password_encrypted, this.encryptionKey);
+      const basePath = config.base_path.replace(/\/$/, '');
+      const filePath = `${basePath}/.Moon+/${relPath}`;
+      const fullUrl = this.buildFileUrl(config.server_url, filePath);
+      const resp = await fetch(fullUrl, {
+        method: 'GET',
+        headers: { 'Authorization': 'Basic ' + btoa(`${config.username}:${password}`), 'User-Agent': 'JingDu-Reader/1.0' }
+      });
+      if (!resp.ok) return null;
+      return await resp.arrayBuffer();
+    } catch {
+      return null;
     }
   }
 

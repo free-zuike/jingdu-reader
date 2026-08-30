@@ -838,106 +838,40 @@ async function batchDeleteBooks() {
 // Moon+ 阅读统计解析（浏览器端 SQLite 解析）
 // ============================================
 
-let sqlJsLoaded = false;
 let moonStatsData = {}; // { filename: { usedTime, readWords, dates } }
 
-// 加载 sql.js
-async function loadSqlJs() {
-  if (sqlJsLoaded && typeof initSqlJs === 'function') return true;
-  try {
-    // sql.js 从 CDN 加载
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js';
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-    sqlJsLoaded = true;
-    return true;
-  } catch (e) {
-    console.error('加载 sql.js 失败:', e);
-    return false;
-  }
-}
-
-// 从 Moon+ 备份提取阅读统计
+// 从 Moon+ 备份提取阅读统计（服务端用 cloudflare-worker-sqlite-wasm 解析）
 async function loadMoonReadingStats() {
   console.log('[MoonStats] 开始加载阅读统计...');
   try {
-    // 使用已知的备份名称（包含 SQLite 数据库）
     const backupName = '2026-08-27 AUTO (PJE110).mrpro';
     const entryName = 'com.flyersoft.moonreaderp/43.tag';
 
-    console.log('[MoonStats] 尝试备份:', backupName);
-    console.log('[MoonStats] 条目:', entryName);
-
-    // 1. 提取 SQLite 数据库
-    const extractResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/entry/${encodeURIComponent(entryName)}`, {
+    const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/stats/${encodeURIComponent(entryName)}`, {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    console.log('[MoonStats] API 响应:', JSON.stringify({
-      success: extractResult.success,
-      error: extractResult.error,
-      hasData: !!extractResult.data,
-      hasBase64Full: !!extractResult.data?.base64Full,
-      size: extractResult.data?.size,
-      isSqlite: extractResult.data?.isSqlite
-    }, null, 2));
-
-    if (!extractResult.success || !extractResult.data?.base64Full) {
-      console.log('[MoonStats] 提取失败，尝试列出备份条目...');
-      // 调试：列出备份的所有条目
-      const listResult = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}`, {
-        headers: { 'Authorization': 'Bearer ' + getToken() }
-      }).then(r => r.json());
-      console.log('[MoonStats] 备份条目列表:', listResult.data?.entries?.slice(0, 10));
+    if (!result.success || !result.data?.statsRows) {
+      console.warn('[MoonStats] 服务端解析失败:', result.error);
       return;
     }
 
-    // 2. 在浏览器端解析 SQLite
-    const loaded = await loadSqlJs();
-    if (!loaded) {
-      console.log('[MoonStats] sql.js 加载失败');
-      return;
-    }
-
-    const SQL = await initSqlJs();
-    const uint8 = Uint8Array.from(atob(extractResult.data.base64Full), c => c.charCodeAt(0));
-    const db = new SQL.Database(uint8);
-
-    // 3. 查询 statistics 表
-    const tablesResult = db.exec("SELECT name FROM sqlite_master WHERE type='table'");
-    const tables = tablesResult.length > 0 ? tablesResult[0].values.map(v => v[0]) : [];
-    console.log('[MoonStats] 数据库表:', tables.join(', '));
-
-    if (tables.includes('statistics')) {
-      const statsResult = db.exec("SELECT filename, usedTime, readWords, dates FROM statistics");
-      console.log('[MoonStats] statistics 行数:', statsResult[0]?.values?.length || 0);
-      if (statsResult.length > 0) {
-        for (const row of statsResult[0].values) {
-          if (row[0]) {
-            moonStatsData[row[0]] = {
-              usedTime: row[1] || 0,
-              readWords: row[2] || 0,
-              dates: row[3] || ''
-            };
-          }
-        }
-        console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
-        console.log('[MoonStats] 示例:', Object.entries(moonStatsData).slice(0, 3));
+    for (const row of result.data.statsRows) {
+      if (row.filename) {
+        moonStatsData[row.filename] = {
+          usedTime: row.usedTime || 0,
+          readWords: row.readWords || 0,
+          dates: row.dates || ''
+        };
       }
-    } else {
-      console.log('[MoonStats] 未找到 statistics 表');
     }
 
-    db.close();
+    console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
 
-    // 4. 更新书籍卡片显示阅读时长
-    updateBookCardsWithStats();
+    if (Object.keys(moonStatsData).length > 0) {
+      updateBookCardsWithStats();
+    }
     console.log('[MoonStats] 完成');
-
   } catch (e) {
     console.error('[MoonStats] 错误:', e);
   }
