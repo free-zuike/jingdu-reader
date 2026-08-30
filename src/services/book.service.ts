@@ -1245,13 +1245,14 @@ export class BookService {
         return hit;
       };
 
-      const summary: Record<string, number> = { meta: 0, notes: 0, stats: 0 };
+      const summary: Record<string, number> = { meta: 0, notes: 0, stats: 0, matched: 0 };
 
       // 1. books 表：分类、评分、收藏、简介、作者
       if (Array.isArray(data.books)) {
         for (const row of data.books) {
           const book = findBook(row.filename);
           if (!book) continue;
+          summary.matched++;
           const meta: { category?: string; favorite?: boolean; rate?: string; series?: string } = {};
           if (row.category && row.category.trim() && !book.category) {
             meta.category = row.category.trim();
