@@ -448,7 +448,7 @@ function clearSearch() {
   renderTextContent(); // 清除已渲染的搜索高亮
 }
 
-// 跨章节全文搜索（优先用章节缓存，缺失则按需加载）
+// 跨章节全文搜索（服务端一次搜索全书，返回每章命中数）
 async function doSearch() {
   const inp = document.getElementById('searchInput');
   const q = (inp && inp.value.trim()) || '';
@@ -464,22 +464,13 @@ async function doSearch() {
   list.innerHTML = '';
   nav.style.display = 'none';
 
-  for (let i = 0; i < chapters.length; i++) {
-    let text;
-    if (chapterCache[i] !== undefined) {
-      text = chapterCache[i].text;
-    } else {
-      try {
-        const r = await getChapter(currentBookId, i);
-        if (r.success && r.data.text !== undefined) {
-          text = r.data.text;
-          chapterCache[i] = { text: r.data.text, html: r.data.html || '' };
-        }
-      } catch {}
-    }
-    if (!text) continue;
-    const count = countOccurrences(text, q);
-    if (count > 0) searchResults.push({ chapterIndex: i, title: chapters[i].title, count });
+  try {
+    const r = await request(`/api/books/${currentBookId}/search?q=${encodeURIComponent(q)}`);
+    const data = r && r.success ? (r.data || []) : [];
+    searchResults = data.map(d => ({ chapterIndex: d.index, title: d.title, count: d.count }))
+      .filter(d => d.count > 0);
+  } catch (e) {
+    searchResults = [];
   }
 
   if (!searchResults.length) {
@@ -506,15 +497,6 @@ async function doSearch() {
   scrollToSearchMark();
 }
 
-function countOccurrences(text, q) {
-  const lower = text.toLowerCase();
-  const needle = q.toLowerCase();
-  let n = 0, idx = lower.indexOf(needle);
-  while (idx !== -1) { n++; idx = lower.indexOf(needle, idx + needle.length); }
-  return n;
-}
-
-// 点击搜索结果 → 跳转到该章
 async function jumpToSearchResult(ri) {
   const r = searchResults[ri];
   if (!r) return;

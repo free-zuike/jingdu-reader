@@ -438,6 +438,17 @@ book.get('/:id/chapter/:index', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 全文搜索：服务端一次读取全书文本，返回每章命中数
+book.get('/:id/search', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const bookId = c.req.param('id');
+  const q = c.req.query('q') || '';
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.searchBookText(userId, bookId, q);
+  return c.json(result);
+});
+
 // 获取书籍书签/笔记/划线
 book.get('/:id/marks', authMiddleware, async (c) => {
   const userId = c.get('userId');

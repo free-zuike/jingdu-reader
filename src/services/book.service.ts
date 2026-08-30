@@ -876,6 +876,57 @@ export class BookService {
     }
   }
 
+  // 全文搜索（服务端一次读取全书文本，返回每章命中数；不传输章节文本）
+  async searchBookText(userId: string, bookId: string, query: string): Promise<ApiResponse> {
+    try {
+      const book = await this.db.getBookById(bookId);
+      if (!book || book.user_id !== userId) return { success: false, error: '书籍不存在' };
+      const q = (query || '').trim();
+      if (!q) return { success: true, data: [] };
+
+      let chapters: Array<{ title: string; startIndex: number; isVolume?: boolean }> = [];
+      let totalLength = 0;
+      let fullText = '';
+
+      // 新版：book/{id}/chapters + book/{id}/text
+      const chaptersJson = await this.r2GetText(`book/${bookId}/chapters`);
+      if (chaptersJson) {
+        const meta = JSON.parse(chaptersJson);
+        chapters = meta.chapters || [];
+        totalLength = meta.totalLength;
+        fullText = await this.r2GetText(`book/${bookId}/text`) || '';
+      } else {
+        // 旧版兼容：book/{id} 存 { text, chapters }
+        const oldCached = await this.r2GetText(this.bookKey(bookId));
+        if (oldCached) {
+          const content = JSON.parse(oldCached);
+          chapters = content.chapters || [];
+          totalLength = content.text.length;
+          fullText = content.text;
+        }
+      }
+
+      if (!fullText || !Array.isArray(chapters)) return { success: true, data: [] };
+
+      const lower = fullText.toLowerCase();
+      const needle = q.toLowerCase();
+      const results: Array<{ index: number; title: string; count: number }> = [];
+      for (let i = 0; i < chapters.length; i++) {
+        if (chapters[i].isVolume) continue; // 卷名行不参与搜索
+        const start = chapters[i].startIndex;
+        const end = chapters[i + 1] ? chapters[i + 1].startIndex : totalLength;
+        if (start >= end) continue;
+        const seg = lower.substring(start, end);
+        let n = 0, idx = seg.indexOf(needle);
+        while (idx !== -1) { n++; idx = seg.indexOf(needle, idx + needle.length); }
+        if (n > 0) results.push({ index: i, title: chapters[i].title, count: n });
+      }
+      return { success: true, data: results };
+    } catch (error: any) {
+      return { success: false, error: error?.message || '搜索失败' };
+    }
+  }
+
   // 后台构建 EPUB 内容缓存（写 R2）
   private async buildEpubCache(book: Book, fileData: ArrayBuffer): Promise<void> {
     try {
