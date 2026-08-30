@@ -1174,26 +1174,23 @@ function renderCalendar() {
   }
 }
 
-// 显示日期详情（覆盖在下方，横排列表，每本书竖着显示）
+// 显示日期详情（在日历网格里展开，横排列表，每本书竖着显示）
 function showDayDetail(day) {
   calendarSelectedDay = day;
   renderCalendar();
 
-  // 移除之前的 overlay
-  const existingOverlay = document.querySelector('.calendar-detail-overlay');
-  if (existingOverlay) existingOverlay.remove();
+  // 移除之前的展开行
+  const existingExpand = document.querySelector('.calendar-expand-row');
+  if (existingExpand) existingExpand.remove();
 
   const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
   const data = calendarData[dateKey];
 
   if (!data || data.books.length === 0) return;
 
-  const modal = document.getElementById('calendarModal');
-  if (!modal) return;
-
-  // 创建 overlay
-  const overlay = document.createElement('div');
-  overlay.className = 'calendar-detail-overlay';
+  // 创建展开行
+  const grid = document.getElementById('calendarGrid');
+  if (!grid) return;
 
   const totalHours = (data.totalMs / 1000 / 60 / 60).toFixed(1);
   const totalWords = (data.totalWords / 10000).toFixed(1);
@@ -1205,39 +1202,33 @@ function showDayDetail(day) {
     const words = (book.words / 1000).toFixed(0);
     const speed = book.speed || 0;
     booksHtml += `
-      <div class="calendar-detail-book-vertical">
-        <div class="calendar-detail-book-cover-v">
+      <div class="calendar-expand-book-vertical">
+        <div class="calendar-expand-book-cover-v">
           <img src="${book.cover}" alt="" loading="lazy" onerror="this.style.display='none'">
         </div>
-        <div class="calendar-detail-book-info-v">
-          <div class="calendar-detail-book-title-v">${escapeHtml(book.title)}</div>
-          <div class="calendar-detail-book-stats-v">${hours}h</div>
-          <div class="calendar-detail-book-speed-v">${speed}字/分</div>
+        <div class="calendar-expand-book-info-v">
+          <div class="calendar-expand-book-title-v">${escapeHtml(book.title)}</div>
+          <div class="calendar-expand-book-stats-v">${hours}h</div>
+          <div class="calendar-expand-book-speed-v">${speed}字/分</div>
         </div>
       </div>
     `;
   }
 
-  overlay.innerHTML = `
-    <div class="calendar-detail-header-v">
-      <span class="calendar-detail-date-v">${calendarMonth + 1}月${day}日</span>
-      <span class="calendar-detail-total-v">${totalHours}h · ${totalWords}万字 · ${totalSpeed}字/分</span>
-      <button class="calendar-detail-close-v" id="calendarDetailCloseV">✕</button>
+  const expandRow = document.createElement('div');
+  expandRow.className = 'calendar-expand-row';
+  expandRow.innerHTML = `
+    <div class="calendar-expand-header-v">
+      <span class="calendar-expand-date-v">${calendarMonth + 1}月${day}日</span>
+      <span class="calendar-expand-total-v">${totalHours}h · ${totalWords}万字 · ${totalSpeed}字/分</span>
     </div>
-    <div class="calendar-detail-books-v">
+    <div class="calendar-expand-books-v">
       ${booksHtml}
     </div>
   `;
 
-  // 插入到弹窗底部
-  modal.querySelector('.modal-body').appendChild(overlay);
-
-  // 关闭按钮
-  overlay.querySelector('#calendarDetailCloseV').addEventListener('click', () => {
-    overlay.remove();
-    calendarSelectedDay = null;
-    renderCalendar();
-  });
+  // 插入到网格底部
+  grid.appendChild(expandRow);
 }
 
 // 上一月
