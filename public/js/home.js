@@ -841,39 +841,123 @@ async function batchDeleteBooks() {
 
 let moonStatsData = {}; // { filename: { usedTime, readWords, dates } }
 
-// 从 Moon+ 备份提取阅读统计（服务端用 cloudflare-worker-sqlite-wasm 解析）
+// 从 Moon+ 备份同步所有数据（阅读统计、元数据、笔记等）
 async function loadMoonReadingStats() {
-  console.log('[MoonStats] 开始加载阅读统计...');
+  console.log('[MoonStats] 开始加载 Moon+ 数据...');
   try {
     const backupName = '2026-08-27 AUTO (PJE110).mrpro';
     const entryName = 'com.flyersoft.moonreaderp/43.tag';
 
-    const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/stats/${encodeURIComponent(entryName)}`, {
+    const result = await fetch(`/api/books/moonplus/backup/${encodeURIComponent(backupName)}/all/${encodeURIComponent(entryName)}`, {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
 
-    if (!result.success || !result.data?.statsRows) {
+    if (!result.success || !result.data) {
       console.warn('[MoonStats] 服务端解析失败:', result.error);
       return;
     }
 
-    for (const row of result.data.statsRows) {
-      if (!row.filename) continue;
-      // Moon+ 存的是完整路径（如 /sdcard/Download/Turrit/x.epub），取 basename 匹配书架
-      const basename = row.filename.split('/').pop() || row.filename;
-      moonStatsData[basename] = {
-        usedTime: row.usedTime || 0,
-        readWords: row.readWords || 0,
-        dates: row.dates || ''
-      };
+    const data = result.data;
+
+    // 1. 阅读统计（statistics 表）
+    if (Array.isArray(data.statistics)) {
+      for (const row of data.statistics) {
+        if (!row.filename) continue;
+        const basename = row.filename.split('/').pop() || row.filename;
+        moonStatsData[basename] = {
+          usedTime: row.usedTime || 0,
+          readWords: row.readWords || 0,
+          dates: row.dates || ''
+        };
+      }
+      console.log('[MoonStats] 阅读统计:', data.statistics.length, '条');
     }
 
-    console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
+    // 2. 书籍元数据（books 表）：分类、评分、收藏、简介
+    let metaSynced = 0;
+    if (Array.isArray(data.books)) {
+      for (const row of data.books) {
+        if (!row.filename) continue;
+        const basename = row.filename.split('/').pop() || row.filename;
+        const book = allBooks.find(b => {
+          const fn = b.fileName || b.title;
+          return fn === basename || fn === basename.replace(/\.epub$/i, '') || basename.endsWith(fn);
+        });
+        if (!book) continue;
+        // 同步分类
+        if (row.category && !book.category) {
+          book.category = row.category.trim();
+          metaSynced++;
+        }
+        // 同步评分（1-5 星）
+        if (row.rate && !book.rate) {
+          const rate = parseFloat(row.rate);
+          if (rate >= 1 && rate <= 5) book.rate = rate;
+          metaSynced++;
+        }
+        // 同步收藏
+        if (row.favorite && !book.favorite) {
+          book.favorite = 1;
+          metaSynced++;
+        }
+        // 同步简介
+        if (row.description && !book.description) {
+          book.description = row.description;
+          metaSynced++;
+        }
+        // 同步作者
+        if (row.author && !book.author) {
+          book.author = row.author;
+          metaSynced++;
+        }
+      }
+      console.log('[MoonStats] 元数据同步:', metaSynced, '项');
+    }
 
-    if (Object.keys(moonStatsData).length > 0) {
+    // 3. 笔记/标注（notes 表）：存到 book.moonAnnotations
+    if (Array.isArray(data.notes) && data.notes.length > 0) {
+      for (const row of data.notes) {
+        if (!row.filename) continue;
+        const basename = row.filename.split('/').pop() || row.filename;
+        const book = allBooks.find(b => {
+          const fn = b.fileName || b.title;
+          return fn === basename || fn === basename.replace(/\.epub$/i, '') || basename.endsWith(fn);
+        });
+        if (!book) continue;
+        if (!book.moonAnnotations) book.moonAnnotations = [];
+        book.moonAnnotations.push({
+          lastChapter: row.lastChapter,
+          lastPosition: row.lastPosition,
+          highlightLength: row.highlightLength,
+          highlightColor: row.highlightColor,
+          bookmark: row.bookmark,
+          note: row.note,
+          original: row.original,
+          underline: row.underline,
+          strikethrough: row.strikethrough,
+          time: row.time
+        });
+      }
+      const annotatedBooks = allBooks.filter(b => b.moonAnnotations && b.moonAnnotations.length > 0).length;
+      console.log('[MoonStats] 笔记同步:', data.notes.length, '条，涉及', annotatedBooks, '本书');
+    }
+
+    // 4. 临时书（tmpbooks 表）：仅记录，不显示
+    if (Array.isArray(data.tmpbooks)) {
+      console.log('[MoonStats] 临时书:', data.tmpbooks.length, '条（不显示）');
+    }
+
+    // 5. 封面（covers2 表）：当前为空，跳过
+    if (Array.isArray(data.covers2) && data.covers2.length > 0) {
+      console.log('[MoonStats] 封面:', data.covers2.length, '张（待实现）');
+    }
+
+    console.log('[MoonStats] 完成');
+
+    // 重新渲染书架，显示同步后的数据
+    if (Object.keys(moonStatsData).length > 0 || metaSynced > 0) {
       updateBookCardsWithStats();
     }
-    console.log('[MoonStats] 完成');
   } catch (e) {
     console.error('[MoonStats] 错误:', e);
   }

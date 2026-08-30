@@ -1628,10 +1628,7 @@ export class WebDAVService {
               sampleRows = res[0].values.map(r => r.map(v => {
                 if (v == null) return null;
                 if (typeof v === 'number' || typeof v === 'boolean') return v;
-                // Blob：截断并转 base64
-                if (v instanceof Uint8Array) {
-                  return `<blob ${v.length}B>`;
-                }
+                if (v instanceof Uint8Array) return `<blob ${v.length}B>`;
                 const s = String(v);
                 return s.length > 300 ? s.substring(0, 300) + '…' : s;
               }));
@@ -1646,6 +1643,117 @@ export class WebDAVService {
       }
     } catch (e: any) {
       return { success: false, error: e?.message || '分析失败' };
+    }
+  }
+
+  // 同步：一次性返回 SQLite 所有表的全量数据（books / notes / statistics / tmpbooks / covers2）
+  // 用于把 Moon+ 备份里的元数据、笔记、阅读统计都同步到本地
+  async parseSqliteAllTables(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const zipBuf = await this.fetchMrproRaw(userId, relPath);
+      if (!zipBuf) return { success: false, error: '读取备份失败' };
+
+      const dbBytes = await this.extractZipEntryRaw(zipBuf, entryName);
+      if (!dbBytes) return { success: false, error: `条目不存在或解压失败: ${entryName}` };
+
+      const magic = new TextDecoder().decode(dbBytes.subarray(0, 15));
+      if (magic !== 'SQLite format 3') return { success: false, error: '不是 SQLite 数据库' };
+
+      const SQL = await getSQL();
+      const db = new SQL.Database(dbBytes);
+      try {
+        const out: Record<string, any> = { entryName, size: dbBytes.length };
+
+        // books 表：书名、作者、分类、评分、收藏、简介、下载 URL 等
+        try {
+          const res = db.exec('SELECT book, filename, lowerFilename, author, description, category, favorite, rate, addTime, downloadUrl, thumbFile, coverFile FROM books');
+          if (res.length > 0) {
+            out.books = res[0].values.map(row => ({
+              book: String(row[0] || ''),
+              filename: String(row[1] || ''),
+              lowerFilename: String(row[2] || ''),
+              author: String(row[3] || ''),
+              description: String(row[4] || ''),
+              category: String(row[5] || ''),
+              favorite: String(row[6] || '') === '1' || String(row[6] || '').toLowerCase() === 'true',
+              rate: String(row[7] || ''),
+              addTime: String(row[8] || ''),
+              downloadUrl: String(row[9] || ''),
+              thumbFile: String(row[10] || ''),
+              coverFile: String(row[11] || '')
+            }));
+          }
+        } catch {}
+
+        // notes 表：笔记/标注/书签
+        try {
+          const res = db.exec('SELECT book, filename, lowerFilename, lastChapter, lastSplitIndex, lastPosition, highlightLength, highlightColor, time, bookmark, note, original, underline, strikethrough FROM notes');
+          if (res.length > 0) {
+            out.notes = res[0].values.map(row => ({
+              book: String(row[0] || ''),
+              filename: String(row[1] || ''),
+              lowerFilename: String(row[2] || ''),
+              lastChapter: Number(row[3]) || 0,
+              lastSplitIndex: Number(row[4]) || 0,
+              lastPosition: Number(row[5]) || 0,
+              highlightLength: Number(row[6]) || 0,
+              highlightColor: Number(row[7]) || 0,
+              time: Number(row[8]) || 0,
+              bookmark: String(row[9] || ''),
+              note: String(row[10] || ''),
+              original: String(row[11] || ''),
+              underline: Number(row[12]) || 0,
+              strikethrough: Number(row[13]) || 0
+            }));
+          }
+        } catch {}
+
+        // statistics 表：阅读统计（阅读时长、字数、日期）
+        try {
+          const res = db.exec('SELECT filename, usedTime, readWords, dates FROM statistics');
+          if (res.length > 0) {
+            out.statistics = res[0].values.map(row => ({
+              filename: String(row[0] || ''),
+              usedTime: Number(row[1]) || 0,
+              readWords: Number(row[2]) || 0,
+              dates: String(row[3] || '')
+            }));
+          }
+        } catch {}
+
+        // tmpbooks 表：临时书（待处理）
+        try {
+          const res = db.exec('SELECT book, filename, lowerFilename, author, category, addTime FROM tmpbooks');
+          if (res.length > 0) {
+            out.tmpbooks = res[0].values.map(row => ({
+              book: String(row[0] || ''),
+              filename: String(row[1] || ''),
+              lowerFilename: String(row[2] || ''),
+              author: String(row[3] || ''),
+              category: String(row[4] || ''),
+              addTime: String(row[5] || '')
+            }));
+          }
+        } catch {}
+
+        // covers2 表：封面图片（当前为空，但代码先写好）
+        try {
+          const res = db.exec('SELECT filename, cover FROM covers2');
+          if (res.length > 0) {
+            out.covers2 = res[0].values.map(row => ({
+              filename: String(row[0] || ''),
+              cover: row[1] instanceof Uint8Array ? `<blob ${row[1].length}B>` : String(row[1] || '')
+            }));
+          }
+        } catch {}
+
+        return { success: true, data: out };
+      } finally {
+        db.close();
+      }
+    } catch (e: any) {
+      return { success: false, error: e?.message || '解析失败' };
     }
   }
 
