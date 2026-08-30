@@ -354,6 +354,7 @@ function renderSingle(books) {
           ${book.category ? `<p class="single-tags">${escapeHtml(book.category.split(/[;\n；]/)[0])}</p>` : ''}
           ${book.rate && parseInt(book.rate, 10) >= 1 && parseInt(book.rate, 10) <= 5 ? `<p class="single-stars">${stars(book.rate)}</p>` : ''}
           <p class="single-progress">${book.progress > 0 ? book.progress + '%' : '未读'}</p>
+          ${book.readingMs && book.readingMs > 0 ? `<p class="single-reading-time">阅读: ${formatReadingTime(book.readingMs)}</p>` : ''}
         </div>
       </div>
       <button class="single-nav single-next" id="singleNext">›</button>
