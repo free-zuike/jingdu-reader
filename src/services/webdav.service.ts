@@ -1588,6 +1588,67 @@ export class WebDAVService {
     }
   }
 
+  // 诊断：返回 SQLite 所有表的 schema 和样本数据（用于了解 notes/books/covers2 等表结构）
+  async inspectSqliteTables(userId: string, backupName: string, entryName: string): Promise<ApiResponse> {
+    try {
+      const relPath = `Backup/${backupName}`;
+      const zipBuf = await this.fetchMrproRaw(userId, relPath);
+      if (!zipBuf) return { success: false, error: '读取备份失败' };
+
+      const dbBytes = await this.extractZipEntryRaw(zipBuf, entryName);
+      if (!dbBytes) return { success: false, error: `条目不存在或解压失败: ${entryName}` };
+
+      const magic = new TextDecoder().decode(dbBytes.subarray(0, 15));
+      if (magic !== 'SQLite format 3') return { success: false, error: '不是 SQLite 数据库' };
+
+      const SQL = await getSQL();
+      const db = new SQL.Database(dbBytes);
+      try {
+        const tablesRes = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+        const tables: string[] = tablesRes.length > 0 ? tablesRes[0].values.map(v => String(v[0])) : [];
+
+        const result: Array<{ name: string; columns: Array<{ name: string; type: string; pk: boolean }>; sampleRows: any[][]; rowCount: number }> = [];
+        for (const table of tables) {
+          if (table.startsWith('sqlite_')) continue;
+          const colRes = db.exec(`PRAGMA table_info(${table})`);
+          const columns: Array<{ name: string; type: string; pk: boolean }> = [];
+          if (colRes.length > 0) {
+            for (const row of colRes[0].values) {
+              columns.push({ name: String(row[1]), type: String(row[2]), pk: Number(row[5]) === 1 });
+            }
+          }
+          let sampleRows: any[][] = [];
+          let rowCount = 0;
+          try {
+            rowCount = Number(db.exec(`SELECT COUNT(*) FROM ${table}`)[0].values[0][0]) || 0;
+          } catch {}
+          try {
+            const res = db.exec(`SELECT * FROM ${table} LIMIT 3`);
+            if (res.length > 0) {
+              sampleRows = res[0].values.map(r => r.map(v => {
+                if (v == null) return null;
+                if (typeof v === 'number' || typeof v === 'boolean') return v;
+                // Blob：截断并转 base64
+                if (v instanceof Uint8Array) {
+                  return `<blob ${v.length}B>`;
+                }
+                const s = String(v);
+                return s.length > 300 ? s.substring(0, 300) + '…' : s;
+              }));
+            }
+          } catch {}
+          result.push({ name: table, columns, sampleRows, rowCount });
+        }
+
+        return { success: true, data: { entryName, size: dbBytes.length, tables: result } };
+      } finally {
+        db.close();
+      }
+    } catch (e: any) {
+      return { success: false, error: e?.message || '分析失败' };
+    }
+  }
+
   // 直接读取 .mrpro 备份的 ZIP 原始字节（不解压、不转字符串）
   private async fetchMrproRaw(userId: string, relPath: string): Promise<ArrayBuffer | null> {
     try {

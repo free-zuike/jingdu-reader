@@ -143,6 +143,17 @@ book.get('/moonplus/backup/:name/stats/:entry', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 诊断：返回 SQLite 所有表的 schema 和样本数据（用于了解 Moon+ 表结构）
+book.get('/moonplus/backup/:name/tables/:entry', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const name = c.req.param('name');
+  const entry = c.req.param('entry');
+  const db = new Database(c.env.DB);
+  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
+  const result = await webdavService.inspectSqliteTables(userId, name, entry);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');
