@@ -856,6 +856,9 @@ async function loadMoonReadingStats() {
       return;
     }
 
+    console.log('[MoonStats] 原始 statsRows (前 5 条):', result.data.statsRows.slice(0, 5));
+    console.log('[MoonStats] 表清单:', result.data.tables);
+
     for (const row of result.data.statsRows) {
       if (row.filename) {
         moonStatsData[row.filename] = {
@@ -865,6 +868,8 @@ async function loadMoonReadingStats() {
         };
       }
     }
+
+    console.log('[MoonStats] 书架文件名 (前 10):', allBooks.map(b => b.fileName || b.title).slice(0, 10));
 
     console.log('[MoonStats] 已加载', Object.keys(moonStatsData).length, '条统计');
 
@@ -879,13 +884,16 @@ async function loadMoonReadingStats() {
 
 // 更新书籍卡片显示阅读时长
 function updateBookCardsWithStats() {
+  let matched = 0;
   for (const book of allBooks) {
     const fileName = book.fileName || book.title;
-    if (moonStatsData[fileName] || moonStatsData[fileName + '.epub']) {
-      const stats = moonStatsData[fileName] || moonStatsData[fileName + '.epub'];
+    const stats = moonStatsData[fileName] || moonStatsData[fileName + '.epub'];
+    if (stats) {
       book.readingMs = stats.usedTime;
       book.readingWords = stats.readWords;
+      matched++;
     }
   }
+  console.log('[MoonStats] 匹配成功:', matched, '/', allBooks.length, '本书');
   renderShelf();
 }
