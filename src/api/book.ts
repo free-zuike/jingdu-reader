@@ -132,28 +132,6 @@ book.get('/moonplus/backup/:name', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 诊断：从 .mrpro 备份中提取指定条目（SQLite 数据库等）
-book.get('/moonplus/backup/:name/entry/:entry', authMiddleware, async (c) => {
-  const userId = c.get('userId');
-  const name = c.req.param('name');
-  const entry = c.req.param('entry');
-  const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const result = await webdavService.extractMrproEntry(userId, name, entry);
-  return c.json(result);
-});
-
-// 诊断：分析 SQLite 数据库内容（提取表名、数据等）
-book.get('/moonplus/backup/:name/analyze/:entry', authMiddleware, async (c) => {
-  const userId = c.get('userId');
-  const name = c.req.param('name');
-  const entry = c.req.param('entry');
-  const db = new Database(c.env.DB);
-  const webdavService = new WebDAVService(db, c.env.ENCRYPTION_KEY);
-  const result = await webdavService.analyzeSqliteDatabase(userId, name, entry);
-  return c.json(result);
-});
-
 // 诊断：解析 SQLite 数据库，提取 statistics 表数据（阅读统计）
 book.get('/moonplus/backup/:name/stats/:entry', authMiddleware, async (c) => {
   const userId = c.get('userId');
