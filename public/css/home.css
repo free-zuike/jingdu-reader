@@ -1517,11 +1517,12 @@ body.night-mode .calendar-month-header {
   margin-top: 2px;
 }
 
-/* 详情 overlay（固定在 modal-body 底部，宽度跟随日历） */
+/* 详情 overlay（固定在视口底部，宽度跟随日历 modal） */
 .calendar-detail-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(600px, 95%);
   bottom: 0;
   z-index: 100;
   display: flex;
