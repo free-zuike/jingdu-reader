@@ -1529,7 +1529,20 @@ body.night-mode .calendar-month-header {
   pointer-events: none;
 }
 
+.calendar-detail-overlay-backdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  cursor: default;
+}
+
 .calendar-detail-overlay-panel {
+  position: relative;
+  z-index: 1;
   background: var(--paper-white);
   border-radius: 16px 16px 0 0;
   padding: 14px 16px 16px;

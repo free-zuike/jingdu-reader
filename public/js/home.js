@@ -1323,6 +1323,7 @@ function showDayDetail(dateKey) {
   const overlay = document.createElement('div');
   overlay.className = 'calendar-detail-overlay';
   overlay.innerHTML = `
+    <div class="calendar-detail-overlay-backdrop"></div>
     <div class="calendar-detail-overlay-panel">
       <div class="calendar-detail-overlay-header">
         <span class="calendar-detail-overlay-date">${m}月${d}日</span>
@@ -1335,13 +1336,12 @@ function showDayDetail(dateKey) {
     </div>
   `;
 
-  const panel = overlay.querySelector('.calendar-detail-overlay-panel');
   overlay.querySelector('.calendar-detail-overlay-close').addEventListener('click', (e) => {
     e.stopPropagation();
     overlay.remove();
   });
-  overlay.addEventListener('click', (e) => {
-    if (e.target !== panel) overlay.remove();
+  overlay.querySelector('.calendar-detail-overlay-backdrop').addEventListener('click', () => {
+    overlay.remove();
   });
 
   modalBody.appendChild(overlay);
