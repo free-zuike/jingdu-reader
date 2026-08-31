@@ -1215,13 +1215,15 @@ function renderCalendar() {
       
       let coverHtml = '';
       if (mainBook) {
-        coverHtml = `<div class="day-main-cover"><img src="${mainBook.cover}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`;
+        const mainId = mainBook.cover.split('/')[3] || '';
+        coverHtml = `<div class="day-main-cover"><img data-book-id="${mainId}" alt="" onerror="this.style.display='none'"></div>`;
         
         // 2 个缩略图：底部居中，紧挨在一起
         if (otherBooks.length > 0) {
           let miniHtml = '<div class="day-mini-area">';
           for (let i = 0; i < Math.min(otherBooks.length, 2); i++) {
-            miniHtml += `<div class="day-mini-cover"><img src="${otherBooks[i].cover}" alt="" loading="lazy" onerror="this.style.display='none'"></div>`;
+            const mid = otherBooks[i].cover.split('/')[3] || '';
+            miniHtml += `<div class="day-mini-cover"><img data-book-id="${mid}" alt="" onerror="this.style.display='none'"></div>`;
           }
           miniHtml += '</div>';
           coverHtml += miniHtml;
@@ -1253,6 +1255,19 @@ function renderCalendar() {
 
     div.addEventListener('click', () => showDayDetail(day));
     grid.appendChild(div);
+  }
+  loadCalendarCovers(grid);
+}
+
+// 日历封面：<img> 无法带 Authorization 头，用 fetchBookCover（带 token）转 blob URL 替换
+async function loadCalendarCovers(root) {
+  const imgs = root ? root.querySelectorAll('img[data-book-id]') : [];
+  for (const img of imgs) {
+    const id = img.dataset.bookId;
+    if (!id || img.dataset.coverLoaded) continue;
+    img.dataset.coverLoaded = '1';
+    const url = await fetchBookCover(id).catch(() => null);
+    if (url) img.src = url;
   }
 }
 
@@ -1290,10 +1305,11 @@ function showDayDetail(day) {
   for (const book of data.books) {
     const hours = (book.ms / 1000 / 60 / 60).toFixed(1);
     const speed = book.speed || 0;
+    const bid = book.cover.split('/')[3] || '';
     booksHtml += `
       <div class="calendar-detail-card">
         <div class="calendar-detail-card-cover">
-          <img src="${book.cover}" alt="" loading="lazy" onerror="this.style.display='none'">
+          <img data-book-id="${bid}" alt="" onerror="this.style.display='none'">
         </div>
         <div class="calendar-detail-card-title">${escapeHtml(book.title)}</div>
         <div class="calendar-detail-card-time">${hours}h</div>
@@ -1336,6 +1352,7 @@ function showDayDetail(day) {
 
   // 添加到网格（覆盖网格）
   grid.appendChild(overlay);
+  loadCalendarCovers(overlay);
 }
 
 // 上一月

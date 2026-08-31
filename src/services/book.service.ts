@@ -1428,11 +1428,11 @@ export class BookService {
             const msNum = parseInt(ms) || 0;
             const wordsNum = parseInt(words) || 0;
 
-            // 解析日期代码（假设 YYMMDD 格式）
-            const date = this.parseDateCode(dateCode, year, month);
-            if (!date) continue;
+            // 解析日期代码，只保留属于请求年/月的记录
+            const parsed = this.parseDateCode(dateCode);
+            if (!parsed || parsed.yy !== year % 100 || parsed.mm !== month + 1) continue;
 
-            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${date}`;
+            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${parsed.dd}`;
             if (!calendarData[dateKey]) {
               calendarData[dateKey] = { totalMs: 0, totalWords: 0, books: [] };
             }
@@ -1462,21 +1462,17 @@ export class BookService {
     }
   }
 
-  // 解析 Moon+ 日期代码（YYMMDD 格式）
-  private parseDateCode(dateCode: string, year: number, month: number): number | null {
+  // 解析 Moon+ 日期代码：前 2 位年 + 2 位月 + 余下 1~2 位日
+  // 例：20038 = 20 年 03 月 8 日；200315 = 20 年 03 月 15 日
+  private parseDateCode(dateCode: string): { yy: number; mm: number; dd: number } | null {
     try {
-      // 假设格式：YYMMDD（2 位年 + 2 位月 + 2 位日）
-      // 例如：20038 = 20 年 03 月 08 日
-      const yy = parseInt(dateCode.substring(0, 2));
-      const mm = parseInt(dateCode.substring(2, 4));
-      const dd = parseInt(dateCode.substring(4, 5)); // 1 位日
-
+      const yy = parseInt(dateCode.substring(0, 2), 10);
+      const mm = parseInt(dateCode.substring(2, 4), 10);
+      const dd = parseInt(dateCode.substring(4), 10); // 右侧余下为日（1~2 位）
       if (isNaN(yy) || isNaN(mm) || isNaN(dd)) return null;
-
       // 验证月份和日期
       if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-
-      return dd;
+      return { yy, mm, dd };
     } catch {
       return null;
     }

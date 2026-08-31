@@ -1520,7 +1520,7 @@ body.night-mode .loading-overlay {
 }
 
 .calendar-detail-overlay-panel {
-  background: var(--paper);
+  background: var(--paper-white);
   border-radius: 12px 12px 0 0;
   padding: 14px 16px 16px;
   max-height: 75%;
