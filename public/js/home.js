@@ -1336,12 +1336,13 @@ function showDayDetail(dateKey, cell) {
     </div>
   `;
 
+  const panel = overlay.querySelector('.calendar-detail-overlay-panel');
   overlay.querySelector('.calendar-detail-overlay-close').addEventListener('click', (e) => {
     e.stopPropagation();
     overlay.remove();
   });
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target !== panel) overlay.remove();
   });
 
   modalBody.appendChild(overlay);
