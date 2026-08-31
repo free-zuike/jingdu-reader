@@ -1092,10 +1092,25 @@ let calendarMonth = new Date().getMonth(); // 0-based
 let calendarSelectedDay = null;
 let calendarData = {};
 
-// 打开日历弹窗
-function openCalendar() {
+// 打开日历弹窗（自动定位到最近一个有阅读数据的年月）
+async function openCalendar() {
   const modal = document.getElementById('calendarModal');
   if (modal) modal.style.display = 'flex';
+  try {
+    const months = await fetch('/api/books/moonplus/calendar/months', {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(r => r.json());
+    if (months.success && Array.isArray(months.data) && months.data.length > 0) {
+      // 定位到最近一个有数据的年月（若当前月也有数据则保持）
+      const cur = calendarYear * 100 + calendarMonth;
+      const hasCur = months.data.some(m => (m.year * 100 + (m.month - 1)) === cur);
+      if (!hasCur) {
+        const latest = months.data[0];
+        calendarYear = latest.year;
+        calendarMonth = latest.month - 1;
+      }
+    }
+  } catch (e) { /* 定位失败则用当前年月 */ }
   loadCalendarData();
 }
 

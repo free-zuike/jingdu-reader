@@ -198,6 +198,15 @@ book.get('/moonplus/calendar', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 阅读日历：返回所有有数据的年月（默认定位用）
+book.get('/moonplus/calendar/months', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.getReadingCalendarMonths(userId);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');

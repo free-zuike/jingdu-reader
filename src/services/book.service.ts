@@ -1462,6 +1462,38 @@ export class BookService {
     }
   }
 
+  // 返回所有有阅读数据的年月（按时间倒序），供日历默认定位
+  async getReadingCalendarMonths(userId: string): Promise<ApiResponse> {
+    try {
+      const books = await this.db.getBooksByUserId(userId);
+      const monthSet = new Set<number>();
+      for (const book of books) {
+        const key = `stats:${userId}:${book.id}`;
+        const statsData = await this.cache.get(key).catch(() => null);
+        if (!statsData) continue;
+        try {
+          const stats = JSON.parse(statsData);
+          if (!stats.dates) continue;
+          const lines = stats.dates.split('\n');
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const [dateCode] = line.split('|');
+            if (!dateCode) continue;
+            const parsed = this.parseDateCode(dateCode);
+            if (!parsed) continue;
+            monthSet.add(parsed.yy * 100 + parsed.mm); // 如 2403 = 2024-03
+          }
+        } catch {}
+      }
+      const months = Array.from(monthSet)
+        .map(v => ({ year: 2000 + Math.floor(v / 100), month: v % 100 }))
+        .sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
+      return { success: true, data: months };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '获取日历月份失败' };
+    }
+  }
+
   // 解析 Moon+ 日期代码：前 2 位年 + 2 位月 + 余下 1~2 位日
   // 例：20038 = 20 年 03 月 8 日；200315 = 20 年 03 月 15 日
   private parseDateCode(dateCode: string): { yy: number; mm: number; dd: number } | null {
