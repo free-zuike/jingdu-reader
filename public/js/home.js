@@ -1344,11 +1344,8 @@ function showDayDetail(dateKey, cell) {
     if (e.target === overlay) overlay.remove();
   });
 
-  monthBlock.appendChild(overlay);
+  modalBody.appendChild(overlay);
   loadCalendarCovers(overlay);
-
-  // 把该月份块滚到视口中间，让面板自然出现在视野里
-  monthBlock.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 // 初始化日历按钮
