@@ -1523,7 +1523,7 @@ body.night-mode .calendar-month-header {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  margin-top: 8px;
+  margin-top: 0;
   border-radius: 12px 12px 0 0;
   overflow: hidden;
 }
