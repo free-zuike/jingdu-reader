@@ -1305,7 +1305,6 @@ function showDayDetail(day) {
   const overlay = document.createElement('div');
   overlay.className = 'calendar-detail-overlay';
   overlay.innerHTML = `
-    <div class="calendar-detail-overlay-backdrop"></div>
     <div class="calendar-detail-overlay-panel">
       <div class="calendar-detail-overlay-header">
         <span class="calendar-detail-overlay-date">${calendarMonth + 1}月${day}日</span>
@@ -1326,11 +1325,13 @@ function showDayDetail(day) {
     renderCalendar();
   });
 
-  // 点击背景关闭
-  overlay.querySelector('.calendar-detail-overlay-backdrop').addEventListener('click', () => {
-    overlay.remove();
-    calendarSelectedDay = null;
-    renderCalendar();
+  // 点击面板外的区域关闭
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      overlay.remove();
+      calendarSelectedDay = null;
+      renderCalendar();
+    }
   });
 
   // 添加到网格（覆盖网格）

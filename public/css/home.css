@@ -1507,7 +1507,7 @@ body.night-mode .loading-overlay {
   margin-top: 2px;
 }
 
-/* 详情 overlay（覆盖日历网格，底部弹面板 + 半透明背景） */
+/* 详情 overlay（覆盖日历网格，底部弹面板，无遮罩层） */
 .calendar-detail-overlay {
   position: absolute;
   inset: 0;
@@ -1519,20 +1519,7 @@ body.night-mode .loading-overlay {
   overflow: hidden;
 }
 
-.calendar-detail-overlay-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 .calendar-detail-overlay-panel {
-  position: relative;
   background: var(--paper);
   border-radius: 12px 12px 0 0;
   padding: 14px 16px 16px;
