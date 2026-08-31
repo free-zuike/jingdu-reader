@@ -1286,13 +1286,13 @@ async function loadCalendarCovers(root) {
   }
 }
 
-// 显示日期详情（底部弹面板，覆盖日历体）
-function showDayDetail(dateKey) {
-  const body = document.getElementById('calendarBody');
-  if (!body) return;
+// 显示日期详情（底部弹面板，对齐到当前月份块）
+function showDayDetail(dateKey, cell) {
+  const modalBody = document.getElementById('calendarBody');
+  if (!modalBody) return;
 
   // 移除之前的 overlay
-  const existing = body.querySelector('.calendar-detail-overlay');
+  const existing = modalBody.querySelector('.calendar-detail-overlay');
   if (existing) existing.remove();
 
   const data = calendarData[dateKey];
@@ -1343,8 +1343,16 @@ function showDayDetail(dateKey) {
     if (e.target === overlay) overlay.remove();
   });
 
-  body.appendChild(overlay);
+  modalBody.appendChild(overlay);
   loadCalendarCovers(overlay);
+
+  // 滚动到对应月份，让面板出现在视线内
+  if (cell) {
+    const monthBlock = cell.closest('.calendar-month-block');
+    if (monthBlock) {
+      monthBlock.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  }
 }
 
 // 初始化日历按钮
@@ -1365,7 +1373,7 @@ function initCalendar() {
     if (cell) {
       const modal = document.getElementById('calendarModal');
       if (modal && modal.style.display !== 'none') {
-        showDayDetail(cell.dataset.date);
+        showDayDetail(cell.dataset.date, cell);
       }
     }
   });
