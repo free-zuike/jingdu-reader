@@ -721,6 +721,45 @@ function initAutoSync() {
   }, minutes * 60000);
 }
 
+// 书架页日夜模式：优先用已同步的 App 日夜时段（readerNight），否则静默拉取一次并应用
+let nightModeTimer = null;
+function initNightMode() {
+  applyNightMode();
+  // 若本地还没有 App 日夜时段，则静默拉取一次（书架页独立可用）
+  let has = false;
+  try { has = !!(JSON.parse(localStorage.getItem('readerNight') || 'null')?.enabled); } catch {}
+  if (!has) {
+    getMoonPlusDayNight().then(r => {
+      if (r.success && r.data && r.data.enabled) {
+        const fmt = n => String(Math.floor(n / 100)).padStart(2, '0') + ':' + String(n % 100).padStart(2, '0');
+        const s = {
+          enabled: true,
+          start: fmt(r.data.nightTime),
+          end: fmt(r.data.dayTime)
+        };
+        localStorage.setItem('readerNight', JSON.stringify(s));
+        applyNightMode();
+      }
+    }).catch(() => {});
+  }
+  nightModeTimer = setInterval(applyNightMode, 60000);
+}
+function applyNightMode() {
+  let schedule = null;
+  try { schedule = JSON.parse(localStorage.getItem('readerNight') || 'null'); } catch {}
+  if (!schedule || !schedule.enabled) { document.body.classList.remove('night-mode'); return; }
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const parse = s => {
+    const [h, m] = (s || '0:0').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const start = parse(schedule.start);
+  const end = parse(schedule.end);
+  const inNight = start <= end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+  document.body.classList.toggle('night-mode', inNight);
+}
+
 // Toast
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');

@@ -42,6 +42,28 @@
   --page-width: 46rem;
 }
 
+/* 夜间模式（书架/设置等页面，配合 body.night-mode） */
+body.night-mode {
+  --page: #1c1917;
+  --page-deep: #262220;
+  --ink: #d8cfc0;
+  --ink-soft: #a89f8f;
+  --soft: #8a8275;
+  --gold: #c2a572;
+  --gold-soft: #a98f6b;
+  --seal: #d4574a;
+  --seal-deep: #b23a2f;
+  --line: rgba(216, 207, 192, 0.16);
+  --line-soft: rgba(216, 207, 192, 0.09);
+  --paper-white: #2b2724;
+  --light-paper: #332e2a;
+  --shadow-ink: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lift: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+body.night-mode::before {
+  background-image: radial-gradient(rgba(216, 207, 192, 0.02) 1px, transparent 1px);
+}
+
 /* ---------- 重置 ---------- */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
