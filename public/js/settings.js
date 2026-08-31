@@ -8,6 +8,8 @@ let currentPrefs = { fontSize: 'medium', theme: 'dark', autoSync: '0' };
 document.addEventListener('DOMContentLoaded', async () => {
   if (!checkAuth()) return;
 
+  initNightMode();
+
   await loadUserInfo();
   await loadWebDAVConfig();
   await loadSmtpConfig();
@@ -36,6 +38,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('savePrefsBtn').addEventListener('click', handleSavePreferences);
 });
+
+// 设置页日夜模式：跟随 App 日夜时段（readerNight），无则静默拉取一次
+let nightModeTimer = null;
+function initNightMode() {
+  applyNightMode();
+  let has = false;
+  try { has = !!(JSON.parse(localStorage.getItem('readerNight') || 'null')?.enabled); } catch {}
+  if (!has) {
+    getMoonPlusDayNight().then(r => {
+      if (r.success && r.data && r.data.enabled) {
+        const fmt = n => String(Math.floor(n / 100)).padStart(2, '0') + ':' + String(n % 100).padStart(2, '0');
+        localStorage.setItem('readerNight', JSON.stringify({
+          enabled: true,
+          start: fmt(r.data.nightTime),
+          end: fmt(r.data.dayTime)
+        }));
+        applyNightMode();
+      }
+    }).catch(() => {});
+  }
+  nightModeTimer = setInterval(applyNightMode, 60000);
+}
+function applyNightMode() {
+  let schedule = null;
+  try { schedule = JSON.parse(localStorage.getItem('readerNight') || 'null'); } catch {}
+  if (!schedule || !schedule.enabled) { document.body.classList.remove('night-mode'); return; }
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const parse = s => {
+    const [h, m] = (s || '0:0').split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const start = parse(schedule.start);
+  const end = parse(schedule.end);
+  const inNight = start <= end ? (cur >= start && cur < end) : (cur >= start || cur < end);
+  document.body.classList.toggle('night-mode', inNight);
+}
 
 // 加载用户信息
 async function loadUserInfo() {

@@ -11,6 +11,9 @@
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
+body.night-mode .header {
+  background: rgba(28, 25, 23, 0.92);
+}
 .header-content {
   max-width: 900px;
   margin: 0 auto;
