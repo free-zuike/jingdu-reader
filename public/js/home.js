@@ -1286,13 +1286,14 @@ async function loadCalendarCovers(root) {
   }
 }
 
-// 显示日期详情（底部弹面板，对齐到当前月份块）
+// 显示日期详情（面板挂在对应月份块底部，随该月份一起滚动）
 function showDayDetail(dateKey, cell) {
-  const modalBody = document.getElementById('calendarBody');
-  if (!modalBody) return;
+  if (!cell) return;
+  const monthBlock = cell.closest('.calendar-month-block');
+  if (!monthBlock) return;
 
-  // 移除之前的 overlay
-  const existing = modalBody.querySelector('.calendar-detail-overlay');
+  // 移除该月份块上的旧 overlay
+  const existing = monthBlock.querySelector('.calendar-detail-overlay');
   if (existing) existing.remove();
 
   const data = calendarData[dateKey];
@@ -1343,16 +1344,11 @@ function showDayDetail(dateKey, cell) {
     if (e.target === overlay) overlay.remove();
   });
 
-  modalBody.appendChild(overlay);
+  monthBlock.appendChild(overlay);
   loadCalendarCovers(overlay);
 
-  // 滚动到对应月份，让面板出现在视线内
-  if (cell) {
-    const monthBlock = cell.closest('.calendar-month-block');
-    if (monthBlock) {
-      monthBlock.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
-  }
+  // 把该月份块滚到视口中间，让面板自然出现在视野里
+  monthBlock.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 // 初始化日历按钮
