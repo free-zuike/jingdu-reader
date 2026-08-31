@@ -1084,34 +1084,34 @@ function updateBookCardsWithStats() {
 }
 
 // ============================================
-// 阅读日历
+// 阅读日历（连续滚动，所有月份堆叠，点击日期弹详情）
 // ============================================
 
-let calendarYear = new Date().getFullYear();
-let calendarMonth = new Date().getMonth(); // 0-based
-let calendarSelectedDay = null;
-let calendarData = {};
+let calendarData = {};       // { 'YYYY-MM-DD': {totalMs, totalWords, books:[...]} }
+let calendarMonthList = [];   // [{year, month}] 有数据的年月，倒序
 
-// 打开日历弹窗（自动定位到最近一个有阅读数据的年月）
+// 打开日历弹窗
 async function openCalendar() {
   const modal = document.getElementById('calendarModal');
   if (modal) modal.style.display = 'flex';
+  const body = document.getElementById('calendarBody');
+  if (body) body.innerHTML = '<div class="calendar-loading">加载中...</div>';
   try {
-    const months = await fetch('/api/books/moonplus/calendar/months', {
+    // 一次性拉取全部数据（不传 year/month）
+    const result = await fetch('/api/books/moonplus/calendar', {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(r => r.json());
-    if (months.success && Array.isArray(months.data) && months.data.length > 0) {
-      // 定位到最近一个有数据的年月（若当前月也有数据则保持）
-      const cur = calendarYear * 100 + calendarMonth;
-      const hasCur = months.data.some(m => (m.year * 100 + (m.month - 1)) === cur);
-      if (!hasCur) {
-        const latest = months.data[0];
-        calendarYear = latest.year;
-        calendarMonth = latest.month - 1;
-      }
+    if (result.success && result.data) {
+      calendarData = result.data;
+      calendarMonthList = computeMonthList(calendarData);
+      renderCalendar();
+      // 定位到当月或最近有数据的月份
+      setTimeout(scrollToCurrentMonth, 100);
     }
-  } catch (e) { /* 定位失败则用当前年月 */ }
-  loadCalendarData();
+  } catch (e) {
+    console.error('[Calendar] 加载失败:', e);
+    if (body) body.innerHTML = '<div class="calendar-loading">加载失败</div>';
+  }
 }
 
 // 关闭日历弹窗
@@ -1120,158 +1120,160 @@ function closeCalendar() {
   if (modal) modal.style.display = 'none';
 }
 
-// 加载日历数据
-async function loadCalendarData() {
-  try {
-    const result = await fetch(`/api/books/moonplus/calendar?year=${calendarYear}&month=${calendarMonth}`, {
-      headers: { 'Authorization': 'Bearer ' + getToken() }
-    }).then(r => r.json());
-    
-    if (result.success && result.data) {
-      calendarData = result.data;
-      renderCalendar();
-    }
-  } catch (e) {
-    console.error('[Calendar] 加载失败:', e);
+// 从 calendarData 提取所有有数据的年月，倒序排列
+function computeMonthList(data) {
+  const set = new Set();
+  for (const dateKey of Object.keys(data)) {
+    const [y, m] = dateKey.split('-').map(Number);
+    set.add(`${y}-${String(m).padStart(2, '0')}`);
   }
+  return Array.from(set).map(s => {
+    const [year, month] = s.split('-').map(Number);
+    return { year, month };
+  }).sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
 }
 
-// 渲染日历
+// 渲染所有月份（连续堆叠）
 function renderCalendar() {
-  // 更新月份标签
-  const label = document.getElementById('calendarMonthLabel');
-  if (label) label.textContent = `${calendarYear}年${calendarMonth + 1}月`;
+  const body = document.getElementById('calendarBody');
+  if (!body) return;
+  body.innerHTML = '';
 
-  // 计算本月汇总
-  let totalMs = 0, totalWords = 0, readingDays = 0;
-  for (const [dateKey, data] of Object.entries(calendarData)) {
-    if (dateKey.startsWith(`${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`)) {
-      totalMs += data.totalMs;
-      totalWords += data.totalWords;
-      readingDays++;
-    }
+  // 总汇总
+  let allMs = 0, allWords = 0, allDays = 0;
+  for (const data of Object.values(calendarData)) {
+    allMs += data.totalMs;
+    allWords += data.totalWords;
+    allDays++;
   }
-
-  // 渲染汇总
-  const summary = document.getElementById('calendarSummary');
-  if (summary) {
-    summary.innerHTML = `
+  const summaryHtml = `
+    <div class="calendar-summary">
       <div class="calendar-summary-item">
-        <div class="calendar-summary-value">${formatReadingTime(totalMs)}</div>
+        <div class="calendar-summary-value">${formatReadingTime(allMs)}</div>
         <div class="calendar-summary-label">总阅读时长</div>
       </div>
       <div class="calendar-summary-item">
-        <div class="calendar-summary-value">${(totalWords / 10000).toFixed(1)}万字</div>
+        <div class="calendar-summary-value">${(allWords / 10000).toFixed(1)}万字</div>
         <div class="calendar-summary-label">总阅读字数</div>
       </div>
       <div class="calendar-summary-item">
-        <div class="calendar-summary-value">${readingDays}天</div>
+        <div class="calendar-summary-value">${allDays}天</div>
         <div class="calendar-summary-label">阅读天数</div>
       </div>
-    `;
+    </div>
+  `;
+  body.insertAdjacentHTML('beforeend', summaryHtml);
+
+  // 每个月份一个块
+  for (const { year, month } of calendarMonthList) {
+    body.insertAdjacentHTML('beforeend', renderMonthBlock(year, month));
   }
 
-  // 渲染日历网格
-  const grid = document.getElementById('calendarGrid');
-  if (!grid) return;
+  // 加载所有封面
+  loadCalendarCovers(body);
+}
 
-  grid.innerHTML = '';
+// 渲染单个月份块
+function renderMonthBlock(year, month) {
+  // 本月汇总
+  let monthMs = 0, monthWords = 0, monthDays = 0;
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+  for (const [dateKey, data] of Object.entries(calendarData)) {
+    if (dateKey.startsWith(prefix)) {
+      monthMs += data.totalMs;
+      monthWords += data.totalWords;
+      monthDays++;
+    }
+  }
 
   // 星期表头
   const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  let weekdayHtml = '';
   for (const wd of weekdays) {
-    const div = document.createElement('div');
-    div.className = 'calendar-weekday';
-    div.textContent = wd;
-    grid.appendChild(div);
+    weekdayHtml += `<div class="calendar-weekday">${wd}</div>`;
   }
 
-  // 计算本月第一天是星期几（0=周日，1=周一，...）
-  const firstDay = new Date(calendarYear, calendarMonth, 1);
+  // 空格偏移
+  const firstDay = new Date(year, month - 1, 1);
   let startOffset = firstDay.getDay();
-  startOffset = startOffset === 0 ? 6 : startOffset - 1; // 周一开头
+  startOffset = startOffset === 0 ? 6 : startOffset - 1;
+  const daysInMonth = new Date(year, month, 0).getDate();
 
-  // 计算本月天数
-  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-
-  // 空单元格
+  let cellsHtml = '';
   for (let i = 0; i < startOffset; i++) {
-    const div = document.createElement('div');
-    div.className = 'calendar-day empty';
-    grid.appendChild(div);
+    cellsHtml += `<div class="calendar-day empty"></div>`;
   }
 
-  // 日期单元格
   const today = new Date();
   for (let day = 1; day <= daysInMonth; day++) {
-    const div = document.createElement('div');
-    div.className = 'calendar-day';
-    
-    // 判断是否是今天
-    if (calendarYear === today.getFullYear() && calendarMonth === today.getMonth() && day === today.getDate()) {
-      div.classList.add('today');
-    }
-    
-    // 判断是否有阅读数据
-    const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
+    const dateKey = `${prefix}-${String(day).padStart(2, '0')}`;
     const data = calendarData[dateKey];
+    const isToday = year === today.getFullYear() && month === today.getMonth() + 1 && day === today.getDate();
+    let cls = 'calendar-day';
+    if (isToday) cls += ' today';
     if (data && data.totalMs > 0) {
-      div.classList.add('has-data');
-      
-      // 显示主封面（读得最多的书）+ 其他封面缩略图（3 个：2 个左下，1 个下面）
+      cls += ' has-data';
       const mainBook = data.books[0];
-      const otherBooks = data.books.slice(1, 3); // 最多显示 2 个其他封面
-      
-      // 计算阅读速度（字/分钟）
+      const otherBooks = data.books.slice(1, 3);
       const totalSpeed = data.totalMs > 0 ? Math.round(data.totalWords / (data.totalMs / 1000 / 60)) : 0;
       const hours = Math.floor(data.totalMs / 1000 / 60 / 60);
       const minutes = Math.floor(data.totalMs / 1000 / 60 % 60);
       const readingText = hours > 0 ? `${hours}h${minutes > 0 ? minutes + 'm' : ''}` : `${minutes}m`;
-      
       let coverHtml = '';
       if (mainBook) {
         const mainId = mainBook.cover.split('/')[3] || '';
         coverHtml = `<div class="day-main-cover"><img data-book-id="${mainId}" alt="" onerror="this.style.display='none'"></div>`;
-        
-        // 2 个缩略图：底部居中，紧挨在一起
         if (otherBooks.length > 0) {
-          let miniHtml = '<div class="day-mini-area">';
+          coverHtml += '<div class="day-mini-area">';
           for (let i = 0; i < Math.min(otherBooks.length, 2); i++) {
             const mid = otherBooks[i].cover.split('/')[3] || '';
-            miniHtml += `<div class="day-mini-cover"><img data-book-id="${mid}" alt="" onerror="this.style.display='none'"></div>`;
+            coverHtml += `<div class="day-mini-cover"><img data-book-id="${mid}" alt="" onerror="this.style.display='none'"></div>`;
           }
-          miniHtml += '</div>';
-          coverHtml += miniHtml;
+          coverHtml += '</div>';
         }
-        
         if (data.books.length > 3) {
           coverHtml += `<div class="day-more-count">+${data.books.length - 3}</div>`;
         }
       }
-      
-      div.innerHTML = `
-        <div class="day-content">
-          <span class="day-number">${day}</span>
-          ${coverHtml}
-        </div>
-        <div class="day-info">
-          <span class="day-reading">${readingText}</span>
-          <span class="day-speed">${totalSpeed}字/分</span>
-        </div>
-      `;
+      cellsHtml += `
+        <div class="${cls}" data-date="${dateKey}">
+          <div class="day-content">
+            <span class="day-number">${day}</span>
+            ${coverHtml}
+          </div>
+          <div class="day-info">
+            <span class="day-reading">${readingText}</span>
+            <span class="day-speed">${totalSpeed}字/分</span>
+          </div>
+        </div>`;
     } else {
-      div.innerHTML = `<div class="day-content"><span class="day-number">${day}</span></div>`;
+      cellsHtml += `<div class="${cls}"><div class="day-content"><span class="day-number">${day}</span></div></div>`;
     }
-
-    // 判断是否选中
-    if (calendarSelectedDay === day) {
-      div.classList.add('selected');
-    }
-
-    div.addEventListener('click', () => showDayDetail(day));
-    grid.appendChild(div);
   }
-  loadCalendarCovers(grid);
+
+  return `
+    <div class="calendar-month-block" data-month="${prefix}">
+      <div class="calendar-month-header">
+        <span class="calendar-month-title">${year}年${month}月</span>
+        <span class="calendar-month-summary">${formatReadingTime(monthMs)} · ${(monthWords / 10000).toFixed(1)}万字 · ${monthDays}天</span>
+      </div>
+      <div class="calendar-grid">${weekdayHtml}${cellsHtml}</div>
+    </div>
+  `;
+}
+
+// 定位到当月或最近有数据的月份
+function scrollToCurrentMonth() {
+  const body = document.getElementById('calendarBody');
+  if (!body) return;
+  const now = new Date();
+  const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // 找当月块，没有则找最近的（倒序列表第一个）
+  let target = body.querySelector(`.calendar-month-block[data-month="${curKey}"]`);
+  if (!target && calendarMonthList.length > 0) {
+    target = body.querySelector(`.calendar-month-block[data-month="${calendarMonthList[0].year}-${String(calendarMonthList[0].month).padStart(2, '0')}"]`);
+  }
+  if (target) target.scrollIntoView({ block: 'start', behavior: 'auto' });
 }
 
 // 日历封面：<img> 无法带 Authorization 头，用 fetchBookCover（带 token）转 blob URL 替换
@@ -1286,32 +1288,19 @@ async function loadCalendarCovers(root) {
   }
 }
 
-// 显示日期详情（overlay 覆盖日历网格，从底部滑入，横排书籍卡片）
-function showDayDetail(day) {
-  // 点击已选中的日期，关闭 overlay
-  if (calendarSelectedDay === day) {
-    const overlay = document.querySelector('.calendar-detail-overlay');
-    if (overlay) overlay.remove();
-    calendarSelectedDay = null;
-    renderCalendar();
-    return;
-  }
-
-  calendarSelectedDay = day;
-  renderCalendar();
+// 显示日期详情（底部弹面板，覆盖日历体）
+function showDayDetail(dateKey) {
+  const body = document.getElementById('calendarBody');
+  if (!body) return;
 
   // 移除之前的 overlay
-  const existingOverlay = document.querySelector('.calendar-detail-overlay');
-  if (existingOverlay) existingOverlay.remove();
+  const existing = body.querySelector('.calendar-detail-overlay');
+  if (existing) existing.remove();
 
-  const dateKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${day}`;
   const data = calendarData[dateKey];
-
   if (!data || data.books.length === 0) return;
 
-  const grid = document.getElementById('calendarGrid');
-  if (!grid) return;
-
+  const [y, m, d] = dateKey.split('-').map(Number);
   const totalHours = (data.totalMs / 1000 / 60 / 60).toFixed(1);
   const totalWords = (data.totalWords / 10000).toFixed(1);
   const totalSpeed = data.totalMs > 0 ? Math.round(data.totalWords / (data.totalMs / 1000 / 60)) : 0;
@@ -1338,7 +1327,7 @@ function showDayDetail(day) {
   overlay.innerHTML = `
     <div class="calendar-detail-overlay-panel">
       <div class="calendar-detail-overlay-header">
-        <span class="calendar-detail-overlay-date">${calendarMonth + 1}月${day}日</span>
+        <span class="calendar-detail-overlay-date">${m}月${d}日</span>
         <span class="calendar-detail-overlay-total">${totalHours}h · ${totalWords}万字 · ${totalSpeed}字/分</span>
         <button class="calendar-detail-overlay-close">✕</button>
       </div>
@@ -1348,50 +1337,16 @@ function showDayDetail(day) {
     </div>
   `;
 
-  // 关闭按钮
   overlay.querySelector('.calendar-detail-overlay-close').addEventListener('click', (e) => {
     e.stopPropagation();
     overlay.remove();
-    calendarSelectedDay = null;
-    renderCalendar();
   });
-
-  // 点击面板外的区域关闭
   overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      overlay.remove();
-      calendarSelectedDay = null;
-      renderCalendar();
-    }
+    if (e.target === overlay) overlay.remove();
   });
 
-  // 添加到网格（覆盖网格）
-  grid.appendChild(overlay);
+  body.appendChild(overlay);
   loadCalendarCovers(overlay);
-}
-
-// 上一月
-function calendarPrevMonth() {
-  if (calendarMonth === 0) {
-    calendarMonth = 11;
-    calendarYear--;
-  } else {
-    calendarMonth--;
-  }
-  calendarSelectedDay = null;
-  loadCalendarData();
-}
-
-// 下一月
-function calendarNextMonth() {
-  if (calendarMonth === 11) {
-    calendarMonth = 0;
-    calendarYear++;
-  } else {
-    calendarMonth++;
-  }
-  calendarSelectedDay = null;
-  loadCalendarData();
 }
 
 // 初始化日历按钮
@@ -1406,13 +1361,14 @@ function initCalendar() {
     calendarClose.addEventListener('click', closeCalendar);
   }
 
-  const calendarPrev = document.getElementById('calendarPrev');
-  if (calendarPrev) {
-    calendarPrev.addEventListener('click', calendarPrevMonth);
-  }
-
-  const calendarNext = document.getElementById('calendarNext');
-  if (calendarNext) {
-    calendarNext.addEventListener('click', calendarNextMonth);
-  }
+  // 日期单元格点击（事件委托）
+  document.addEventListener('click', (e) => {
+    const cell = e.target.closest('.calendar-day.has-data[data-date]');
+    if (cell) {
+      const modal = document.getElementById('calendarModal');
+      if (modal && modal.style.display !== 'none') {
+        showDayDetail(cell.dataset.date);
+      }
+    }
+  });
 }

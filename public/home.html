@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>静读天下 - 我的书架</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/base.css?v=5">
-  <link rel="stylesheet" href="/css/home.css?v=5">
+  <link rel="stylesheet" href="/css/base.css?v=6">
+  <link rel="stylesheet" href="/css/home.css?v=6">
   <!-- sql.js for SQLite parsing -->
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
 </head>
@@ -143,23 +143,10 @@
     <div class="modal-box calendar-modal">
       <div class="modal-header">
         <h3>📅 阅读日历</h3>
-        <div class="calendar-nav">
-          <button id="calendarPrev" class="calendar-nav-btn">‹</button>
-          <span id="calendarMonthLabel">2026年8月</span>
-          <button id="calendarNext" class="calendar-nav-btn">›</button>
-        </div>
         <button class="modal-close" id="calendarClose">✕</button>
       </div>
-      <div class="modal-body">
-        <div class="calendar-summary" id="calendarSummary">
-          <!-- 本月汇总 -->
-        </div>
-        <div class="calendar-grid" id="calendarGrid">
-          <!-- 日历网格 -->
-        </div>
-        <div class="calendar-detail" id="calendarDetail" style="display:none;">
-          <!-- 日期详情 -->
-        </div>
+      <div class="modal-body" id="calendarBody">
+        <!-- 月份块连续堆叠，可滚动 -->
       </div>
     </div>
   </div>

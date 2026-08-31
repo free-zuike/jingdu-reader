@@ -1035,37 +1035,46 @@ body.night-mode .loading-overlay {
   width: 95%;
 }
 
-.calendar-nav {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-  margin-right: 12px;
+.calendar-modal .modal-body {
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
-.calendar-nav-btn {
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  color: var(--ink);
-  transition: background 0.15s;
-}
-
-.calendar-nav-btn:hover {
-  background: var(--line-soft);
-}
-
-#calendarMonthLabel {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ink);
-  min-width: 100px;
+.calendar-loading {
   text-align: center;
+  padding: 40px 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/* 月份块 */
+.calendar-month-block {
+  margin-bottom: 24px;
+}
+
+.calendar-month-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-month-title {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.calendar-month-summary {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+body.night-mode .calendar-month-header {
+  border-bottom-color: var(--line);
 }
 
 .calendar-summary {

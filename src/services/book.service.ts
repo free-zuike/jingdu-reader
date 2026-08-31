@@ -1389,10 +1389,11 @@ export class BookService {
     }
   }
 
-  // 获取阅读日历数据（按日期聚合所有书的阅读统计）
-  // dates 字段格式：日期代码|阅读时长(ms)@阅读字数，如 "20038|17979909@157129"
-  // 日期代码是 YYMMDD 格式（2 位年 + 2 位月 + 2 位日）
-  async getReadingCalendar(userId: string, year: number, month: number): Promise<ApiResponse> {
+  // 获取阅读日历数据
+  // dates 字段格式：日期代码|阅读时长(ms)@阅读字数 [#进度]
+  // 日期代码 = 自 1970-01-01 起的天数（如 20038 ≈ 2024-11-11）
+  // year/month 都不传时返回全部数据
+  async getReadingCalendar(userId: string, year?: number, month?: number): Promise<ApiResponse> {
     try {
       const books = await this.db.getBooksByUserId(userId);
       // book.id → title 映射
@@ -1424,21 +1425,24 @@ export class BookService {
             if (!line.trim()) continue;
             const [dateCode, rest] = line.split('|');
             if (!dateCode || !rest) continue;
-            const [ms, words] = rest.split('@');
-            const msNum = parseInt(ms) || 0;
-            const wordsNum = parseInt(words) || 0;
+            const parts = rest.split('@');
+            const msNum = parseInt(parts[0]) || 0;
+            const wordsNum = parseInt(parts[1] || '0') || 0;
 
-            // 解析日期代码，只保留属于请求年/月的记录
+            // 解析日期代码（自 epoch 起的天数）
             const parsed = this.parseDateCode(dateCode);
-            if (!parsed || parsed.yy !== year % 100 || parsed.mm !== month + 1) continue;
+            if (!parsed) continue;
+            // 按请求年月过滤（不传则返回全部）
+            if (year !== undefined && month !== undefined) {
+              if (parsed.year !== year || parsed.month !== month + 1) continue;
+            }
 
-            const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${parsed.dd}`;
+            const dateKey = `${parsed.year}-${String(parsed.month).padStart(2, '0')}-${String(parsed.dd).padStart(2, '0')}`;
             if (!calendarData[dateKey]) {
               calendarData[dateKey] = { totalMs: 0, totalWords: 0, books: [] };
             }
             calendarData[dateKey].totalMs += msNum;
             calendarData[dateKey].totalWords += wordsNum;
-            // 计算阅读速度（字/分钟）
             const speed = msNum > 0 ? Math.round(wordsNum / (msNum / 1000 / 60)) : 0;
             calendarData[dateKey].books.push({
               title: book.title,
@@ -1451,7 +1455,7 @@ export class BookService {
         } catch {}
       }
 
-      // 按阅读时长降序排列每本书，方便前端显示主封面
+      // 按阅读时长降序排列每本书
       for (const data of Object.values(calendarData)) {
         data.books.sort((a, b) => b.ms - a.ms);
       }
@@ -1462,11 +1466,11 @@ export class BookService {
     }
   }
 
-  // 返回所有有阅读数据的年月（按时间倒序），供日历默认定位
+  // 返回所有有阅读数据的年月（按时间倒序）
   async getReadingCalendarMonths(userId: string): Promise<ApiResponse> {
     try {
       const books = await this.db.getBooksByUserId(userId);
-      const monthSet = new Set<number>();
+      const monthSet = new Set<string>();
       for (const book of books) {
         const key = `stats:${userId}:${book.id}`;
         const statsData = await this.cache.get(key).catch(() => null);
@@ -1481,12 +1485,12 @@ export class BookService {
             if (!dateCode) continue;
             const parsed = this.parseDateCode(dateCode);
             if (!parsed) continue;
-            monthSet.add(parsed.yy * 100 + parsed.mm); // 如 2403 = 2024-03
+            monthSet.add(`${parsed.year}-${String(parsed.month).padStart(2, '0')}`);
           }
         } catch {}
       }
       const months = Array.from(monthSet)
-        .map(v => ({ year: 2000 + Math.floor(v / 100), month: v % 100 }))
+        .map(s => { const [y, m] = s.split('-').map(Number); return { year: y, month: m }; })
         .sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
       return { success: true, data: months };
     } catch (e: any) {
@@ -1519,17 +1523,13 @@ export class BookService {
     }
   }
 
-  // 解析 Moon+ 日期代码：前 2 位年 + 2 位月 + 余下 1~2 位日
-  // 例：20038 = 20 年 03 月 8 日；200315 = 20 年 03 月 15 日
-  private parseDateCode(dateCode: string): { yy: number; mm: number; dd: number } | null {
+  // 解析 Moon+ 日期代码：自 1970-01-01 起的天数（如 20038 ≈ 2024-11-11）
+  private parseDateCode(dateCode: string): { year: number; month: number; dd: number } | null {
     try {
-      const yy = parseInt(dateCode.substring(0, 2), 10);
-      const mm = parseInt(dateCode.substring(2, 4), 10);
-      const dd = parseInt(dateCode.substring(4), 10); // 右侧余下为日（1~2 位）
-      if (isNaN(yy) || isNaN(mm) || isNaN(dd)) return null;
-      // 验证月份和日期
-      if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-      return { yy, mm, dd };
+      const days = parseInt(dateCode, 10);
+      if (isNaN(days) || days <= 0) return null;
+      const d = new Date(days * 86400000); // epoch days → date
+      return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, dd: d.getUTCDate() };
     } catch {
       return null;
     }

@@ -187,11 +187,13 @@ book.post('/moonplus/backup/:name/sync/:entry', authMiddleware, async (c) => {
   return c.json(result);
 });
 
-// 阅读日历：按日期聚合所有书的阅读统计（从 KV stats 读取 dates 字段）
+// 阅读日历：按日期聚合所有书的阅读统计（不传 year/month 返回全部）
 book.get('/moonplus/calendar', authMiddleware, async (c) => {
   const userId = c.get('userId');
-  const year = parseInt(c.req.query('year') || new Date().getFullYear().toString());
-  const month = parseInt(c.req.query('month') || '0'); // 0-based
+  const yearStr = c.req.query('year');
+  const monthStr = c.req.query('month');
+  const year = yearStr ? parseInt(yearStr) : undefined;
+  const month = monthStr ? parseInt(monthStr) : undefined;
   const db = new Database(c.env.DB);
   const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
   const result = await bookService.getReadingCalendar(userId, year, month);
