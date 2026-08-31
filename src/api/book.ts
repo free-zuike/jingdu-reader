@@ -207,6 +207,15 @@ book.get('/moonplus/calendar/months', authMiddleware, async (c) => {
   return c.json(result);
 });
 
+// 阅读日历：诊断端点，返回原始 dates 样本（确认日期代码格式）
+book.get('/moonplus/calendar/raw', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const db = new Database(c.env.DB);
+  const bookService = new BookService(db, c.env.CACHE, c.env.BOOKS);
+  const result = await bookService.getReadingCalendarRaw(userId);
+  return c.json(result);
+});
+
 // 同步WebDAV书籍（下载并缓存到本地KV）
 book.post('/sync', authMiddleware, async (c) => {
   const userId = c.get('userId');

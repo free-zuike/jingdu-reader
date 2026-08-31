@@ -1494,6 +1494,31 @@ export class BookService {
     }
   }
 
+  // 诊断：返回所有 stats 的原始 dates 前 N 行样本（确认日期代码格式）
+  async getReadingCalendarRaw(userId: string, limit: number = 20): Promise<ApiResponse> {
+    try {
+      const books = await this.db.getBooksByUserId(userId);
+      const samples: Array<{ bookId: string; title: string; dateLines: string[] }> = [];
+      for (const book of books) {
+        if (samples.length >= 5) break;
+        const key = `stats:${userId}:${book.id}`;
+        const statsData = await this.cache.get(key).catch(() => null);
+        if (!statsData) continue;
+        try {
+          const stats = JSON.parse(statsData);
+          if (!stats.dates) continue;
+          const lines = stats.dates.split('\n').filter((l: string) => l.trim());
+          if (lines.length) {
+            samples.push({ bookId: book.id, title: book.title, dateLines: lines.slice(0, limit) });
+          }
+        } catch {}
+      }
+      return { success: true, data: samples };
+    } catch (e: any) {
+      return { success: false, error: e?.message || '获取原始 dates 失败' };
+    }
+  }
+
   // 解析 Moon+ 日期代码：前 2 位年 + 2 位月 + 余下 1~2 位日
   // 例：20038 = 20 年 03 月 8 日；200315 = 20 年 03 月 15 日
   private parseDateCode(dateCode: string): { yy: number; mm: number; dd: number } | null {
