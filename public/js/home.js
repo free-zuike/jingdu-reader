@@ -1286,14 +1286,13 @@ async function loadCalendarCovers(root) {
   }
 }
 
-// 显示日期详情（面板挂在对应月份块底部，随该月份一起滚动）
-function showDayDetail(dateKey, cell) {
-  if (!cell) return;
-  const monthBlock = cell.closest('.calendar-month-block');
-  if (!monthBlock) return;
+// 显示日期详情（面板固定在视口底部）
+function showDayDetail(dateKey) {
+  const modalBody = document.getElementById('calendarBody');
+  if (!modalBody) return;
 
-  // 移除该月份块上的旧 overlay
-  const existing = monthBlock.querySelector('.calendar-detail-overlay');
+  // 移除之前的 overlay
+  const existing = modalBody.querySelector('.calendar-detail-overlay');
   if (existing) existing.remove();
 
   const data = calendarData[dateKey];
@@ -1367,7 +1366,7 @@ function initCalendar() {
     if (cell) {
       const modal = document.getElementById('calendarModal');
       if (modal && modal.style.display !== 'none') {
-        showDayDetail(cell.dataset.date, cell);
+        showDayDetail(cell.dataset.date);
       }
     }
   });
