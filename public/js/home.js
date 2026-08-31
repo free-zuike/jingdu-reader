@@ -1130,7 +1130,7 @@ function computeMonthList(data) {
   return Array.from(set).map(s => {
     const [year, month] = s.split('-').map(Number);
     return { year, month };
-  }).sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
+  }).sort((a, b) => (a.year * 100 + a.month) - (b.year * 100 + b.month)); // 正序：最早在上，最新在下
 }
 
 // 渲染所有月份（连续堆叠）
@@ -1262,18 +1262,16 @@ function renderMonthBlock(year, month) {
   `;
 }
 
-// 定位到当月或最近有数据的月份
+// 定位到最新月份（列表最后一个，即最下方）
 function scrollToCurrentMonth() {
   const body = document.getElementById('calendarBody');
   if (!body) return;
-  const now = new Date();
-  const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  // 找当月块，没有则找最近的（倒序列表第一个）
-  let target = body.querySelector(`.calendar-month-block[data-month="${curKey}"]`);
-  if (!target && calendarMonthList.length > 0) {
-    target = body.querySelector(`.calendar-month-block[data-month="${calendarMonthList[0].year}-${String(calendarMonthList[0].month).padStart(2, '0')}"]`);
+  // 正序列表：最新在最后
+  if (calendarMonthList.length > 0) {
+    const last = calendarMonthList[calendarMonthList.length - 1];
+    const target = body.querySelector(`.calendar-month-block[data-month="${last.year}-${String(last.month).padStart(2, '0')}"]`);
+    if (target) target.scrollIntoView({ block: 'start', behavior: 'auto' });
   }
-  if (target) target.scrollIntoView({ block: 'start', behavior: 'auto' });
 }
 
 // 日历封面：<img> 无法带 Authorization 头，用 fetchBookCover（带 token）转 blob URL 替换

@@ -1038,6 +1038,7 @@ body.night-mode .loading-overlay {
 .calendar-modal .modal-body {
   max-height: 80vh;
   overflow-y: auto;
+  position: relative;
 }
 
 .calendar-loading {
