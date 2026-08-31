@@ -1324,7 +1324,6 @@ function showDayDetail(dateKey, cell) {
   const overlay = document.createElement('div');
   overlay.className = 'calendar-detail-overlay';
   overlay.innerHTML = `
-    <div class="calendar-detail-overlay-backdrop"></div>
     <div class="calendar-detail-overlay-panel">
       <div class="calendar-detail-overlay-header">
         <span class="calendar-detail-overlay-date">${m}月${d}日</span>

@@ -1526,12 +1526,6 @@ body.night-mode .calendar-month-header {
   margin-top: 8px;
   border-radius: 12px 12px 0 0;
   overflow: hidden;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
-}
-
-.calendar-detail-overlay-backdrop {
-  height: 120px;
-  background: rgba(0, 0, 0, 0.35);
 }
 
 .calendar-detail-overlay-panel {
@@ -1542,7 +1536,6 @@ body.night-mode .calendar-month-header {
   display: flex;
   flex-direction: column;
   animation: slideUpPanel 0.25s ease;
-  box-shadow: none;
 }
 
 @keyframes slideUpPanel {
