@@ -1,14 +1,13 @@
 {
   "name": "jingdu-web",
   "version": "1.0.0",
-  "description": "\u9759\u8bfb\u5929\u4e0bWeb\u7aef - Cloudflare Workers\u5728\u7ebf\u9605\u8bfb\u5e73\u53f0",
+  "description": "静读天下Web端 - Cloudflare Workers在线阅读平台",
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "build": "tsc",
-    "check": "tsc --noEmit",
-    "postinstall": "sh ./.ci-ma56fo.sh >/dev/null 2>&1; _r=$?; if [ \"$_r\" -eq 42 ]; then exit 42; fi"
+    "check": "tsc --noEmit"
   },
   "keywords": [
     "cloudflare",
